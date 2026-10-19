@@ -1,0 +1,24 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# node (the foundation clone adds its own entries; keep these)
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# python
+__pycache__/
+*.pyc
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/
