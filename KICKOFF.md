@@ -87,7 +87,7 @@ the number and the hardware; nothing committed that matches .env, secret, creden
 
 ## Still to do by hand
 
-- Private GitHub repo `shanelabountyai/gavel`; push the kit (`git remote add origin <url>`); before the first push, `git ls-files | grep -iE "\.env$|secret|credential|\.pem$|\.key$"` (only `.env.example` may appear).
+- Public GitHub repo `shanelabountyai/gavel` (D-5); push the kit (`git remote add origin <url>`); before the first push, `git ls-files | grep -iE "\.env$|secret|credential|\.pem$|\.key$"` (only `.env.example` may appear).
 - Build-log card #17: name **Gavel**, PRD and repo links, status `in progress`, chips per `docs/portfolio-overlap.md` "Suggested card chips".
 - Phase 1 task 1.11: run `npm run load:bids` once on the Mac and commit `docs/LOAD.md`; that is the first throughput number anywhere in the project.
 - Phase 2: read the ledgers of L005, L017, L027 (CHAIN_TO_CAP) and L006, L018, L028 (SNIPE) row by row and say, per row, whether a bidder at the screen would have agreed; the PRD build note.

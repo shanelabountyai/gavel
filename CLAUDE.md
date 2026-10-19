@@ -27,7 +27,7 @@ Read first: `prd-gavel.md` (what), `docs/decisions.md` (authoritative; outranks 
 - Small commits, one concern each, naming specific files (never `git add -A`). Note seams for non-goals (payments, push, fraud) but don't build them.
 - Ask before adding dependencies. The foundation's `pg` client is enough for the raw connections; no load-testing library, no scheduler, no socket library.
 - **Model is pinned to Claude Fable 5.1 (`claude-fable-5-1`)** in `.claude/settings.json` (D-3). Money and concurrency logic stay on Fable; drop to Sonnet only for an item with no new logic.
-- Private repo (D-5): before every push, `git ls-files | grep -iE "\.env$|secret|credential|\.pem$|\.key$"` must print only `.env.example`.
+- Public repo (D-5): before every push, `git ls-files | grep -iE "\.env$|secret|credential|\.pem$|\.key$"` must print only `.env.example`.
 - End each session by updating `NEXT.md`: what was built, decided, left open, the gate output, and the latest `docs/LOAD.md` line if one exists.
 
 ## Session 0 — reuse check (run before sequencing the backlog)
