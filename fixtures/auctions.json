@@ -1,0 +1,674 @@
+{
+ "auctions": [
+  {
+   "auction_id": "A1",
+   "buyer_premium_bps": 1500,
+   "lots": [
+    {
+     "auction_id": "A1",
+     "kind": "PROXY_WAR",
+     "lot_id": "L001",
+     "lot_number": 1,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794060000000,
+     "start_cents": 10000,
+     "title": "Oak roll-top desk"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "TIE",
+     "lot_id": "L002",
+     "lot_number": 2,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794060120000,
+     "start_cents": 50000,
+     "title": "Set of six Windsor chairs"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "RESERVE_NOT_MET",
+     "lot_id": "L003",
+     "lot_number": 3,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": 15000,
+     "scheduled_end_ms": 1794060240000,
+     "start_cents": 2500,
+     "title": "Cast-iron skillet lot (4)"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "RESERVE_MET",
+     "lot_id": "L004",
+     "lot_number": 4,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": 60000,
+     "scheduled_end_ms": 1794060360000,
+     "start_cents": 20000,
+     "title": "Pendulum wall clock"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "CHAIN_TO_CAP",
+     "lot_id": "L005",
+     "lot_number": 5,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794060480000,
+     "start_cents": 5000,
+     "title": "Hand-stitched quilt, c. 1960"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "SNIPE",
+     "lot_id": "L006",
+     "lot_number": 6,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794060600000,
+     "start_cents": 50000,
+     "title": "Box lot of hand tools"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "NO_BIDS",
+     "lot_id": "L007",
+     "lot_number": 7,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794060720000,
+     "start_cents": 2500,
+     "title": "Brass floor lamp"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "OWN_RAISE",
+     "lot_id": "L008",
+     "lot_number": 8,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794060840000,
+     "start_cents": 20000,
+     "title": "Walnut dresser with mirror"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "LATE",
+     "lot_id": "L009",
+     "lot_number": 9,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794060960000,
+     "start_cents": 50000,
+     "title": "Stoneware crock, 5 gal"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "REPLAY",
+     "lot_id": "L010",
+     "lot_number": 10,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794061080000,
+     "start_cents": 2500,
+     "title": "Vintage sewing machine in cabinet"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "BELOW_MIN",
+     "lot_id": "L011",
+     "lot_number": 11,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794061200000,
+     "start_cents": 50000,
+     "title": "Framed farm print"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "EARLY",
+     "lot_id": "L012",
+     "lot_number": 12,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794061320000,
+     "start_cents": 5000,
+     "title": "Cedar chest"
+    }
+   ],
+   "max_extension_seconds": 1800,
+   "name": "Harlan farm estate (online only)",
+   "opens_at_ms": 1793800800000,
+   "soft_close_window_seconds": 120
+  },
+  {
+   "auction_id": "A2",
+   "buyer_premium_bps": 1000,
+   "lots": [
+    {
+     "auction_id": "A2",
+     "kind": "PROXY_WAR",
+     "lot_id": "L013",
+     "lot_number": 1,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794061440000,
+     "start_cents": 250000,
+     "title": "Skid steer, 2,100 hrs"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "TIE",
+     "lot_id": "L014",
+     "lot_number": 2,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794061560000,
+     "start_cents": 100000,
+     "title": "Zero-turn mower, 61 in deck"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "RESERVE_NOT_MET",
+     "lot_id": "L015",
+     "lot_number": 3,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": 600000,
+     "scheduled_end_ms": 1794061680000,
+     "start_cents": 100000,
+     "title": "Portable air compressor, 60 gal"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "RESERVE_MET",
+     "lot_id": "L016",
+     "lot_number": 4,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": 150000,
+     "scheduled_end_ms": 1794061800000,
+     "start_cents": 50000,
+     "title": "Utility trailer, 16 ft tandem"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "CHAIN_TO_CAP",
+     "lot_id": "L017",
+     "lot_number": 5,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794061920000,
+     "start_cents": 50000,
+     "title": "Wood chipper, 6 in"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "SNIPE",
+     "lot_id": "L018",
+     "lot_number": 6,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794062040000,
+     "start_cents": 100000,
+     "title": "Pallet jack, 5,500 lb"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "NO_BIDS",
+     "lot_id": "L019",
+     "lot_number": 7,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794062160000,
+     "start_cents": 100000,
+     "title": "Welder, MIG 210"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "OWN_RAISE",
+     "lot_id": "L020",
+     "lot_number": 8,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794062280000,
+     "start_cents": 100000,
+     "title": "Generator, 12 kW"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "LATE",
+     "lot_id": "L021",
+     "lot_number": 9,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794062400000,
+     "start_cents": 100000,
+     "title": "Pressure washer, 4,000 psi"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "REPLAY",
+     "lot_id": "L022",
+     "lot_number": 10,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794062520000,
+     "start_cents": 50000,
+     "title": "Post-hole auger with 3 bits"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "BELOW_MIN",
+     "lot_id": "L023",
+     "lot_number": 11,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794062640000,
+     "start_cents": 50000,
+     "title": "Table saw, 10 in cabinet"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "EARLY",
+     "lot_id": "L024",
+     "lot_number": 12,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794062760000,
+     "start_cents": 50000,
+     "title": "Pickup toolbox, aluminum"
+    }
+   ],
+   "max_extension_seconds": 900,
+   "name": "County surplus equipment",
+   "opens_at_ms": 1793887200000,
+   "soft_close_window_seconds": 180
+  },
+  {
+   "auction_id": "A3",
+   "buyer_premium_bps": 1250,
+   "lots": [
+    {
+     "auction_id": "A3",
+     "kind": "PROXY_WAR",
+     "lot_id": "L025",
+     "lot_number": 1,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794062880000,
+     "start_cents": 5000,
+     "title": "Cedar chest"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "TIE",
+     "lot_id": "L026",
+     "lot_number": 2,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794063000000,
+     "start_cents": 2500,
+     "title": "Framed farm print"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "CHAIN_TO_CAP",
+     "lot_id": "L027",
+     "lot_number": 3,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794063120000,
+     "start_cents": 20000,
+     "title": "Vintage sewing machine in cabinet"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "SNIPE",
+     "lot_id": "L028",
+     "lot_number": 4,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794063240000,
+     "start_cents": 50000,
+     "title": "Stoneware crock, 5 gal"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "NO_BIDS",
+     "lot_id": "L029",
+     "lot_number": 5,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794063360000,
+     "start_cents": 2500,
+     "title": "Walnut dresser with mirror"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "OWN_RAISE",
+     "lot_id": "L030",
+     "lot_number": 6,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794063480000,
+     "start_cents": 10000,
+     "title": "Brass floor lamp"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "LATE",
+     "lot_id": "L031",
+     "lot_number": 7,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794063600000,
+     "start_cents": 2500,
+     "title": "Box lot of hand tools"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "REPLAY",
+     "lot_id": "L032",
+     "lot_number": 8,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794063720000,
+     "start_cents": 2500,
+     "title": "Hand-stitched quilt, c. 1960"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "BELOW_MIN",
+     "lot_id": "L033",
+     "lot_number": 9,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794063840000,
+     "start_cents": 20000,
+     "title": "Pendulum wall clock"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "EARLY",
+     "lot_id": "L034",
+     "lot_number": 10,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794063960000,
+     "start_cents": 5000,
+     "title": "Cast-iron skillet lot (4)"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "PROXY_WAR",
+     "lot_id": "L035",
+     "lot_number": 11,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794064080000,
+     "start_cents": 2500,
+     "title": "Set of six Windsor chairs"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "SNIPE",
+     "lot_id": "L036",
+     "lot_number": 12,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794064200000,
+     "start_cents": 20000,
+     "title": "Oak roll-top desk"
+    }
+   ],
+   "max_extension_seconds": 600,
+   "name": "Mill Street contents, no reserve",
+   "opens_at_ms": 1793973600000,
+   "soft_close_window_seconds": 60
+  }
+ ],
+ "bidders": [
+  {
+   "bidder_id": "B001",
+   "email": "indy.usher@example.com",
+   "name": "Indy Usher",
+   "paddle": 100
+  },
+  {
+   "bidder_id": "B002",
+   "email": "noor.cole@example.com",
+   "name": "Noor Cole",
+   "paddle": 101
+  },
+  {
+   "bidder_id": "B003",
+   "email": "umber.nash@example.com",
+   "name": "Umber Nash",
+   "paddle": 102
+  },
+  {
+   "bidder_id": "B004",
+   "email": "sage.nash@example.com",
+   "name": "Sage Nash",
+   "paddle": 103
+  },
+  {
+   "bidder_id": "B005",
+   "email": "tatum.ellery@example.com",
+   "name": "Tatum Ellery",
+   "paddle": 104
+  },
+  {
+   "bidder_id": "B006",
+   "email": "parker.usher@example.com",
+   "name": "Parker Usher",
+   "paddle": 105
+  },
+  {
+   "bidder_id": "B007",
+   "email": "morgan.frost@example.com",
+   "name": "Morgan Frost",
+   "paddle": 106
+  },
+  {
+   "bidder_id": "B008",
+   "email": "indy.frost@example.com",
+   "name": "Indy Frost",
+   "paddle": 107
+  },
+  {
+   "bidder_id": "B009",
+   "email": "dana.webb@example.com",
+   "name": "Dana Webb",
+   "paddle": 108
+  },
+  {
+   "bidder_id": "B010",
+   "email": "blake.quill@example.com",
+   "name": "Blake Quill",
+   "paddle": 109
+  },
+  {
+   "bidder_id": "B011",
+   "email": "morgan.ellery@example.com",
+   "name": "Morgan Ellery",
+   "paddle": 110
+  },
+  {
+   "bidder_id": "B012",
+   "email": "jules.pike@example.com",
+   "name": "Jules Pike",
+   "paddle": 111
+  },
+  {
+   "bidder_id": "B013",
+   "email": "finley.garner@example.com",
+   "name": "Finley Garner",
+   "paddle": 112
+  },
+  {
+   "bidder_id": "B014",
+   "email": "lane.vance@example.com",
+   "name": "Lane Vance",
+   "paddle": 113
+  },
+  {
+   "bidder_id": "B015",
+   "email": "finley.kerr@example.com",
+   "name": "Finley Kerr",
+   "paddle": 114
+  },
+  {
+   "bidder_id": "B016",
+   "email": "oakley.orr@example.com",
+   "name": "Oakley Orr",
+   "paddle": 115
+  },
+  {
+   "bidder_id": "B017",
+   "email": "noor.irwin@example.com",
+   "name": "Noor Irwin",
+   "paddle": 116
+  },
+  {
+   "bidder_id": "B018",
+   "email": "tatum.cole@example.com",
+   "name": "Tatum Cole",
+   "paddle": 117
+  },
+  {
+   "bidder_id": "B019",
+   "email": "reese.lowe@example.com",
+   "name": "Reese Lowe",
+   "paddle": 118
+  },
+  {
+   "bidder_id": "B020",
+   "email": "reese.stone@example.com",
+   "name": "Reese Stone",
+   "paddle": 119
+  },
+  {
+   "bidder_id": "B021",
+   "email": "parker.irwin@example.com",
+   "name": "Parker Irwin",
+   "paddle": 120
+  },
+  {
+   "bidder_id": "B022",
+   "email": "dana.abbott@example.com",
+   "name": "Dana Abbott",
+   "paddle": 121
+  },
+  {
+   "bidder_id": "B023",
+   "email": "indy.rowe@example.com",
+   "name": "Indy Rowe",
+   "paddle": 122
+  },
+  {
+   "bidder_id": "B024",
+   "email": "gray.webb@example.com",
+   "name": "Gray Webb",
+   "paddle": 123
+  },
+  {
+   "bidder_id": "B025",
+   "email": "wren.lowe@example.com",
+   "name": "Wren Lowe",
+   "paddle": 124
+  },
+  {
+   "bidder_id": "B026",
+   "email": "sage.quill@example.com",
+   "name": "Sage Quill",
+   "paddle": 125
+  },
+  {
+   "bidder_id": "B027",
+   "email": "jules.cole@example.com",
+   "name": "Jules Cole",
+   "paddle": 126
+  },
+  {
+   "bidder_id": "B028",
+   "email": "casey.rowe@example.com",
+   "name": "Casey Rowe",
+   "paddle": 127
+  },
+  {
+   "bidder_id": "B029",
+   "email": "parker.stone@example.com",
+   "name": "Parker Stone",
+   "paddle": 128
+  },
+  {
+   "bidder_id": "B030",
+   "email": "dana.lowe@example.com",
+   "name": "Dana Lowe",
+   "paddle": 129
+  },
+  {
+   "bidder_id": "B031",
+   "email": "wren.kerr@example.com",
+   "name": "Wren Kerr",
+   "paddle": 130
+  },
+  {
+   "bidder_id": "B032",
+   "email": "indy.garner@example.com",
+   "name": "Indy Garner",
+   "paddle": 131
+  },
+  {
+   "bidder_id": "B033",
+   "email": "ellis.dunn@example.com",
+   "name": "Ellis Dunn",
+   "paddle": 132
+  },
+  {
+   "bidder_id": "B034",
+   "email": "kai.ellery@example.com",
+   "name": "Kai Ellery",
+   "paddle": 133
+  },
+  {
+   "bidder_id": "B035",
+   "email": "quinn.frost@example.com",
+   "name": "Quinn Frost",
+   "paddle": 134
+  },
+  {
+   "bidder_id": "B036",
+   "email": "indy.barlow@example.com",
+   "name": "Indy Barlow",
+   "paddle": 135
+  },
+  {
+   "bidder_id": "B037",
+   "email": "vale.hale@example.com",
+   "name": "Vale Hale",
+   "paddle": 136
+  },
+  {
+   "bidder_id": "B038",
+   "email": "vale.usher@example.com",
+   "name": "Vale Usher",
+   "paddle": 137
+  },
+  {
+   "bidder_id": "B039",
+   "email": "xen.ellery@example.com",
+   "name": "Xen Ellery",
+   "paddle": 138
+  },
+  {
+   "bidder_id": "B040",
+   "email": "casey.abbott@example.com",
+   "name": "Casey Abbott",
+   "paddle": 139
+  }
+ ],
+ "seed": 20261019,
+ "t0_ms": 1794060000000
+}
