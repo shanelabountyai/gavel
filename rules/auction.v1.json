@@ -1,0 +1,28 @@
+{
+  "version": "auction.v1",
+  "money": "integer cents",
+  "rounding": "half_up",
+  "increments": {
+    "note": "Bands are [lo, hi) in cents; hi null means open-ended. increment_for(price) is the increment of the band containing price.",
+    "bands": [
+      { "lo_cents": 0, "hi_cents": 10000, "increment_cents": 100 },
+      { "lo_cents": 10000, "hi_cents": 50000, "increment_cents": 500 },
+      { "lo_cents": 50000, "hi_cents": 100000, "increment_cents": 1000 },
+      { "lo_cents": 100000, "hi_cents": 500000, "increment_cents": 2500 },
+      { "lo_cents": 500000, "hi_cents": 1000000, "increment_cents": 5000 },
+      { "lo_cents": 1000000, "hi_cents": 2500000, "increment_cents": 10000 },
+      { "lo_cents": 2500000, "hi_cents": null, "increment_cents": 25000 }
+    ]
+  },
+  "defaults": {
+    "soft_close_window_seconds": 120,
+    "max_extension_seconds": 1800,
+    "buyer_premium_bps": 1500
+  },
+  "outcomes": {
+    "accepted": ["ACCEPTED_LEAD", "ACCEPTED_OUTBID", "ACCEPTED_RAISE"],
+    "rejected": ["REJECTED_LOT_NOT_OPEN", "REJECTED_LOT_CLOSED", "REJECTED_BELOW_MINIMUM", "REJECTED_NOT_ABOVE_OWN_MAX"],
+    "not_written": ["REPLAY", "IDEMPOTENCY_MISMATCH"]
+  },
+  "settlement_outcomes": ["SOLD", "UNSOLD_NO_BIDS", "UNSOLD_RESERVE_NOT_MET"]
+}

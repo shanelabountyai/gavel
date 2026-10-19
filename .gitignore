@@ -15,3 +15,12 @@ uploads/
 next-env.d.ts
 .DS_Store
 spikes/**/generated/
+
+# kit (gavel): python, editors
+*.pem
+*.key
+coverage/
+__pycache__/
+*.pyc
+.idea/
+.vscode/
