@@ -4,13 +4,21 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    # Docs-only pushes cost Actions minutes and test nothing (LoanBook, 2026-10-15).
+    paths-ignore: ['docs/**', '**.md']
   pull_request:
+    paths-ignore: ['docs/**', '**.md']
+
+# A newer push supersedes a running one; no point finishing the old run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci:
     runs-on: ubuntu-latest
     env:
-      # Ephemeral runner-local Postgres, gone when the job ends.
+      # Ephemeral runner-local Postgres, gone when the job ends. Nothing here is a secret.
       PGHOST: localhost
       PGUSER: postgres
       PGPASSWORD: postgres
@@ -18,6 +26,7 @@ jobs:
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/gavel_test?connection_limit=10&pool_timeout=20
       AUTH_SECRET: ci-only-secret-not-for-real-use-0123456789abc
       APP_URL: http://localhost:6000
+      GAVEL_BARRIER_N: '25' # O-10: 25 writers in CI, 50 locally
     services:
       postgres:
         image: postgres:17
@@ -42,12 +51,17 @@ jobs:
       - run: npm run typecheck
       - run: createdb gavel_test
       - run: npx prisma migrate deploy
+      # The gate (CLAUDE.md non-negotiables 10 and 11): if any of these fails, nothing after it runs.
+      - run: npm run fixtures:check
+      - run: npm run rules:lint
+      - run: npm run auction:eval
+      - run: npm run auction:verify
       - run: npx vitest run
       # Production build, served — the way it ships. login.spec.ts drives a real page.
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
 
-  # Spec §4 / §13.3: both modules deleted by the manifest, and the tree must still generate, typecheck, build and pass drift.
+  # Spec §4 / §13.3: the remaining module deleted by the manifest, and the tree must still generate, typecheck, build and pass drift.
   modules-removed:
     runs-on: ubuntu-latest
     steps:
