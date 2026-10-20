@@ -15,7 +15,9 @@ Phase 1 proved the bid path and Phase 2 made results usable by staff. Phase 3 pu
 
 **Exit criteria:** a bidder can register, bid, be outbid and see it by polling; no response leaks a max, the reserve or another identity; notices are exactly the ones the ledger implies; the HTTP latency line is in `docs/LOAD.md` with its hardware; CI green.
 
-**Open questions for the review:**
+**Review answers (D-47, 2026-10-20): all four as proposed.**
+
+**Questions as asked:**
 1. Polling interval: 1 s or 2 s? (proposal 1 s near the close, 2 s otherwise, from `closesAt`)
 2. Do bidders register themselves (proposed) or do staff approve them first?
 3. Notice wording: terse (proposed: price, lot, close time) or with a link to the lot page?
