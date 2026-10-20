@@ -243,3 +243,41 @@ export function settle(lot: Lot, state: LotState, nowMs: number): Settlement | n
   const premiumCents = roundHalfUp(BigInt(hammerCents) * BigInt(assertBps(lot.buyerPremiumBps)), 10000n);
   return { outcome: 'SOLD', winner: state.leader, winningSeq: state.leaderSeq, hammerCents, premiumCents, totalCents: hammerCents + premiumCents, closedAtMs: state.closesAtMs };
 }
+
+// ---- Invoices (task 2.1, D-42 Q1): derived on read from each lot's current settlement, never stored ----
+
+/** One lot's current settlement with the catalog keys an invoice groups and orders by. */
+export type SettledLot = Pick<Settlement, 'outcome' | 'winner' | 'hammerCents' | 'premiumCents' | 'totalCents'> & {
+  readonly auctionId: string;
+  readonly lotId: string;
+  readonly lotNumber: number;
+};
+
+export type InvoiceLine = Pick<SettledLot, 'lotId' | 'lotNumber' | 'hammerCents' | 'premiumCents' | 'totalCents'>;
+
+export type Invoice = {
+  readonly auctionId: string;
+  readonly bidderId: string;
+  readonly lots: readonly InvoiceLine[];
+  readonly hammerCents: number;
+  readonly premiumCents: number;
+  readonly totalCents: number;
+};
+
+/** One invoice per winning bidder per auction: SOLD lots only, lines in lot-number order, sums in integer cents. */
+export function invoice(settled: readonly SettledLot[]): Invoice[] {
+  const by = new Map<string, { auctionId: string; bidderId: string; lots: InvoiceLine[] }>();
+  for (const s of settled) {
+    if (s.outcome !== 'SOLD' || s.winner === null) continue;
+    const line: InvoiceLine = { lotId: s.lotId, lotNumber: s.lotNumber, hammerCents: assertCents(s.hammerCents), premiumCents: assertCents(s.premiumCents), totalCents: assertCents(s.totalCents) };
+    const key = `${s.auctionId}\u0000${s.winner}`;
+    (by.get(key) ?? by.set(key, { auctionId: s.auctionId, bidderId: s.winner, lots: [] }).get(key)!).lots.push(line);
+  }
+  const sum = (lines: readonly InvoiceLine[], k: 'hammerCents' | 'premiumCents' | 'totalCents') => lines.reduce((t, l) => t + l[k], 0);
+  return [...by.values()]
+    .sort((a, b) => (a.auctionId < b.auctionId ? -1 : a.auctionId > b.auctionId ? 1 : a.bidderId < b.bidderId ? -1 : a.bidderId > b.bidderId ? 1 : 0))
+    .map(({ auctionId, bidderId, lots }) => {
+      const sorted = [...lots].sort((a, b) => a.lotNumber - b.lotNumber);
+      return { auctionId, bidderId, lots: sorted, hammerCents: sum(sorted, 'hammerCents'), premiumCents: sum(sorted, 'premiumCents'), totalCents: sum(sorted, 'totalCents') };
+    });
+}

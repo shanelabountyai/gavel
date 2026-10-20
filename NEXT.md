@@ -1,8 +1,12 @@
 # NEXT
 
-## ▶ Next session: task 2.1 (invoices per buyer per auction), on Fable 5.1
+## ▶ Next session: task 2.2 (settlement corrections as superseding rows), on Fable 5.1
 
-**Phase 2 review done (D-42):** invoices derived on read; corrections may change outcome SOLD↔UNSOLD, winner (to another accepted bidder at their own row's price) and premium bps, never the ledger; O-8 stays 5000 ms, so 2.6 is ticked. Start 2.1 per `docs/phase-2-tasks.md`: failing test first, with per-auction invoice goldens hand-summed from `expected_lots.csv`.
+Start 2.2 per `docs/phase-2-tasks.md` and D-42 Q2 (a correction may change only: outcome SOLD↔UNSOLD; winner, to another bidder with an accepted row in the lot, at the price that bidder's own accepted row reached; premium bps). Failing test first: the original row stays byte-identical, the invoice moves, `auction:verify` stays OK, and a second concurrent correction on the same predecessor is refused by the unique index. When 2.2 lands, add the `NOT EXISTS supersedes` filter to `invoicesForAuction` in `src/auction/invoice.ts`; its comment marks the spot.
+
+**2026-10-19 (Session 11, Mac): task 2.1 done (D-43).** Pure `invoice(settled)` in `engine.ts`; `invoicesForAuction` in `src/auction/invoice.ts`; staff page `/o/[org]/auctions/[id]/invoices` (`audit.read`, owner and admin). Tests: `tests/unit/invoice.test.ts` (8) and `tests/integration/invoice.test.ts` (4); expected totals are summed from `expected_lots.csv` inside each test.
+- **Gate:** `npm test` 332/332 (42 files) once the guard-first invariant fix was in (the first sweep caught `requireOrg` not being the page's first await); `tsc --noEmit` clean; eslint clean on the new files; `fixtures:check` OK; `rules:lint` OK; `auction:eval` OK (both halves); `auction:verify` OK (36 lots, 36 settled).
+- **Not checked in a browser:** the page is typechecked and passes the invariant, but no Playwright spec renders it yet. The 2.3 spec can open it on the same seeded org.
 
 **2026-10-19 (Session 10, Mac): task 1.12 done (D-41).**
 - **Why CI was red since D-33:** only the Playwright step failed. `next start -p 6000` refuses with `Bad port: "6000" is reserved for x11`, and Chrome blocks 6000 too. Every gate step was already green. The port moved to **6100** in `package.json`, `playwright.config.ts`, `ci.yml`, `.env.test`, `.env.local`, README and the `~/.claude/CLAUDE.md` row; the next free port is now 6200.
