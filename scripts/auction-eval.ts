@@ -87,6 +87,10 @@ export async function runDb(asOfArg?: number): Promise<{ ok: boolean; report: st
   const { data, lots, fileOrder, subs, asOf } = loadFixtures(asOfArg);
   const q = prismaTx(db as unknown as Parameters<typeof prismaTx>[0]);
 
+  // dotenv-cli never overrides a variable already in the shell, so an exported dev DATABASE_URL would reach this
+  // TRUNCATE. Only a database named like the test one (`<name>_test`, scripts/db-setup.ts and CI) is emptied.
+  const dbName = (await db.$queryRawUnsafe<{ name: string }[]>('SELECT current_database() AS name'))[0]!.name;
+  if (!dbName.endsWith('_test')) throw new Error(`auction:eval database half refuses to truncate "${dbName}": it only runs against a *_test database`);
   await db.$executeRawUnsafe('TRUNCATE "Settlement", "Bid", "LotState", "Lot", "Auction", "Bidder"');
   const org = await db.org.upsert({ where: { slug: 'gavel-fixtures' }, update: {}, create: { slug: 'gavel-fixtures', name: 'Gavel fixtures (synthetic)' } });
   const bidderUuid = new Map<string, string>();
