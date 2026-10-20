@@ -107,4 +107,9 @@ describe('rules:lint engine scan (non-negotiables 1 and 6)', () => {
     expect(lintEngineSource('money.ts', 'const c = a / b / d;')).not.toEqual([]);
     expect(lintEngineSource('engine.ts', 'const c = a / b;')).not.toEqual([]);
   });
+
+  it('does not count import specifiers as /, but still bans what they import', () => {
+    expect(lintEngineSource('engine.ts', "import { assertCents } from './money';\nconst x = 1;")).toEqual([]);
+    expect(lintEngineSource('engine.ts', "import { now } from '@/core/clock';")).toEqual(['engine.ts: @/core']);
+  });
 });

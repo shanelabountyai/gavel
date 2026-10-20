@@ -3,7 +3,7 @@
 //   2. Nothing under src/auction/engine/ names Prisma, @/core, @/app, Date.now, new Date, Math.random,
 //      process.env, fetch or setTimeout. The service files beside the engine are not scanned.
 //   3. No float path under the engine: Math.round, toFixed, parseFloat, a decimal literal, or `/`,
-//      except the one bigint `/` in money.ts roundHalfUp (D-31 Q5).
+//      except the one bigint `/` in money.ts roundHalfUp (D-31 Q5). Import lines are not counted (D-34).
 // Shape after Bracketry eslint.config.mjs's engine block (L-002), as a script so the grep and the hash
 // sit in the gate together.
 import { readFileSync, readdirSync } from 'node:fs';
@@ -37,7 +37,8 @@ const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').repl
 export function lintEngineSource(name: string, source: string): string[] {
   const code = stripComments(source);
   const problems = BANNED.filter(([re]) => re.test(code)).map(([, what]) => `${name}: ${what}`);
-  const slashes = (code.match(/\//g) ?? []).length;
+  // Import specifiers ('./money', '@/core/clock') are neither division nor regex: drop them from the count only.
+  const slashes = (code.replace(/^\s*import\b.*$/gm, '').match(/\//g) ?? []).length;
   const allowed = SLASHES_ALLOWED[name] ?? 0;
   if (slashes !== allowed) problems.push(`${name}: ${slashes} '/' (division or regex), ${allowed} allowed`);
   return problems;
