@@ -1,6 +1,8 @@
 # NEXT
 
-## ▶ Next session: review docs/phase-3-tasks.md, then 3.1
+## ▶ Next session: task 3.2 (bidder registration)
+
+**2026-10-20 (Session 14, Mac): Phase 3 review answered (D-47, all as proposed); task 3.1 done (D-48).** `src/app/o/[org]/auctions/{page,actions}.ts(x)`, `auctions/[id]/page.tsx`, `catalog/page.tsx`; `e2e/catalog.spec.ts` green on the production build. Gate: `npm test` 345/345 (44 files), `tsc --noEmit` clean, eslint clean on the new files, `rules:lint` OK, `fixtures:check` OK. Not re-run: `auction:eval`, `auction:verify` (no engine, schema or fixture change). A stale gavel dev server held 6100 and was stopped. 3.1 deviations: no lot `kind` (schema has none), creating a lot publishes it (D-48 a, b).
 
 Phase 2 is complete: 2.4 done (Shane read the six ledgers, all fair, no disagreement, D-46), 2.5 confirmed on the 2.2 schema (CI run 39360993619: migrate deploy, auction:eval, auction:verify green). `docs/phase-3-tasks.md` is drafted and waits for Shane's answers to its four open questions. Do not start 3.1 before that review.
 
