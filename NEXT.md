@@ -1,8 +1,16 @@
 # NEXT
 
-## ▶ Next session: task 1.11 (load script and `docs/LOAD.md`)
+## ▶ Next session: task 1.12 (CI gate and the red/green proof)
 
-`scripts/load-bids.ts` per D-19: M writers (default 200) over L lots (default 4) whose `scheduledEnd` is 10 s out, real clock, real `placeBid` over raw `pg` clients (`pgRunner`, `application_name` set), each writer bidding until its lot closes with a fresh key per attempt; prints outcome counts, bids/sec, p50/p95/p99 ms around `placeBid`, max `wait_event` duration seen in `pg_stat_activity`, then the hardware block (CPU, cores, memory, Node, Postgres `version()`, git SHA, command line), writes `docs/LOAD.md`, runs `auction:verify` last and fails if it fails. *Acceptance:* `docs/LOAD.md` committed from the first run on the Mac; `NEXT.md` quotes the line verbatim. Read first: `docs/phase-1-tasks.md` 1.11, brief §8 "The measurement", D-19, `tests/contention/barrier.test.ts` (raw clients, `RAW_APP`), `scripts/auction-verify.ts`. 200 raw connections exceed the default `max_connections` 100: decide pooling for the writers (or a smaller default) before writing, and record it.
+CI runs `rules:lint`, `fixtures:check`, migrations, `auction:eval`, `auction:verify`, vitest including the barrier test at N = 25 (`GAVEL_BARRIER_N`), with a float lint over `src/auction/engine/` (no `/`, `Math.round`, `toFixed`, `parseFloat` in a cents, bps or ms path). Prove it on a throwaway branch by changing `increment_cents` of the first band to 150 (then revert): `rules:lint` and `auction:eval` must both go red. *Acceptance:* the red run and the green run are both linked in `NEXT.md`. Read first: `docs/phase-1-tasks.md` 1.12, `.github/workflows/ci.yml` as it stands, `scripts/rules-lint.ts` (what the float lint already covers). Then the Phase 1 gate: write the Phase 2 task list and stop for review.
+
+**2026-10-19 (Session 9, Mac): task 1.11 done (D-40).** `scripts/load-bids.ts` and `npm run load:bids`; 200 logical writers share a raw `pg.Pool` of 40 (Shane's call: `max_connections` 100 is machine-wide). The first number, verbatim from `docs/LOAD.md`:
+
+`2026-10-20T01:50:26.585Z 1ad8c4f: 200 writers, 40 connections, 4 lots, 10 s + soft close: 68360 ledger rows in 15.9 s = 4293 bids/s; placeBid p50 5.1 / p95 28.9 / p99 68.7 ms; end to end p50 41.7 / p95 77.1 / p99 113.2 ms; max lock wait 204.4 ms; 0 timeouts; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+Latency is around `placeBid` with a connection in hand, same process, no HTTP; the end-to-end figure includes the wait for one of the 40 pooled connections. Max lock wait is a 100 ms-sampled upper bound. 0 timeouts, verify OK over 42 lots. The soft-close window for the load auction is 2 s with a 6 s cap so the run is bounded.
+
+**Gate at the end of Session 9:** see the commit; `load:bids` exit 0 with `auction:verify` OK (42 lots, 42 settled).
 
 **2026-10-19 (Session 8, Mac): task 1.10 done (D-39).** `tests/contention/barrier.test.ts`: N ∈ {2, 10, 25, 50} raw writers behind one holder on `LotState`, clock pinned at T − 1 s; §8 list, resend pass, `verifyLot`, raw connection count; the rollback-no-gap test; the V6 clock-order test (gate before `FOR UPDATE`, 2 s scripted hold). Red proof on `throwaway/v6-red` (deleted): clock read above the lock → `V6: seq 2 … placedAt 11:59:00, previous 11:59:01`. Green three runs in a row, N = 50 in 7.6 s.
 
@@ -18,4 +26,4 @@
 
 **Open for Shane:** build-log card #17 (by hand, see `KICKOFF.md`); task 1.1 is left unticked only because `foundation:check-modules` has not been run locally (CI's `modules-removed` job runs it).
 
-**Not done, on purpose:** the load script and `docs/LOAD.md` (1.11), any HTTP route (Phase 3).
+**Not done, on purpose:** any HTTP route and the HTTP latency number (Phase 3); the lock-strategy experiments (Phase 4).
