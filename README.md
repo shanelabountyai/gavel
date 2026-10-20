@@ -1,4 +1,4 @@
-> Cloned from saas-foundation v1.3.0. Port 6000. Upgrade with `npm run foundation:status`; template-owned paths are listed in the template's plan §3.2.
+> Cloned from saas-foundation v1.3.0. Port 6100. Upgrade with `npm run foundation:status`; template-owned paths are listed in the template's plan §3.2.
 
 # Gavel — Online Auction Platform (estate and equipment)
 

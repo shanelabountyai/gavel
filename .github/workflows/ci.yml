@@ -25,7 +25,7 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gavel_test?connection_limit=10&pool_timeout=20
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/gavel_test?connection_limit=10&pool_timeout=20
       AUTH_SECRET: ci-only-secret-not-for-real-use-0123456789abc
-      APP_URL: http://localhost:6000
+      APP_URL: http://localhost:6100
       GAVEL_BARRIER_N: '25' # O-10: 25 writers in CI, 50 locally
     services:
       postgres:
@@ -50,12 +50,18 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: createdb gavel_test
-      - run: npx prisma migrate deploy
-      # The gate (CLAUDE.md non-negotiables 10 and 11): if any of these fails, nothing after it runs.
+      - id: migrate
+        run: npx prisma migrate deploy
+      # The gate (CLAUDE.md non-negotiables 10 and 11). Each of the four runs even if an earlier one failed,
+      # so one push shows every red (D-41); any failure still fails the job and skips everything after.
       - run: npm run fixtures:check
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' }}
       - run: npm run rules:lint
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' }}
       - run: npm run auction:eval
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' }}
       - run: npm run auction:verify
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' }}
       - run: npx vitest run
       # Production build, served — the way it ships. login.spec.ts drives a real page.
       - run: npx playwright install --with-deps chromium
