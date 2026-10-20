@@ -23,6 +23,9 @@ import { Client as PgClient } from 'pg';
 /** A hang FAILS rather than hanging the suite; a "flaky" race test is a broken one. */
 export const RACE_TIMEOUT = 20_000;
 
+/** `application_name` of every raw connection the contention suite opens, so a leak is countable apart from the Prisma pool. */
+export const RAW_APP = 'gavel-contention';
+
 /** An explicit happens-before edge. */
 export const barrier = () => {
   let release!: () => void;
@@ -37,12 +40,13 @@ export async function behindRowLock<T>(
   id: string,
   waiters: number,
   run: () => Promise<T>,
+  key = 'id',
 ): Promise<T> {
-  const holder = new PgClient({ connectionString: process.env.DATABASE_URL });
+  const holder = new PgClient({ connectionString: process.env.DATABASE_URL, application_name: RAW_APP });
   await holder.connect();
   try {
     await holder.query('BEGIN');
-    await holder.query(`SELECT 1 FROM "${table}" WHERE id = $1 FOR UPDATE`, [id]);
+    await holder.query(`SELECT 1 FROM "${table}" WHERE "${key}" = $1 FOR UPDATE`, [id]);
     const pending = run();
     // Observed below; this only stops an early rejection being reported as
     // unhandled while the barrier is still waiting.
