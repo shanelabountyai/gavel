@@ -1,8 +1,19 @@
 # NEXT
 
-## ▶ Next session: task 1.12 (CI gate and the red/green proof)
+## ▶ Next session: Shane reviews `docs/phase-2-tasks.md`, then task 2.1
 
-CI runs `rules:lint`, `fixtures:check`, migrations, `auction:eval`, `auction:verify`, vitest including the barrier test at N = 25 (`GAVEL_BARRIER_N`), with a float lint over `src/auction/engine/` (no `/`, `Math.round`, `toFixed`, `parseFloat` in a cents, bps or ms path). Prove it on a throwaway branch by changing `increment_cents` of the first band to 150 (then revert): `rules:lint` and `auction:eval` must both go red. *Acceptance:* the red run and the green run are both linked in `NEXT.md`. Read first: `docs/phase-1-tasks.md` 1.12, `.github/workflows/ci.yml` as it stands, `scripts/rules-lint.ts` (what the float lint already covers). Then the Phase 1 gate: write the Phase 2 task list and stop for review.
+**Phase 1 is complete; the gate is stopped for review.** Read `docs/phase-2-tasks.md` and answer its three open questions: invoices derived on read or stored, what a settlement correction may change, and whether O-8's 5000 ms stays. Record the answers as one decision entry, then start 2.1. Do not start Phase 2 before the review.
+
+**2026-10-19 (Session 10, Mac): task 1.12 done (D-41).**
+- **Why CI was red since D-33:** only the Playwright step failed. `next start -p 6000` refuses with `Bad port: "6000" is reserved for x11`, and Chrome blocks 6000 too. Every gate step was already green. The port moved to **6100** in `package.json`, `playwright.config.ts`, `ci.yml`, `.env.test`, `.env.local`, README and the `~/.claude/CLAUDE.md` row; the next free port is now 6200.
+- **The four gate steps now run independently**, so one push shows every red; any failure still fails the job.
+- **Green run:** https://github.com/shanelabountyai/gavel/actions/runs/39356276875 (f43447e), the first fully green CI run, Playwright included.
+- **Red run:** https://github.com/shanelabountyai/gavel/actions/runs/39356292823 (draft PR #1, first band `increment_cents` 100 → 150, closed unmerged, branch deleted). `rules:lint`, `auction:eval`, `auction:verify` red on the D-23 hash refusal; `fixtures:check` red on `golden_answers.py`.
+- **Local extra proof:** with the hash constant also updated, `rules:lint` passes and `auction:eval` still fails: `DIFF: expected_bids.csv line 19 (S00018) column price_after_cents: got "2950", expected "2900"`.
+
+**Phase 1 gate output (CI run 39356276875):** lint, typecheck, migrations, `fixtures:check`, `rules:lint`, `auction:eval` (engine and database halves), `auction:verify`, vitest (barrier at N = 25), Playwright, `foundation:check-modules`: all green. Latest `docs/LOAD.md` line unchanged from Session 9 below.
+
+**For Shane:** the template's `CLONES.md` row still says 6000 (D-31 Q6 makes that commit yours). Task 1.1 can now be ticked if you accept CI's `modules-removed` job as the `foundation:check-modules` run.
 
 **2026-10-19 (Session 9, Mac): task 1.11 done (D-40).** `scripts/load-bids.ts` and `npm run load:bids`; 200 logical writers share a raw `pg.Pool` of 40 (Shane's call: `max_connections` 100 is machine-wide). The first number, verbatim from `docs/LOAD.md`:
 
