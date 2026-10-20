@@ -1,6 +1,6 @@
 # Phase 2 — Operate
 
-Draft for Shane's review (written at the Phase 1 gate, 2026-10-19). Nothing here is started.
+Reviewed by Shane 2026-10-19 (D-42). Written at the Phase 1 gate.
 
 Phase 1 settles a lot. Phase 2 makes the result usable by staff: what each buyer owes, how a settlement is corrected without editing history, and how a dispute is answered from the ledger. Still no bidder-facing screen, no notice and no payment (Phase 3; payments never). Every number stays integer cents; every new table is append-only or a verified projection; `auction:verify` stays the gate and grows a check for each new table.
 
@@ -9,13 +9,13 @@ Phase 1 settles a lot. Phase 2 makes the result usable by staff: what each buyer
 - [ ] **2.3 Staff lot history and dispute view.** `/(app)/lots/[id]/history`: every `Bid` row in `seq` order with outcome, max (staff only), price before/after, leader before/after, close before/after, `placedAt` to the millisecond, and the settlement chain under it. "What each bidder was shown" is the price and leader *after* the row before theirs; the view says so in one line rather than storing a copy. Read-only; no edit control exists on the page. *Acceptance:* a Playwright spec on one seeded SNIPE lot checks the row count equals `bidCount` and the first and last rows against `expected_bids.csv`.
 - [ ] **2.4 Shane reads six ledgers by hand.** The three CHAIN_TO_CAP and three SNIPE lots, through the 2.3 view, against brief §6. Shane's notes go in `docs/decisions.md` as one entry; any disagreement stops the phase and goes to the oracle first (non-negotiable 10).
 - [ ] **2.5 `auction:eval` database half in CI.** Already done in Phase 1: CI's `auction:eval` step runs both halves, the database half in about 2 s (run 39355819470). This item only ticks after confirming it on the 2.2 schema.
-- [ ] **2.6 O-8 re-decided from `docs/LOAD.md`.** The first measurement's max lock wait is 204.4 ms (a 100 ms-sampled upper bound) against a `lock_timeout` of 5000 ms, with 0 timeouts at 200 writers over 40 connections. Proposal: keep 5000 ms until an HTTP path exists (Phase 3), since the timeout protects a request, not the lock; record the reasoning and the number. If Shane wants it tighter, 1000 ms is ~5× the observed max; one re-run of `load:bids` confirms 0 timeouts at the new value.
+- [x] **2.6 O-8 re-decided from `docs/LOAD.md`.** The first measurement's max lock wait is 204.4 ms (a 100 ms-sampled upper bound) against a `lock_timeout` of 5000 ms, with 0 timeouts at 200 writers over 40 connections. Proposal: keep 5000 ms until an HTTP path exists (Phase 3), since the timeout protects a request, not the lock; record the reasoning and the number. If Shane wants it tighter, 1000 ms is ~5× the observed max; one re-run of `load:bids` confirms 0 timeouts at the new value.
 
 **Exit criteria:** invoices equal Σ settled lots per winner for every fixture auction; a correction is a new row and `auction:verify` checks the chain; the history view renders every row of a lot in seq order; Shane's by-hand reading recorded; O-8 closed with its number; CI green with every Phase 1 check still in it.
 
 **Before Phase 3:** write `docs/phase-3-tasks.md` (catalog, bidder page with polling, outbox notices per O-11, the O-7 confirmation, HTTP latency next to the Phase 1 number) and stop for review.
 
-**Open questions for the review:**
+**Open questions for the review (answered in D-42: derived on read; the 2.2 proposal as drafted; 5000 ms kept):**
 1. Invoices derived on read (proposed) or stored as a verified projection?
 2. Which settlement fields a correction may change (2.2 proposal above).
 3. O-8: keep 5000 ms (proposed) or tighten now?

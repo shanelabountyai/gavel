@@ -1,8 +1,8 @@
 # NEXT
 
-## ▶ Next session: Shane reviews `docs/phase-2-tasks.md`, then task 2.1
+## ▶ Next session: task 2.1 (invoices per buyer per auction), on Fable 5.1
 
-**Phase 1 is complete; the gate is stopped for review.** Read `docs/phase-2-tasks.md` and answer its three open questions: invoices derived on read or stored, what a settlement correction may change, and whether O-8's 5000 ms stays. Record the answers as one decision entry, then start 2.1. Do not start Phase 2 before the review.
+**Phase 2 review done (D-42):** invoices derived on read; corrections may change outcome SOLD↔UNSOLD, winner (to another accepted bidder at their own row's price) and premium bps, never the ledger; O-8 stays 5000 ms, so 2.6 is ticked. Start 2.1 per `docs/phase-2-tasks.md`: failing test first, with per-auction invoice goldens hand-summed from `expected_lots.csv`.
 
 **2026-10-19 (Session 10, Mac): task 1.12 done (D-41).**
 - **Why CI was red since D-33:** only the Playwright step failed. `next start -p 6000` refuses with `Bad port: "6000" is reserved for x11`, and Chrome blocks 6000 too. Every gate step was already green. The port moved to **6100** in `package.json`, `playwright.config.ts`, `ci.yml`, `.env.test`, `.env.local`, README and the `~/.claude/CLAUDE.md` row; the next free port is now 6200.
