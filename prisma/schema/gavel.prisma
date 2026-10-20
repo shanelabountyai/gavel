@@ -1,0 +1,131 @@
+// Gavel's own tables (task 1.7). Hand-written SQL in prisma/migrations/*_gavel_init/migration.sql adds what
+// Prisma cannot say: the append-only triggers on Bid and Settlement (D-14, D-22), DELETE refused on LotState
+// (D-16), the CHECKs, and the lot-ends-after-open trigger. Cents are Int (int4): the boundary refuses a max
+// above 2147483647 cents; a lot that needs more is a BigInt migration (D-36).
+// Column names are camelCase to match LedgerRow / FoldRow in src/auction/engine/engine.ts.
+
+/// A sale. Its three rule settings are copied from rules/auction.v1.json defaults at creation (D-7).
+model Auction {
+  id                     String   @id @default(uuid()) @db.Uuid
+  orgId                  String   @db.Uuid
+  org                    Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name                   String
+  softCloseWindowSeconds Int
+  maxExtensionSeconds    Int
+  buyerPremiumBps        Int
+  opensAt                DateTime @db.Timestamptz(6)
+  createdAt              DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(6)
+  lots                   Lot[]
+
+  @@index([orgId])
+}
+
+/// Catalog data. Nothing here changes once the lot has a bid; closing time lives on LotState.
+model Lot {
+  id           String       @id @default(uuid()) @db.Uuid
+  orgId        String       @db.Uuid
+  auctionId    String       @db.Uuid
+  auction      Auction      @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  number       Int
+  title        String
+  description  String       @default("")
+  imageUrl     String?
+  consignor    String       @default("") // a text field; no consignor model (PRD non-goals)
+  startCents   Int // CHECK > 0
+  reserveCents Int? // CHECK null or >= startCents
+  scheduledEnd DateTime     @db.Timestamptz(6) // trigger: > auction.opensAt
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6)
+  state        LotState?
+  bids         Bid[]
+  settlements  Settlement[]
+
+  @@unique([auctionId, number])
+  @@index([orgId])
+}
+
+/// D-16: the verified projection the hot path locks. Created with the lot; only placeBid writes it;
+/// DELETE refused by trigger; auction:verify fails on any column that differs from fold(ledger).
+model LotState {
+  lotId          String   @id @db.Uuid
+  lot            Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  orgId          String   @db.Uuid
+  priceCents     Int
+  leaderBidderId String?  @db.Uuid // no FK: V3 checks it names an accepted row's bidder
+  leaderMaxCents Int
+  leaderSeq      Int?
+  bidCount       Int
+  acceptedCount  Int
+  closesAt       DateTime @db.Timestamptz(6)
+  extensionCount Int
+}
+
+enum BidderStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// A user registered with one house (org): a paddle number. The boundary admits ACTIVE only (brief §4 row 1).
+model Bidder {
+  id        String       @id @default(uuid()) @db.Uuid
+  orgId     String       @db.Uuid
+  org       Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId    String       @db.Uuid
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paddle    Int
+  status    BidderStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @db.Timestamptz(6)
+  bids      Bid[]
+
+  @@unique([orgId, userId])
+  @@unique([orgId, paddle])
+}
+
+/// D-14: one row per well-formed attempt, accepted or rejected, with the state before and after it.
+/// Append-only by trigger. `outcome` is the closed set in rules/auction.v1.json (CHECK in the migration).
+model Bid {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @db.Uuid
+  lotId            String   @db.Uuid
+  lot              Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  seq              Int // gap-free, bidCount + 1 under the lock; CHECK >= 1
+  bidderId         String   @db.Uuid
+  bidder           Bidder   @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  maxCents         Int // CHECK > 0
+  placedAt         DateTime @db.Timestamptz(6) // now() read under the lock (D-15); never client-supplied
+  idempotencyKey   String
+  outcome          String
+  accepted         Boolean
+  priceBeforeCents Int
+  priceAfterCents  Int // CHECK >= priceBeforeCents
+  leaderBeforeId   String?  @db.Uuid // no FK, as LotState.leaderBidderId
+  leaderAfterId    String?  @db.Uuid
+  closesAtBefore   DateTime @db.Timestamptz(6)
+  closesAtAfter    DateTime @db.Timestamptz(6) // CHECK >= closesAtBefore
+  extended         Boolean
+
+  @@unique([lotId, seq])
+  @@unique([lotId, bidderId, idempotencyKey]) // D-17
+  @@index([orgId])
+  @@index([bidderId])
+}
+
+/// D-22: settle(fold(ledger)) written once per closed lot by auction:close; append-only by trigger;
+/// auction:verify recomputes it (V8) and checks rulesHash against D-23 (V9).
+model Settlement {
+  id             String   @id @default(uuid()) @db.Uuid
+  orgId          String   @db.Uuid
+  lotId          String   @unique @db.Uuid
+  lot            Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  outcome        String // SOLD | UNSOLD_NO_BIDS | UNSOLD_RESERVE_NOT_MET (CHECK)
+  winnerBidderId String?  @db.Uuid
+  winningSeq     Int?
+  hammerCents    Int
+  premiumCents   Int // the one roundHalfUp
+  totalCents     Int // CHECK = hammerCents + premiumCents
+  closedAt       DateTime @db.Timestamptz(6)
+  rulesHash      String
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([orgId])
+}
