@@ -74,11 +74,11 @@ describe('append-only ledger (D-14, D-16, D-22)', () => {
 
   it('Settlement refuses UPDATE and DELETE', async () => {
     const { org, lot, bidder } = await ledger();
-    const row = { orgId: org.id, lotId: lot.id, outcome: 'SOLD', winnerBidderId: bidder.id, winningSeq: 1, hammerCents: 2500, premiumCents: 375, totalCents: 2875, closedAt: T0, rulesHash: 'x' };
+    const row = { orgId: org.id, lotId: lot.id, outcome: 'SOLD', winnerBidderId: bidder.id, winningSeq: 1, hammerCents: 2500, premiumCents: 375, totalCents: 2875, closedAt: T0, rulesHash: 'x', premiumBps: 1500 };
     await db.settlement.create({ data: row });
     await expect(db.settlement.updateMany({ data: { hammerCents: 1 } })).rejects.toThrow(/Settlement is append-only/);
     await expect(db.$executeRawUnsafe(`DELETE FROM "Settlement"`)).rejects.toThrow(/Settlement is append-only/);
-    await expect(db.settlement.create({ data: row })).rejects.toThrow(/Settlement_lotId_key/); // one per lot
+    await expect(db.settlement.create({ data: row })).rejects.toThrow(/Settlement_one_first_row_per_lot/); // one first row per lot (D-44)
   });
 
   it('LotState can be updated but never deleted, and the cascade from Lot is refused with it', async () => {
@@ -105,7 +105,7 @@ describe('CHECKs refuse what the engine never produces', () => {
     ['unknown outcome', (l) => db.bid.create({ data: { ...bidRow(l), outcome: 'ACCEPTED_MAYBE' } }), /Bid_outcome_known/],
     ['accepted flag disagreeing with outcome', (l) => db.bid.create({ data: { ...bidRow(l), outcome: 'REJECTED_BELOW_MINIMUM' } }), /Bid_accepted_matches_outcome/],
     ['duplicate (lot, bidder, key)', (l) => db.bid.create({ data: { ...bidRow(l), idempotencyKey: 'k1' } }), /Bid_lotId_bidderId_idempotencyKey_key/],
-    ['settlement total off by one', (l) => db.settlement.create({ data: { orgId: l.org.id, lotId: l.lot.id, outcome: 'SOLD', hammerCents: 2500, premiumCents: 375, totalCents: 2876, closedAt: T0, rulesHash: 'x' } }), /Settlement_total_is_hammer_plus_premium/],
+    ['settlement total off by one', (l) => db.settlement.create({ data: { orgId: l.org.id, lotId: l.lot.id, outcome: 'SOLD', hammerCents: 2500, premiumCents: 375, totalCents: 2876, closedAt: T0, rulesHash: 'x', premiumBps: 1500 } }), /Settlement_total_is_hammer_plus_premium/],
   ];
   it.each(cases)('%s', async (_name, attempt, message) => {
     const l = await ledger();

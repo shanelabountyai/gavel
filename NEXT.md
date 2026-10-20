@@ -1,8 +1,13 @@
 # NEXT
 
-## ▶ Next session: task 2.2 (settlement corrections as superseding rows), on Fable 5.1
+## ▶ Next session: task 2.3 (staff lot history and dispute view), on Fable 5.1
 
-Start 2.2 per `docs/phase-2-tasks.md` and D-42 Q2 (a correction may change only: outcome SOLD↔UNSOLD; winner, to another bidder with an accepted row in the lot, at the price that bidder's own accepted row reached; premium bps). Failing test first: the original row stays byte-identical, the invoice moves, `auction:verify` stays OK, and a second concurrent correction on the same predecessor is refused by the unique index. When 2.2 lands, add the `NOT EXISTS supersedes` filter to `invoicesForAuction` in `src/auction/invoice.ts`; its comment marks the spot.
+Start 2.3 per `docs/phase-2-tasks.md`: `/o/[org]/lots/[id]/history` (the foundation's org routes live under `/o/[org]`, D-43 c), gated on `audit.read`. Every `Bid` row in seq order, then the settlement chain under it: `loadLot(...).settlement` + `.corrections`, each with its reason and corrector. Read-only. Acceptance is a Playwright spec on one seeded SNIPE lot (row count = `bidCount`, first and last rows against `expected_bids.csv`). It can also render the 2.1 invoices page, which no spec opens yet.
+
+**2026-10-19 (Session 12, Mac): task 2.2 done (D-44).** Migration `20261021000000_settlement_corrections`; pure `resettle` in `engine.ts`; `correctSettlement` in `src/auction/correct.ts`; V8 walks the chain; invoices read the chain tip. Tests: `tests/unit/correction.test.ts` (8), `tests/integration/correction.test.ts` (5, the race behind `behindRowLock` on `LotState`, green 3 runs in a row).
+- **For Shane to check (D-44 c):** an underbidder's price is **min(price their last accepted row reached, their own max)**, not the raw row price D-42 Q2 says: an outbid row's price is above that bidder's max. Say so if you want the raw price.
+- **For Shane to check (D-44 b):** a withdrawn sale is the new correction-only outcome `UNSOLD_BY_CORRECTION` (DB CHECK only, not in the rules file, hash unchanged).
+- **Migration applied to `gavel_test` only.** Run `npm run db:migrate` against the dev database when you next use it.
 
 **2026-10-19 (Session 11, Mac): task 2.1 done (D-43).** Pure `invoice(settled)` in `engine.ts`; `invoicesForAuction` in `src/auction/invoice.ts`; staff page `/o/[org]/auctions/[id]/invoices` (`audit.read`, owner and admin). Tests: `tests/unit/invoice.test.ts` (8) and `tests/integration/invoice.test.ts` (4); expected totals are summed from `expected_lots.csv` inside each test.
 - **Gate:** `npm test` 332/332 (42 files) once the guard-first invariant fix was in (the first sweep caught `requireOrg` not being the page's first await); `tsc --noEmit` clean; eslint clean on the new files; `fixtures:check` OK; `rules:lint` OK; `auction:eval` OK (both halves); `auction:verify` OK (36 lots, 36 settled).

@@ -20,10 +20,10 @@ export async function closeLots(asOf: Date, q: Tx, deps: { run?: Runner; rules?:
       const st = settle(l.lot, fold(l.lot, l.rows, rules), asOf.getTime());
       if (!st) return 0;
       const inserted = await tx.query(
-        `INSERT INTO "Settlement" ("id", "orgId", "lotId", "outcome", "winnerBidderId", "winningSeq", "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash")
-         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7, $8, $9::timestamptz, $10)
-         ON CONFLICT ("lotId") DO NOTHING RETURNING "id"`,
-        [l.orgId, id, st.outcome, st.winner, st.winningSeq, st.hammerCents, st.premiumCents, st.totalCents, new Date(st.closedAtMs).toISOString(), hash],
+        `INSERT INTO "Settlement" ("id", "orgId", "lotId", "outcome", "winnerBidderId", "winningSeq", "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash", "premiumBps")
+         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7, $8, $9::timestamptz, $10, $11)
+         ON CONFLICT ("lotId") WHERE "supersedesId" IS NULL DO NOTHING RETURNING "id"`,
+        [l.orgId, id, st.outcome, st.winner, st.winningSeq, st.hammerCents, st.premiumCents, st.totalCents, new Date(st.closedAtMs).toISOString(), hash, l.lot.buyerPremiumBps],
       );
       return inserted.length;
     });

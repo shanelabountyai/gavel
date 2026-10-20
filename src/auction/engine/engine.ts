@@ -233,21 +233,59 @@ export type Settlement = {
   readonly closedAtMs: number;
 };
 
+const sold = (winner: string, winningSeq: number, hammerCents: number, premiumBps: number, closedAtMs: number): Settlement => {
+  const premiumCents = roundHalfUp(BigInt(assertCents(hammerCents)) * BigInt(assertBps(premiumBps)), 10000n);
+  return { outcome: 'SOLD', winner, winningSeq, hammerCents, premiumCents, totalCents: hammerCents + premiumCents, closedAtMs };
+};
+
 /** D-22: null until CLOSED; then unsold (zero amounts, no winner) or SOLD with the one half-up rounding. */
 export function settle(lot: Lot, state: LotState, nowMs: number): Settlement | null {
   if (lotStatus(lot, state, nowMs) !== 'CLOSED') return null;
   const unsold = (outcome: SettlementOutcome): Settlement => ({ outcome, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: state.closesAtMs });
   if (state.leader === null) return unsold('UNSOLD_NO_BIDS');
   if (!reserveMet(lot, state)) return unsold('UNSOLD_RESERVE_NOT_MET');
-  const hammerCents = state.priceCents;
-  const premiumCents = roundHalfUp(BigInt(hammerCents) * BigInt(assertBps(lot.buyerPremiumBps)), 10000n);
-  return { outcome: 'SOLD', winner: state.leader, winningSeq: state.leaderSeq, hammerCents, premiumCents, totalCents: hammerCents + premiumCents, closedAtMs: state.closesAtMs };
+  return sold(state.leader, state.leaderSeq!, state.priceCents, lot.buyerPremiumBps, state.closesAtMs);
+}
+
+// ---- Corrections (task 2.2, D-42 Q2, D-44): a superseding settlement, recomputable from the ledger and its target ----
+
+/** A correction-only outcome: the house withdrew the sale. settle() never produces it; the CHECK refuses it on a first row. */
+export const UNSOLD_BY_CORRECTION = 'UNSOLD_BY_CORRECTION';
+export type CorrectedSettlement = Omit<Settlement, 'outcome'> & {
+  readonly outcome: SettlementOutcome | typeof UNSOLD_BY_CORRECTION;
+  readonly premiumBps: number; // stored on every row, the first one too, so each row is recomputable from itself
+};
+/** What a correction may set, and nothing else (D-42 Q2): the winner (null = unsold) and the premium rate. */
+export type CorrectionTarget = { readonly winner: string | null; readonly premiumBps: number };
+export type CorrectionRefusal = 'NOT_AN_ACCEPTED_BIDDER' | 'RESERVE_NOT_MET';
+
+/**
+ * The settlement a correction to `target` writes. The fold's own leader gets settle()'s hammer back; any other
+ * bidder gets their last accepted row, at the price that row reached capped at their own max (an outbid row's
+ * price is above the max they agreed to), and only if that meets the reserve. Unsold is zero amounts.
+ */
+export function resettle(lot: Lot, rows: readonly FoldRow[], rules: Rules, target: CorrectionTarget): CorrectedSettlement | { readonly refused: CorrectionRefusal } {
+  const folded = fold(lot, rows, rules);
+  const original = settle(lot, folded, folded.closesAtMs)!; // at its own closesAt a lot is CLOSED
+  assertBps(target.premiumBps);
+  if (target.winner === null) {
+    return { outcome: UNSOLD_BY_CORRECTION, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: original.closedAtMs, premiumBps: target.premiumBps };
+  }
+  if (target.winner === folded.leader) {
+    if (original.outcome !== 'SOLD') return { refused: 'RESERVE_NOT_MET' };
+    return { ...sold(target.winner, original.winningSeq!, original.hammerCents, target.premiumBps, original.closedAtMs), premiumBps: target.premiumBps };
+  }
+  const own = rows.filter((r) => r.bidderId === target.winner && !r.outcome.startsWith('REJECTED_')).sort((a, b) => b.seq - a.seq)[0];
+  if (!own) return { refused: 'NOT_AN_ACCEPTED_BIDDER' };
+  const hammerCents = Math.min(fold(lot, rows.filter((r) => r.seq <= own.seq), rules).priceCents, own.maxCents);
+  if (lot.reserveCents !== null && hammerCents < lot.reserveCents) return { refused: 'RESERVE_NOT_MET' };
+  return { ...sold(target.winner, own.seq, hammerCents, target.premiumBps, original.closedAtMs), premiumBps: target.premiumBps };
 }
 
 // ---- Invoices (task 2.1, D-42 Q1): derived on read from each lot's current settlement, never stored ----
 
 /** One lot's current settlement with the catalog keys an invoice groups and orders by. */
-export type SettledLot = Pick<Settlement, 'outcome' | 'winner' | 'hammerCents' | 'premiumCents' | 'totalCents'> & {
+export type SettledLot = Pick<CorrectedSettlement, 'outcome' | 'winner' | 'hammerCents' | 'premiumCents' | 'totalCents'> & {
   readonly auctionId: string;
   readonly lotId: string;
   readonly lotNumber: number;

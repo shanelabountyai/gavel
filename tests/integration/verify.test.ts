@@ -66,8 +66,8 @@ describe('auction:eval database half, auction:close, auction:verify', () => {
     });
     await raw((c) =>
       c.query(
-        `INSERT INTO "Settlement" ("id", "orgId", "lotId", "outcome", "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash")
-         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'UNSOLD_NO_BIDS', 0, 0, 0, $3::timestamptz, $4)`,
+        `INSERT INTO "Settlement" ("id", "orgId", "lotId", "outcome", "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash", "premiumBps")
+         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'UNSOLD_NO_BIDS', 0, 0, 0, $3::timestamptz, $4, 1500)`,
         [open.orgId, open.id, new Date(end.getTime() - 3_600_000).toISOString(), hash],
       ),
     );

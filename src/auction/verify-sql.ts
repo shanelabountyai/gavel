@@ -2,7 +2,7 @@
 // load script's epilogue. The ledger checks (V2–V7) are SQL; V1 and V8 re-run the pure engine over the ledger,
 // because the fold *is* the engine and a second copy of it in SQL would be a second spec. Runs over the same Tx
 // interface as placeBid, so a raw pg client and Prisma read through one implementation.
-import { fold, settle, type FoldRow, type Lot, type LotState, type Settlement } from '@/auction/engine/engine';
+import { fold, resettle, settle, type CorrectedSettlement, type FoldRow, type Lot, type LotState, type Settlement } from '@/auction/engine/engine';
 import { RULES_V1_HASH, type BidOutcome, type Rules } from '@/auction/engine/rules';
 import type { Tx } from '@/auction/place-bid';
 
@@ -13,8 +13,12 @@ export type LoadedLot = {
   readonly lot: Lot;
   readonly state: LotState | null; // null: the lot has no LotState row (a V1 failure)
   readonly rows: FoldRow[];
-  readonly settlement: (Settlement & { rulesHash: string }) | null;
+  readonly settlement: (Settlement & { id: string; rulesHash: string; premiumBps: number }) | null; // the first row: settle(fold(ledger))
+  readonly corrections: StoredCorrection[]; // the rows superseding it, in chain order (D-44)
+  readonly strays: string[]; // ids of rows the chain from the first row never reaches; verify fails on any
 };
+
+export type StoredCorrection = CorrectedSettlement & { id: string; rulesHash: string; reason: string; correctedByUserId: string };
 
 type LotRow = {
   id: string; orgId: string; number: number; startCents: number; reserveCents: number | null; scheduledEnd: Date;
@@ -22,7 +26,10 @@ type LotRow = {
   priceCents: number | null; leaderBidderId: string | null; leaderMaxCents: number | null; leaderSeq: number | null;
   bidCount: number | null; acceptedCount: number | null; closesAt: Date | null; extensionCount: number | null;
 };
-type SettlementRow = { outcome: string; winnerBidderId: string | null; winningSeq: number | null; hammerCents: number; premiumCents: number; totalCents: number; closedAt: Date; rulesHash: string };
+type SettlementRow = {
+  id: string; supersedesId: string | null; reason: string | null; correctedByUserId: string | null; premiumBps: number;
+  outcome: string; winnerBidderId: string | null; winningSeq: number | null; hammerCents: number; premiumCents: number; totalCents: number; closedAt: Date; rulesHash: string;
+};
 
 /** The lot with its auction settings, its projection, its ledger (by seq) and its settlement, as the engine sees them. */
 export async function loadLot(q: Tx, lotId: string): Promise<LoadedLot> {
@@ -39,10 +46,22 @@ export async function loadLot(q: Tx, lotId: string): Promise<LoadedLot> {
     `SELECT "seq", "bidderId", "maxCents", "placedAt", "outcome" FROM "Bid" WHERE "lotId" = $1::uuid ORDER BY "seq"`,
     [lotId],
   );
-  const [st] = await q.query<SettlementRow>(
-    `SELECT "outcome", "winnerBidderId", "winningSeq", "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash" FROM "Settlement" WHERE "lotId" = $1::uuid`,
+  const sts = await q.query<SettlementRow>(
+    `SELECT "id"::text, "supersedesId"::text, "reason", "correctedByUserId"::text, "premiumBps", "outcome", "winnerBidderId"::text, "winningSeq",
+            "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash"
+       FROM "Settlement" WHERE "lotId" = $1::uuid`,
     [lotId],
   );
+  const asSettlement = (r: SettlementRow) => ({
+    outcome: r.outcome as CorrectedSettlement['outcome'], winner: r.winnerBidderId, winningSeq: r.winningSeq, hammerCents: r.hammerCents,
+    premiumCents: r.premiumCents, totalCents: r.totalCents, closedAtMs: r.closedAt.getTime(), rulesHash: r.rulesHash, premiumBps: r.premiumBps,
+  });
+  const st = sts.find((r) => r.supersedesId === null);
+  const next = new Map(sts.filter((r) => r.supersedesId !== null).map((r) => [r.supersedesId!, r]));
+  const corrections: StoredCorrection[] = [];
+  for (let r = st && next.get(st.id); r; r = next.get(r.id)) {
+    corrections.push({ ...asSettlement(r), id: r.id, reason: r.reason!, correctedByUserId: r.correctedByUserId! });
+  }
   return {
     id: l.id,
     orgId: l.orgId,
@@ -56,10 +75,9 @@ export async function loadLot(q: Tx, lotId: string): Promise<LoadedLot> {
       bidCount: l.bidCount!, acceptedCount: l.acceptedCount!, closesAtMs: l.closesAt.getTime(), extensionCount: l.extensionCount!,
     },
     rows: bids.map((b) => ({ seq: b.seq, bidderId: b.bidderId, maxCents: b.maxCents, placedAtMs: b.placedAt.getTime(), outcome: b.outcome as BidOutcome })),
-    settlement: st ? {
-      outcome: st.outcome as Settlement['outcome'], winner: st.winnerBidderId, winningSeq: st.winningSeq, hammerCents: st.hammerCents,
-      premiumCents: st.premiumCents, totalCents: st.totalCents, closedAtMs: st.closedAt.getTime(), rulesHash: st.rulesHash,
-    } : null,
+    settlement: st ? { ...asSettlement(st), id: st.id, outcome: st.outcome as Settlement['outcome'] } : null,
+    corrections,
+    strays: sts.filter((r) => r !== st && !corrections.some((c) => c.id === r.id)).map((r) => r.id),
   };
 }
 
@@ -147,6 +165,7 @@ export async function verifyLot(q: Tx, lotId: string, rules: Rules): Promise<Fai
     if (f) return f;
   }
 
+  if (l.strays.length) return fail('V8', `Settlement ${l.strays[0]} is not on the chain from the lot's first settlement`);
   if (l.settlement) {
     // V8 (closedAt = closesAt is the closedAtMs field). A late REJECTED_LOT_CLOSED row after settlement is allowed (it moves no field); an accepted row after the
     // close is V6's, and any row that changes the outcome shows up here as a field that differs.
@@ -154,7 +173,18 @@ export async function verifyLot(q: Tx, lotId: string, rules: Rules): Promise<Fai
     if (!expected) return fail('V8', `a Settlement exists but the lot is not closed at its closedAt ${l.settlement.closedAtMs} (closesAt ${folded.closesAtMs})`);
     const c = SETTLEMENT_COLS.find((k) => l.settlement![k] !== expected[k]);
     if (c) return fail('V8', `Settlement.${c} is ${l.settlement[c]}, settle(fold(ledger)) says ${expected[c]}`);
-    if (l.settlement.rulesHash !== RULES_V1_HASH) return fail('V9', `rulesHash ${l.settlement.rulesHash}, D-23 says ${RULES_V1_HASH}`);
+    if (l.settlement.premiumBps !== l.lot.buyerPremiumBps) return fail('V8', `Settlement.premiumBps is ${l.settlement.premiumBps}, the auction says ${l.lot.buyerPremiumBps}`);
+    // D-44: every correction is recomputable from the ledger and its own winner and rate. The schema already
+    // refuses a fork (unique supersedesId), a predecessor in another lot (composite FK) and a missing reason (CHECK).
+    for (const r of l.corrections) {
+      const want = resettle(l.lot, l.rows, rules, { winner: r.winner, premiumBps: r.premiumBps });
+      if ('refused' in want) return fail('V8', `correction ${r.id}: resettle refuses it (${want.refused})`);
+      const k = ([...SETTLEMENT_COLS, 'premiumBps'] as const).find((x) => r[x] !== want[x]);
+      if (k) return fail('V8', `correction ${r.id}: ${k} is ${r[k]}, resettle(ledger) says ${want[k]}`);
+    }
+    for (const r of [l.settlement, ...l.corrections]) {
+      if (r.rulesHash !== RULES_V1_HASH) return fail('V9', `rulesHash ${r.rulesHash}, D-23 says ${RULES_V1_HASH}`);
+    }
   }
   return null;
 }

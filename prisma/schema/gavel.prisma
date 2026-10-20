@@ -112,20 +112,27 @@ model Bid {
 
 /// D-22: settle(fold(ledger)) written once per closed lot by auction:close; append-only by trigger;
 /// auction:verify recomputes it (V8) and checks rulesHash against D-23 (V9).
+/// D-44: a correction is a superseding row. The lot's current settlement is the row nothing supersedes. Hand-written
+/// in the migration: one first row per lot (partial unique), a predecessor in the same lot (composite FK), the CHECKs.
 model Settlement {
-  id             String   @id @default(uuid()) @db.Uuid
-  orgId          String   @db.Uuid
-  lotId          String   @unique @db.Uuid
-  lot            Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
-  outcome        String // SOLD | UNSOLD_NO_BIDS | UNSOLD_RESERVE_NOT_MET (CHECK)
-  winnerBidderId String?  @db.Uuid
-  winningSeq     Int?
-  hammerCents    Int
-  premiumCents   Int // the one roundHalfUp
-  totalCents     Int // CHECK = hammerCents + premiumCents
-  closedAt       DateTime @db.Timestamptz(6)
-  rulesHash      String
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  id                String   @id @default(uuid()) @db.Uuid
+  orgId             String   @db.Uuid
+  lotId             String   @db.Uuid
+  supersedesId      String?  @unique @db.Uuid // null on the first row; unique, so a chain cannot fork
+  reason            String? // required on a correction (CHECK)
+  correctedByUserId String?  @db.Uuid // no FK, as AuditEvent.actorUserId; required on a correction (CHECK)
+  premiumBps        Int // the rate premiumCents was taken at; the auction's on the first row
+  lot               Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  outcome           String // SOLD | UNSOLD_NO_BIDS | UNSOLD_RESERVE_NOT_MET, or UNSOLD_BY_CORRECTION on a correction (CHECK)
+  winnerBidderId    String?  @db.Uuid
+  winningSeq        Int?
+  hammerCents       Int
+  premiumCents      Int // the one roundHalfUp
+  totalCents        Int // CHECK = hammerCents + premiumCents
+  closedAt          DateTime @db.Timestamptz(6)
+  rulesHash         String
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([orgId])
+  @@index([lotId])
 }
