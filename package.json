@@ -30,9 +30,9 @@
     "foundation:drift": "tsx scripts/foundation-drift.ts",
     "foundation:status": "tsx scripts/foundation-status.ts",
     "foundation:check-modules": "tsx scripts/foundation-check-modules.ts",
-    "auction:eval": "tsx scripts/auction-eval.ts",
-    "auction:verify": "echo 'auction:verify: OK, 0 lots (stub until task 1.9)'",
-    "auction:close": "echo 'auction:close: 0 lots settled (stub until task 1.9)'",
+    "auction:eval": "dotenv -e .env.test -e .env.local -- tsx scripts/auction-eval.ts",
+    "auction:verify": "dotenv -e .env.test -e .env.local -- tsx scripts/auction-verify.ts",
+    "auction:close": "dotenv -e .env.test -e .env.local -- tsx scripts/auction-close.ts",
     "load:bids": "echo 'load:bids: not implemented (task 1.11); no throughput number exists yet'",
     "fixtures:check": "python3 tools/verify_fixtures.py && python3 tools/golden_answers.py && git diff --exit-code fixtures/ && test -z \"$(git status --porcelain fixtures/)\"",
     "rules:lint": "tsx scripts/rules-lint.ts"
