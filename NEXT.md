@@ -1,8 +1,10 @@
 # NEXT
 
-## ▶ Next session: task 2.3 (staff lot history and dispute view), on Fable 5.1
+## ▶ Next session: task 2.4 (Shane reads six ledgers by hand), then 2.5
 
-Start 2.3 per `docs/phase-2-tasks.md`: `/o/[org]/lots/[id]/history` (the foundation's org routes live under `/o/[org]`, D-43 c), gated on `audit.read`. Every `Bid` row in seq order, then the settlement chain under it: `loadLot(...).settlement` + `.corrections`, each with its reason and corrector. Read-only. Acceptance is a Playwright spec on one seeded SNIPE lot (row count = `bidCount`, first and last rows against `expected_bids.csv`). It can also render the 2.1 invoices page, which no spec opens yet.
+2.4 is yours, not mine: open `/o/gavel-fixtures/lots/<id>/history` for L005, L017, L027 (CHAIN_TO_CAP) and L006, L018, L028 (SNIPE) and say per row whether a bidder at the screen would have agreed (brief §6). Sign in at `/demo` as owner@acme.demo.test; the spec's `beforeAll` adds that owner to the `gavel-fixtures` org, or run `npm run auction:eval` against the dev DB and add the membership by hand. Any disagreement stops the phase and goes to the oracle first. Then 2.5 (confirm the database half of `auction:eval` on the 2.2 schema in CI), and write `docs/phase-3-tasks.md`.
+
+**2026-10-20 (Session 13, Mac): task 2.3 done (D-45).** `src/app/o/[org]/lots/[id]/history/page.tsx`; `e2e/lot-history.spec.ts` (L006, 7 rows). Gate: `npm test` 345/345 (44 files), `tsc --noEmit` clean, eslint clean on the new files, Playwright spec green on the production build. Not re-run this session: `fixtures:check`, `rules:lint`, `auction:eval`, `auction:verify` (no engine, schema or fixture change). The 2.1 invoices page is still not opened by any spec.
 
 **2026-10-19 (Session 12, Mac): task 2.2 done (D-44).** Migration `20261021000000_settlement_corrections`; pure `resettle` in `engine.ts`; `correctSettlement` in `src/auction/correct.ts`; V8 walks the chain; invoices read the chain tip. Tests: `tests/unit/correction.test.ts` (8), `tests/integration/correction.test.ts` (5, the race behind `behindRowLock` on `LotState`, green 3 runs in a row).
 - **For Shane to check (D-44 c):** an underbidder's price is **min(price their last accepted row reached, their own max)**, not the raw row price D-42 Q2 says: an outbid row's price is above that bidder's max. Say so if you want the raw price.
