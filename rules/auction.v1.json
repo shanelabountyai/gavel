@@ -5,7 +5,7 @@
   "increments": {
     "note": "Bands are [lo, hi) in cents; hi null means open-ended. increment_for(price) is the increment of the band containing price.",
     "bands": [
-      { "lo_cents": 0, "hi_cents": 10000, "increment_cents": 100 },
+      { "lo_cents": 0, "hi_cents": 10000, "increment_cents": 150 },
       { "lo_cents": 10000, "hi_cents": 50000, "increment_cents": 500 },
       { "lo_cents": 50000, "hi_cents": 100000, "increment_cents": 1000 },
       { "lo_cents": 100000, "hi_cents": 500000, "increment_cents": 2500 },
