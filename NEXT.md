@@ -1,8 +1,10 @@
 # NEXT
 
-## ▶ Next session: task 2.4 (Shane reads six ledgers by hand), then 2.5
+## ▶ Next session: review docs/phase-3-tasks.md, then 3.1
 
-2.4 is yours, not mine: open `/o/gavel-fixtures/lots/<id>/history` for L005, L017, L027 (CHAIN_TO_CAP) and L006, L018, L028 (SNIPE) and say per row whether a bidder at the screen would have agreed (brief §6). Sign in at `/demo` as owner@acme.demo.test; the spec's `beforeAll` adds that owner to the `gavel-fixtures` org, or run `npm run auction:eval` against the dev DB and add the membership by hand. Any disagreement stops the phase and goes to the oracle first. Then 2.5 (confirm the database half of `auction:eval` on the 2.2 schema in CI), and write `docs/phase-3-tasks.md`.
+Phase 2 is complete: 2.4 done (Shane read the six ledgers, all fair, no disagreement, D-46), 2.5 confirmed on the 2.2 schema (CI run 39360993619: migrate deploy, auction:eval, auction:verify green). `docs/phase-3-tasks.md` is drafted and waits for Shane's answers to its four open questions. Do not start 3.1 before that review.
+
+Dev DB `gavel` was rebuilt empty (stray migration removed); `gavel_test` holds the fixtures. Dev server for review ran as `npm run dev:test` on 6100.
 
 **2026-10-20 (Session 13, Mac): task 2.3 done (D-45).** `src/app/o/[org]/lots/[id]/history/page.tsx`; `e2e/lot-history.spec.ts` (L006, 7 rows). Gate: `npm test` 345/345 (44 files), `tsc --noEmit` clean, eslint clean on the new files, Playwright spec green on the production build. Not re-run this session: `fixtures:check`, `rules:lint`, `auction:eval`, `auction:verify` (no engine, schema or fixture change). The 2.1 invoices page is still not opened by any spec.
 
