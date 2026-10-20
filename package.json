@@ -35,7 +35,7 @@
     "auction:close": "echo 'auction:close: 0 lots settled (stub until task 1.9)'",
     "load:bids": "echo 'load:bids: not implemented (task 1.11); no throughput number exists yet'",
     "fixtures:check": "python3 tools/verify_fixtures.py && python3 tools/golden_answers.py && git diff --exit-code fixtures/ && test -z \"$(git status --porcelain fixtures/)\"",
-    "rules:lint": "test \"$(shasum -a 256 rules/auction.v1.json | cut -d' ' -f1)\" = b4cce697db2d9cd82a1b7aab9622f07b61e899f6f812ce0024829ecc111961f8 && echo 'rules:lint: OK (hash equals D-23; schema and import checks arrive in task 1.4)'"
+    "rules:lint": "tsx scripts/rules-lint.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
