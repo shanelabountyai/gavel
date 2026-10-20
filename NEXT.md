@@ -1,6 +1,8 @@
 # NEXT
 
-## ▶ Next session: task 3.2 (bidder registration)
+## ▶ Next session: task 3.3 (lot read endpoint with ETag)
+
+**2026-10-20 (Session 15, Mac): task 3.2 done (D-49).** `src/auction/bidder.ts` (`registerBidder`), `catalog/actions.ts`, register button on the catalog; `tests/integration/bidder-registration.test.ts` (5, 20 concurrent → paddles 1..20). Gate: `npm test` 350/350 (45 files), `tsc --noEmit` clean, eslint clean on the new files. Not re-run: `auction:eval`, `auction:verify`, `rules:lint`, `fixtures:check` (no engine, schema or fixture change); no Playwright spec for the button yet.
 
 **2026-10-20 (Session 14, Mac): Phase 3 review answered (D-47, all as proposed); task 3.1 done (D-48).** `src/app/o/[org]/auctions/{page,actions}.ts(x)`, `auctions/[id]/page.tsx`, `catalog/page.tsx`; `e2e/catalog.spec.ts` green on the production build. Gate: `npm test` 345/345 (44 files), `tsc --noEmit` clean, eslint clean on the new files, `rules:lint` OK, `fixtures:check` OK. Not re-run: `auction:eval`, `auction:verify` (no engine, schema or fixture change). A stale gavel dev server held 6100 and was stopped. 3.1 deviations: no lot `kind` (schema has none), creating a lot publishes it (D-48 a, b).
 
