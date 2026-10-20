@@ -30,7 +30,7 @@
     "foundation:drift": "tsx scripts/foundation-drift.ts",
     "foundation:status": "tsx scripts/foundation-status.ts",
     "foundation:check-modules": "tsx scripts/foundation-check-modules.ts",
-    "auction:eval": "echo 'auction:eval: 0 lots (stub until task 1.6; rules sha256 b4cce697db2d9cd82a1b7aab9622f07b61e899f6f812ce0024829ecc111961f8)'",
+    "auction:eval": "tsx scripts/auction-eval.ts",
     "auction:verify": "echo 'auction:verify: OK, 0 lots (stub until task 1.9)'",
     "auction:close": "echo 'auction:close: 0 lots settled (stub until task 1.9)'",
     "load:bids": "echo 'load:bids: not implemented (task 1.11); no throughput number exists yet'",
