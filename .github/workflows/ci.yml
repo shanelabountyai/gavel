@@ -66,6 +66,10 @@ jobs:
       # Production build, served — the way it ships. login.spec.ts drives a real page.
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
+      # Phase 3 gate (task 3.8): the ledger the vitest suite and the Playwright specs wrote must still fold
+      # to its LotState rows and settlements. Runs even if a spec failed, so a verify red is never hidden.
+      - run: npm run auction:verify
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' }}
 
   # Spec §4 / §13.3: the remaining module deleted by the manifest, and the tree must still generate, typecheck, build and pass drift.
   modules-removed:

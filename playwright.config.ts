@@ -6,6 +6,10 @@ const PORT = Number(process.env.PORT ?? 6100);
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: false,
+  // One worker: every spec shares the one gavel_test database, and the auction specs TRUNCATE and reseed it in
+  // beforeAll (runDb). Two files in flight at once race on that reseed (task 3.8: catalog and lot-history failed
+  // under 5 workers with "Bidder_orgId_userId_key" and BIDDER_NOT_ACTIVE). 13 specs run in ~10 s serially.
+  workers: 1,
   reporter: 'list',
   use: { baseURL: `http://localhost:${PORT}` },
   webServer: {
