@@ -1,5 +1,6 @@
 import { lotView } from '@/auction/lot-view';
 import { requireUser } from '@/core/authz/guards';
+import { now } from '@/core/clock';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const s = await requireUser();
   const v = await lotView(s.userId, (await ctx.params).id);
   if (!v) return Response.json({ error: 'not found' }, { status: 404, headers: { 'Cache-Control': 'no-store' } });
-  const headers = { ETag: v.etag, 'Cache-Control': 'private, no-cache' };
+  // X-Server-Time: the countdown's reference, on 304s too (3.4).
+  const headers = { ETag: v.etag, 'Cache-Control': 'private, no-cache', 'X-Server-Time': String(now().getTime()) };
   const sent = req.headers.get('if-none-match')?.split(',').map((t) => t.trim().replace(/^W\//, ''));
   if (sent?.includes(v.etag)) return new Response(null, { status: 304, headers });
   return Response.json({ ...v, etag: undefined }, { headers }); // JSON drops the undefined key

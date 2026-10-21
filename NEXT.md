@@ -1,6 +1,8 @@
 # NEXT
 
-## ▶ Next session: task 3.4 (bidder lot page, polling with the ETag)
+## ▶ Next session: task 3.5 (bid form, idempotency key per submission, O-7 confirmation)
+
+**2026-10-20 (Session 17, Mac): task 3.4 done (D-51).** `src/app/o/[org]/lots/[id]/{page.tsx,lot-live.tsx}`, `X-Server-Time` header on the state route, catalog links; `e2e/lot-page.spec.ts` green on the production build (with `catalog.spec.ts`). Gate: `npm test` 353/353 after the guard-first fix (first sweep caught `requireOrg` not being the page's first await, same as 2.1), `tsc --noEmit` clean, eslint clean on the new files. Not re-run: `auction:eval`, `auction:verify`, `rules:lint`, `fixtures:check` (no engine, schema or fixture change). The 60 s near-close threshold for 1 s polling is my choice (D-51 c).
 
 **2026-10-20 (Session 16, Mac): task 3.3 done (D-50).** `src/auction/lot-view.ts`, `src/app/api/lots/[id]/state/route.ts`; `tests/integration/lot-state-route.test.ts` (3: closed key set and no ids for either bidder, 304 on matching ETag then 200 after a bid, other-house 404). Gate: `npm test` 353/353 (46 files), `tsc --noEmit` clean, eslint clean, `rules:lint` OK, `auction:eval` OK, `auction:verify` OK (36 lots). `place-bid.ts` got `toLot`/`toState` exports (refactor only). ETag includes status, not bidCount alone (D-50 c). Not run: `fixtures:check`, Playwright (no fixture change; no page yet).
 
