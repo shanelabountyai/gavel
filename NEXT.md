@@ -1,6 +1,8 @@
 # NEXT
 
-## ▶ Next session: task 3.6 (outbid and won notices through the outbox, O-11)
+## ▶ Next session: task 3.7 (HTTP latency line next to the Phase 1 number)
+
+**2026-10-21 (Session 19, Mac): task 3.6 done (D-53).** `src/auction/notices.ts` (templates registered at import, `enqueueNotice` over the bid path's `Tx`), the outbid write in `judge`, the won write in `closeLots`, `cron-jobs.ts` imports the templates, `required-modules.ts` lists `notifications`. Tests: `tests/integration/notices.test.ts` (3: N bids → exactly the rows' implied notices and the drain only captures; a rolled-back bid leaves no outbox row; one won notice, once, none for unsold) and an outbox-count assertion in the barrier test. Gate: barrier 7/7, `auction:eval` OK (both halves), `auction:verify` OK (36 lots), `rules:lint` OK, `fixtures:check` OK, `foundation:check-modules` OK, `tsc` and eslint clean; `foundation:drift` clean after restoring `migration_lock.toml` (D-53 h). Full `npm test` 356/356 (47 files, 55 s). Not covered: a correction that reassigns the winner sends no notice (D-53 f).
 
 **2026-10-21 (Session 18, Mac): task 3.5 done (D-52).** `lots/[id]/{actions.ts,bid-form.tsx}`, bid form on the lot page; `e2e/bid-form.spec.ts` green on the production build (with `lot-page` and `catalog`). Gate: first full `npm test` 347/353: the barrier timeout was load (green alone), the rest was the invariant harness needing a `ref('lot')` fixture (`tests/fixtures/app.ts`) and `notFound()` for a lot outside the org; after both, `inv-01-04-22-actions` 14/14 and `barrier` green alone, `tsc` and eslint clean. **Full `npm test` not re-run end to end after the fix** (it took over 10 min); run it at the 3.6 start. Not re-run: `auction:eval`, `auction:verify`, `rules:lint`, `fixtures:check` (no engine, schema or fixture change). A changed amount gets a fresh idempotency key (avoids `IDEMPOTENCY_MISMATCH`).
 
