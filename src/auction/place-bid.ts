@@ -11,6 +11,7 @@ import { applyBid, minNextBid, type Lot, type LotState } from '@/auction/engine/
 import type { BidOutcome, Rules } from '@/auction/engine/rules';
 import { BidError, LOCK_NOT_AVAILABLE, UNIQUE_VIOLATION, constraintName, sqlState } from '@/auction/errors';
 import { loadRules } from '@/auction/load-rules';
+import { enqueueNotice } from '@/auction/notices';
 
 export const INT4_MAX = 2147483647; // D-36: cents are int4; a lot that needs more is a BigInt migration
 export const LOCK_TIMEOUT_MS = 5000; // D-13, O-8
@@ -181,5 +182,9 @@ async function judge(tx: Tx, b: BidInput, lot: Lot, rules: Rules, now: () => Dat
        "acceptedCount" = $7, "closesAt" = $8::timestamptz, "extensionCount" = $9 WHERE "lotId" = $1::uuid`,
     [b.lotId, s.priceCents, s.leader, s.leaderMaxCents, s.leaderSeq, s.bidCount, s.acceptedCount, new Date(s.closesAtMs).toISOString(), s.extensionCount],
   );
+  // Task 3.6 (D-53): the previous leader, if this row displaced them, gets an outbid notice in the same transaction.
+  if (r.leaderBefore !== null && r.leaderAfter !== r.leaderBefore) {
+    await enqueueNotice(tx, b.orgId, b.lotId, r.leaderBefore, { template: 'outbid', priceCents: s.priceCents, closesAt: new Date(s.closesAtMs) });
+  }
   return response(r.outcome, r.accepted, seq, false, s, lot, rules, b.bidderId);
 }

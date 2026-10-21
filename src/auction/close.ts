@@ -5,6 +5,7 @@
 import { fold, settle } from '@/auction/engine/engine';
 import type { Rules } from '@/auction/engine/rules';
 import { loadRules } from '@/auction/load-rules';
+import { enqueueNotice } from '@/auction/notices';
 import { prismaRunner, type Runner, type Tx } from '@/auction/place-bid';
 import { loadLot } from '@/auction/verify-sql';
 
@@ -25,6 +26,10 @@ export async function closeLots(asOf: Date, q: Tx, deps: { run?: Runner; rules?:
          ON CONFLICT ("lotId") WHERE "supersedesId" IS NULL DO NOTHING RETURNING "id"`,
         [l.orgId, id, st.outcome, st.winner, st.winningSeq, st.hammerCents, st.premiumCents, st.totalCents, new Date(st.closedAtMs).toISOString(), hash, l.lot.buyerPremiumBps],
       );
+      // Task 3.6 (D-53): the won notice rides the settlement row's transaction; ON CONFLICT's no-op writes none.
+      if (inserted.length && st.winner !== null) {
+        await enqueueNotice(tx, l.orgId, id, st.winner, { template: 'won', hammerCents: st.hammerCents, totalCents: st.totalCents, closedAt: new Date(st.closedAtMs) });
+      }
       return inserted.length;
     });
   }

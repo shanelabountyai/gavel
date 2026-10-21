@@ -190,6 +190,8 @@ describe('the contention proof (brief §8, D-18)', () => {
       expect(again.every((r) => r.replayed)).toBe(true);
       expect(again.map((r) => [r.seq, r.outcome])).toEqual(first.map((r) => [r.seq, r.outcome]));
       expect(await db.bid.count({ where: { lotId: h.lotId } })).toBe(n);
+      // Task 3.6: exactly the outbid notices the rows imply, one per displaced leader, resends adding none.
+      expect(await db.outbox.count({ where: { template: 'outbid' } })).toBe(rows.filter((r) => r.leaderBeforeId !== null && r.leaderBeforeId !== r.leaderAfterId).length);
       expect(await verifyLot(q, h.lotId, rules)).toBeNull();
       expect(await rawConnections()).toBe(before);
 
