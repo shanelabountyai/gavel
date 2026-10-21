@@ -1,6 +1,9 @@
 # NEXT
 
-## ▶ Next session: task 3.5 (bid form, idempotency key per submission, O-7 confirmation)
+## ▶ Next session: task 3.6 (outbid and won notices through the outbox, O-11)
+
+**2026-10-21 (Session 18, Mac): task 3.5 done (D-52).** `lots/[id]/{actions.ts,bid-form.tsx}`, bid form on the lot page; `e2e/bid-form.spec.ts` green on the production build (with `lot-page` and `catalog`). Gate: first full `npm test` 347/353: the barrier timeout was load (green alone), the rest was the invariant harness needing a `ref('lot')` fixture (`tests/fixtures/app.ts`) and `notFound()` for a lot outside the org; after both, `inv-01-04-22-actions` 14/14 and `barrier` green alone, `tsc` and eslint clean. **Full `npm test` not re-run end to end after the fix** (it took over 10 min); run it at the 3.6 start. Not re-run: `auction:eval`, `auction:verify`, `rules:lint`, `fixtures:check` (no engine, schema or fixture change). A changed amount gets a fresh idempotency key (avoids `IDEMPOTENCY_MISMATCH`).
+
 
 **2026-10-20 (Session 17, Mac): task 3.4 done (D-51).** `src/app/o/[org]/lots/[id]/{page.tsx,lot-live.tsx}`, `X-Server-Time` header on the state route, catalog links; `e2e/lot-page.spec.ts` green on the production build (with `catalog.spec.ts`). Gate: `npm test` 353/353 after the guard-first fix (first sweep caught `requireOrg` not being the page's first await, same as 2.1), `tsc --noEmit` clean, eslint clean on the new files. Not re-run: `auction:eval`, `auction:verify`, `rules:lint`, `fixtures:check` (no engine, schema or fixture change). The 60 s near-close threshold for 1 s polling is my choice (D-51 c).
 

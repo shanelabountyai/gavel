@@ -2,13 +2,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatCents } from '@/auction/engine/money';
 import type { LotView } from '@/auction/lot-view';
+import { BidForm } from './bid-form';
 
 type View = Omit<LotView, 'etag'>;
 const NEAR_CLOSE_MS = 60_000; // D-47: poll every 1 s near the close, 2 s otherwise
 
 // Polls /api/lots/[id]/state with the ETag. The countdown is closesAt minus the server's clock: the offset between the
 // two clocks is measured from X-Server-Time on every response, so the client's own clock only ticks, it never decides.
-export function LotLive({ lotId, initial, etag: firstEtag, serverNowMs }: { lotId: string; initial: View; etag: string; serverNowMs: number }) {
+export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs }: { slug: string; lotId: string; initial: View; etag: string; serverNowMs: number }) {
   const [view, setView] = useState(initial);
   const offset = useRef(0); // server clock minus client clock, ms; measured on every response
   const [serverNow, setServerNow] = useState(serverNowMs); // best estimate of the server's clock, advanced by the ticker
@@ -59,6 +60,7 @@ export function LotLive({ lotId, initial, etag: firstEtag, serverNowMs }: { lotI
       <p>Reserve: {view.reserveMet ? 'met' : 'not met'}</p>
       {view.you && <p data-testid="you">{view.you === 'LEADING' ? 'You are the high bidder.' : 'You have been outbid.'}</p>}
       <p>{closed ? 'Closed' : <>Time left: <span data-testid="countdown">{left}</span> s</>}</p>
+      {!closed && <BidForm slug={slug} lotId={lotId} view={view} />}
       <p>Closes (UTC): <span data-testid="closes-at">{view.closesAt}</span></p>
     </section>
   );

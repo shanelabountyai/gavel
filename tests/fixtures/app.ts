@@ -9,5 +9,11 @@ export async function seedApp(org: { orgId: string; userId: string }, key: 'a' |
   const auction = await db.auction.create({
     data: { id, orgId: org.orgId, name: `harness ${key}`, softCloseWindowSeconds: 120, maxExtensionSeconds: 1800, buyerPremiumBps: 1500, opensAt: new Date('2031-01-01T00:00:00Z') },
   });
-  return { auction: auction.id };
+  const end = new Date('2031-01-02T00:00:00Z');
+  const lotId = `00000000-0000-4000-8000-${key === 'a' ? '000000009011' : '000000009012'}`;
+  const lot = await db.lot.create({
+    data: { id: lotId, orgId: org.orgId, auctionId: auction.id, number: 1, title: `harness lot ${key}`, startCents: 10000, scheduledEnd: end,
+      state: { create: { orgId: org.orgId, priceCents: 0, leaderMaxCents: 0, bidCount: 0, acceptedCount: 0, closesAt: end, extensionCount: 0 } } },
+  });
+  return { auction: auction.id, lot: lot.id };
 }

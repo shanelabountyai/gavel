@@ -19,7 +19,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   return (
     <main>
       <h1>Lot {lot.number}: {lot.title}</h1>
-      <LotLive lotId={id} initial={view as Omit<typeof v, 'etag'>} etag={etag} serverNowMs={now().getTime()} />
+      <LotLive slug={ctx.slug} lotId={id} initial={view as Omit<typeof v, 'etag'>} etag={etag} serverNowMs={now().getTime()} />
     </main>
   );
 }
