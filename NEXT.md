@@ -1,6 +1,8 @@
 # NEXT
 
-## ▶ Next session: task 3.3 (lot read endpoint with ETag)
+## ▶ Next session: task 3.4 (bidder lot page, polling with the ETag)
+
+**2026-10-20 (Session 16, Mac): task 3.3 done (D-50).** `src/auction/lot-view.ts`, `src/app/api/lots/[id]/state/route.ts`; `tests/integration/lot-state-route.test.ts` (3: closed key set and no ids for either bidder, 304 on matching ETag then 200 after a bid, other-house 404). Gate: `npm test` 353/353 (46 files), `tsc --noEmit` clean, eslint clean, `rules:lint` OK, `auction:eval` OK, `auction:verify` OK (36 lots). `place-bid.ts` got `toLot`/`toState` exports (refactor only). ETag includes status, not bidCount alone (D-50 c). Not run: `fixtures:check`, Playwright (no fixture change; no page yet).
 
 **2026-10-20 (Session 15, Mac): task 3.2 done (D-49).** `src/auction/bidder.ts` (`registerBidder`), `catalog/actions.ts`, register button on the catalog; `tests/integration/bidder-registration.test.ts` (5, 20 concurrent → paddles 1..20). Gate: `npm test` 350/350 (45 files), `tsc --noEmit` clean, eslint clean on the new files. Not re-run: `auction:eval`, `auction:verify`, `rules:lint`, `fixtures:check` (no engine, schema or fixture change); no Playwright spec for the button yet.
 

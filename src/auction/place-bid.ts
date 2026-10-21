@@ -74,15 +74,7 @@ export async function placeBid(input: BidInput, deps: Deps = {}): Promise<BidRes
   const bidder = UUID.test(bidderId) ? await db.bidder.findFirst({ where: { id: bidderId, orgId, status: 'ACTIVE' }, select: { id: true } }) : null;
   if (!bidder) throw new BidError('BIDDER_NOT_ACTIVE', 'the bidder is not registered and active with this house');
 
-  const lot: Lot = {
-    startCents: lotRow.startCents,
-    reserveCents: lotRow.reserveCents,
-    opensAtMs: lotRow.auction.opensAt.getTime(),
-    scheduledEndMs: lotRow.scheduledEnd.getTime(),
-    softCloseWindowMs: lotRow.auction.softCloseWindowSeconds * 1000,
-    maxExtensionMs: lotRow.auction.maxExtensionSeconds * 1000,
-    buyerPremiumBps: lotRow.auction.buyerPremiumBps,
-  };
+  const lot = toLot(lotRow);
   const rules = deps.rules ?? (cachedRules ??= loadRules().rules);
   const run = deps.run ?? prismaRunner;
   const now = deps.now ?? clockNow;
@@ -105,6 +97,17 @@ export async function placeBid(input: BidInput, deps: Deps = {}): Promise<BidRes
   }
 }
 
+/** The pure engine's view of a catalog row (the auction's settings flattened in, D-34). */
+export const toLot = (r: { startCents: number; reserveCents: number | null; scheduledEnd: Date; auction: { opensAt: Date; softCloseWindowSeconds: number; maxExtensionSeconds: number; buyerPremiumBps: number } }): Lot => ({
+  startCents: r.startCents,
+  reserveCents: r.reserveCents,
+  opensAtMs: r.auction.opensAt.getTime(),
+  scheduledEndMs: r.scheduledEnd.getTime(),
+  softCloseWindowMs: r.auction.softCloseWindowSeconds * 1000,
+  maxExtensionMs: r.auction.maxExtensionSeconds * 1000,
+  buyerPremiumBps: r.auction.buyerPremiumBps,
+});
+
 type StateRow = {
   priceCents: number;
   leaderBidderId: string | null;
@@ -117,7 +120,7 @@ type StateRow = {
 };
 type PriorRow = { seq: number; maxCents: number; outcome: BidOutcome; accepted: boolean };
 
-const toState = (r: StateRow): LotState => ({
+export const toState = (r: StateRow): LotState => ({
   priceCents: r.priceCents,
   leader: r.leaderBidderId,
   leaderMaxCents: r.leaderMaxCents,
