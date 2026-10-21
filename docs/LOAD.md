@@ -16,3 +16,18 @@ Every throughput number Gavel quotes comes from `npm run load:bids` (D-19, D-24)
 - Per lot (bidCount / acceptedCount / price cents / extensions): 17059/1064/15651000/401, 17120/1054/15675000/396, 17102/1061/15700000/401, 17079/1052/15576000/398; settled 4.
 - Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 1ad8c4f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
 - auction:verify: OK, 42 lots (42 settled), V1–V9
+## 2026-10-21T14:33:53.614Z — `7430fb4`
+
+`2026-10-21T14:33:53.614Z 7430fb4: 200 writers, 40 connections, 4 lots, 10 s + soft close: 82620 ledger rows in 15.9 s = 5203 bids/s; placeBid p50 6.4 / p95 17.2 / p99 25.6 ms; end to end p50 35.7 / p95 50.1 / p99 95.5 ms; max lock wait 487.0 ms; 0 timeouts; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- ` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 82620 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Outcomes: ACCEPTED_LEAD 4483, ACCEPTED_OUTBID 466, ACCEPTED_RAISE 58, REJECTED_BELOW_MINIMUM 77389, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 24.
+- Bids per second: 5203.4 over 15.88 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 6.4 ms, p95 17.2 ms, p99 25.6 ms, max 505.9 ms, n = 82620.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 35.7 ms, p95 50.1 ms, p99 95.5 ms.
+- Max lock wait seen: 487.0 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 20645/1254/20775000/510, 20628/1253/20625000/508, 20651/1252/20727000/487, 20696/1248/20675000/496; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 7430fb4; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 4 lots (4 settled), V1–V9
+- Task 3.6 (D-53): every leader change also writes one `Outbox` row under the lot lock (one INSERT … SELECT joining Bidder → User and Lot). This run wrote 4479 outbid rows, equal to the rows with `leaderBeforeId` set and changed, and 4 won rows at settlement. Against the 1ad8c4f line (same hardware, same command) throughput and p95 are better and max lock wait is worse; the write's cost is inside run-to-run variance, not a measured saving.
