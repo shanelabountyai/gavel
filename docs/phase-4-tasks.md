@@ -1,6 +1,6 @@
 # Phase 4 — Experiments (optional)
 
-Draft for Shane's review, written at the Phase 3 gate (2026-10-21). Not started. Phase 3 exit: 3.1–3.8 ticked, D-47..D-55, CI green with `auction:verify` running last, after the Playwright specs.
+Reviewed by Shane 2026-10-21 (D-56): Phase 4 runs before closure; the variants under `scripts/lock-variants/`; `bidCount` as the version; 4.4 (b) kept. Written at the Phase 3 gate (2026-10-21). Phase 3 exit: 3.1–3.8 ticked, D-47..D-55, CI green with `auction:verify` running last, after the Playwright specs.
 
 Phases 1–3 shipped one bid path: `SELECT … FOR UPDATE` on the lot's `LotState` row at READ COMMITTED, no retry loop (D-13). D-13 rejected the advisory lock, the optimistic version and SERIALIZABLE by argument, not by measurement. Phase 4 measures them on the same load script, the same hardware and the same `auction:verify`, and puts the numbers side by side. **The product path does not change.** Every variant lives under `scripts/lock-variants/` and is reachable only from `load:bids`; `git diff` on `src/auction/` against the Phase 3 tag stays empty, and `rules:lint`'s banned-import list still holds. If a variant beats `FOR UPDATE`, that is a decisions entry and a Phase 5 proposal, not a swap. Nothing in this phase is required for closure: the definition-of-done deliverables (demo script, exec brief, posts, cost review) can run before it, after it, or instead of it.
 
@@ -12,7 +12,7 @@ Phases 1–3 shipped one bid path: `SELECT … FOR UPDATE` on the lot's `LotStat
 
 **Exit criteria:** four strategies (row, advisory, version, serializable) measured on one commit, one hardware line and one script, each followed by a green `auction:verify`; the equal-connections HTTP line; the clock seam measured; D-13 and D-15 re-decided in writing with the numbers; the product path byte-identical to Phase 3.
 
-**Open questions for the review:**
+**Open questions for the review (answered in D-56: Phase 4 first; `scripts/lock-variants/`; `bidCount`; keep 4.4 (b)):**
 1. Where the variants live: `scripts/lock-variants/` reached only by `load:bids` (proposed; the product path stays unchanged and non-negotiable 2 stays true), or a `strategy` parameter on `placeBid` itself (one file, but a retry loop in product code, even behind a flag).
 2. The optimistic version: `bidCount` as the compare-and-set value (proposed, no migration), or a dedicated `version` column with its own migration and V-check.
 3. The second process in 4.4 (b): run it on one Mac knowing it cannot show real skew (proposed, it proves V6 reaches across processes), or drop 4.4 (b) and keep only the `clock_timestamp()` measurement.
