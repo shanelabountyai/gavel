@@ -207,6 +207,8 @@ const line = HTTP
     `${(rows / elapsedS).toFixed(0)} bids/s; placeBid ${p(bidMs)}; end to end ${p(totalMs)}; max lock wait ${ms(maxLockWaitMs)} ms; ${timeouts} timeouts; ${hw}`;
 // HTTP mode puts the latest in-process line beside it (task 3.7: same hardware, the two numbers together).
 const inProcessLine = HTTP && existsSync(OUT) ? readFileSync(OUT, 'utf8').split('\n').filter((l) => /^`\d{4}-.* writers, \d+ connections, /.test(l)).at(-1) : undefined;
+// ...and the latest earlier HTTP line, so a pool-size change reads against the run before it (task 4.1, D-54 c).
+const httpLine = HTTP && existsSync(OUT) ? readFileSync(OUT, 'utf8').split('\n').filter((l) => /^`\d{4}-.* HTTP, /.test(l)).at(-1) : undefined;
 
 const report = [
   `## ${runId} — \`${sha}\``,
@@ -221,6 +223,7 @@ const report = [
     ? [
         `- Latency is the HTTP round trip of POST /api/lots/[id]/bids (session cookie → requireUser → placeBid under the lock → JSON), one keep-alive socket per writer, the server's Prisma pool capped at connection_limit=${SERVER_POOL}: ${p(bidMs)}, max ${ms(Math.max(...bidMs))} ms, n = ${bidMs.length}.`,
         `- Beside it, the latest in-process line (same hardware, no HTTP): ${inProcessLine ?? 'none in this file'}`,
+        `- Beside it, the latest earlier HTTP line: ${httpLine ?? 'none in this file'}`,
       ]
     : [
         `- Latency around \`placeBid\` with a connection in hand (same process as the server code; no HTTP): p50 ${ms(pct(bidMs, 50))} ms, p95 ${ms(pct(bidMs, 95))} ms, p99 ${ms(pct(bidMs, 99))} ms, max ${ms(Math.max(...bidMs))} ms, n = ${bidMs.length}.`,
@@ -228,7 +231,7 @@ const report = [
       ]),
   `- Max lock wait seen: ${ms(maxLockWaitMs)} ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).`,
   `- Per lot (bidCount / acceptedCount / price cents / extensions): ${states.map((s) => `${s.bidCount}/${s.acceptedCount}/${s.priceCents}/${s.extensionCount}`).join(', ')}; settled ${closed.settled}.`,
-  `- Hardware: ${os.cpus()[0]!.model}, ${os.cpus().length} cores, ${Math.round(os.totalmem() / 2 ** 30)} GB RAM; Node ${process.version}; ${pg}; git ${sha}; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).`,
+  `- Hardware: ${os.cpus()[0]!.model}, ${os.cpus().length} cores, ${Math.round(os.totalmem() / 2 ** 30)} GB RAM; Node ${process.version}; ${pg}; git ${sha}; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=${SERVER_POOL}).`,
   `- auction:verify: ${verdict}`,
   '',
 ].join('\n');
