@@ -150,3 +150,183 @@ Every throughput number Gavel quotes comes from `npm run load:bids` (D-19, D-24)
 - Per lot (bidCount / acceptedCount / price cents / extensions): 16719/1031/14875000/363, 16713/1018/14900000/359, 16687/1033/15025000/367, 16697/1033/14975000/368; settled 4.
 - Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 2117f5d; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
 - auction:verify: OK, 25 lots (24 settled), V1–V9
+## 2026-10-22T15:55:20.518Z — `05f024f`
+
+`2026-10-22T15:55:20.518Z 05f024f: lock=row, 200 writers, 40 connections, 4 lots, 10 s + soft close: 80068 ledger rows in 15.9 s = 5038 bids/s; placeBid p50 5.0 / p95 22.1 / p99 35.2 ms; end to end p50 37.1 / p95 56.8 / p99 72.4 ms; max lock wait 64.2 ms; 0 timeouts; 1.000 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock row` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 80068 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Lock strategy: row; judgements 80068 for 80068 ledger rows (1.000 per row); conflicts 0.
+- Outcomes: ACCEPTED_LEAD 4427, ACCEPTED_OUTBID 424, ACCEPTED_RAISE 43, REJECTED_BELOW_MINIMUM 74945, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 29.
+- Bids per second: 5037.7 over 15.89 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 5.0 ms, p95 22.1 ms, p99 35.2 ms, max 108.6 ms, n = 80068.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 37.1 ms, p95 56.8 ms, p99 72.4 ms.
+- Max lock wait seen: 64.2 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 20022/1220/19900000/437, 20001/1219/20050000/454, 20014/1232/20075000/456, 20031/1223/19950000/455; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 88 lots (88 settled), V1–V9
+## 2026-10-22T15:55:51.542Z — `05f024f`
+
+`2026-10-22T15:55:51.542Z 05f024f: lock=advisory, 200 writers, 40 connections, 4 lots, 10 s + soft close: 75152 ledger rows in 15.9 s = 4723 bids/s; placeBid p50 8.4 / p95 10.3 / p99 13.2 ms; end to end p50 42.5 / p95 49.4 / p99 61.0 ms; max lock wait 12.3 ms; 0 timeouts; 1.000 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock advisory` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 75152 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Lock strategy: advisory; judgements 75152 for 75152 ledger rows (1.000 per row); conflicts 0.
+- Outcomes: ACCEPTED_LEAD 4056, ACCEPTED_OUTBID 210, ACCEPTED_RAISE 31, REJECTED_BELOW_MINIMUM 70644, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 11.
+- Bids per second: 4722.9 over 15.91 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 8.4 ms, p95 10.3 ms, p99 13.2 ms, max 73.0 ms, n = 75152.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 42.5 ms, p95 49.4 ms, p99 61.0 ms.
+- Max lock wait seen: 12.3 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 18794/1081/15950000/395, 18782/1070/15851000/394, 18796/1074/15875000/395, 18780/1072/15925000/393; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 92 lots (92 settled), V1–V9
+## 2026-10-22T15:56:52.544Z — `05f024f`
+
+`2026-10-22T15:56:52.544Z 05f024f: lock=version, 200 writers, 40 connections, 4 lots, 10 s + soft close: 62416 ledger rows in 15.9 s = 3925 bids/s; placeBid p50 10.1 / p95 12.9 / p99 17.3 ms; end to end p50 51.3 / p95 60.1 / p99 70.4 ms; max lock wait 18.4 ms; 0 timeouts; 2.449 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock version` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 62416 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Lock strategy: version; judgements 152862 for 62416 ledger rows (2.449 per row); version conflicts (guarded UPDATE matched 0 rows) 90446.
+- Outcomes: ACCEPTED_LEAD 3359, ACCEPTED_OUTBID 190, ACCEPTED_RAISE 28, REJECTED_BELOW_MINIMUM 58628, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 11.
+- Bids per second: 3925.2 over 15.90 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 10.1 ms, p95 12.9 ms, p99 17.3 ms, max 65.8 ms, n = 62416.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 51.3 ms, p95 60.1 ms, p99 70.4 ms.
+- Max lock wait seen: 18.4 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 15604/895/11475000/326, 15611/895/11450000/326, 15613/893/11375000/324, 15588/894/11400000/327; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 96 lots (96 settled), V1–V9
+## 2026-10-22T15:57:33.608Z — `05f024f`
+
+`2026-10-22T15:57:33.608Z 05f024f: lock=serializable, 200 writers, 40 connections, 4 lots, 10 s + soft close: 22418 ledger rows in 16.0 s = 1401 bids/s; placeBid p50 15.5 / p95 71.7 / p99 90.2 ms; end to end p50 120.1 / p95 177.9 / p99 205.2 ms; max lock wait 10.6 ms; 2376 timeouts; 7.492 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock serializable` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 22418 (N attempts, N rows; timeouts resent with the same key: 2376; writer failures: 0).
+- Lock strategy: serializable; judgements 167965 for 22418 ledger rows (7.492 per row); 40001 retries 105; seq-index 23505 retries 145442.
+- Outcomes: ACCEPTED_LEAD 1350, ACCEPTED_OUTBID 163, ACCEPTED_RAISE 19, REJECTED_BELOW_MINIMUM 20679, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 7.
+- Bids per second: 1401.0 over 16.00 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 15.5 ms, p95 71.7 ms, p99 90.2 ms, max 176.9 ms, n = 24794.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 120.1 ms, p95 177.9 ms, p99 205.2 ms.
+- Max lock wait seen: 10.6 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 5605/385/960000/144, 5597/381/970000/145, 5579/386/970000/145, 5637/380/970000/140; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 100 lots (100 settled), V1–V9
+## 2026-10-22T16:00:35.622Z — `05f024f`
+
+`2026-10-22T16:00:35.622Z 05f024f: lock=row, 200 writers, 40 connections, 4 lots, 10 s + soft close: 71270 ledger rows in 15.9 s = 4482 bids/s; placeBid p50 7.1 / p95 22.9 / p99 39.9 ms; end to end p50 41.4 / p95 69.1 / p99 97.7 ms; max lock wait 129.6 ms; 0 timeouts; 1.000 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock row` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 71270 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Lock strategy: row; judgements 71270 for 71270 ledger rows (1.000 per row); conflicts 0.
+- Outcomes: ACCEPTED_LEAD 3924, ACCEPTED_OUTBID 367, ACCEPTED_RAISE 30, REJECTED_BELOW_MINIMUM 66740, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 9.
+- Bids per second: 4482.3 over 15.90 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 7.1 ms, p95 22.9 ms, p99 39.9 ms, max 146.7 ms, n = 71270.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 41.4 ms, p95 69.1 ms, p99 97.7 ms.
+- Max lock wait seen: 129.6 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 17819/1073/16275000/388, 17834/1088/16350000/400, 17819/1089/16225000/400, 17798/1071/16100000/393; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 104 lots (104 settled), V1–V9
+## 2026-10-22T16:02:37.866Z — `05f024f`
+
+`2026-10-22T16:02:37.866Z 05f024f: lock=advisory, 200 writers, 40 connections, 4 lots, 10 s + soft close: 75481 ledger rows in 15.9 s = 4747 bids/s; placeBid p50 8.4 / p95 10.1 / p99 13.1 ms; end to end p50 42.2 / p95 47.5 / p99 66.9 ms; max lock wait 26.0 ms; 0 timeouts; 1.000 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock advisory` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 75481 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Lock strategy: advisory; judgements 75481 for 75481 ledger rows (1.000 per row); conflicts 0.
+- Outcomes: ACCEPTED_LEAD 3986, ACCEPTED_OUTBID 262, ACCEPTED_RAISE 42, REJECTED_BELOW_MINIMUM 70964, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 27.
+- Bids per second: 4747.4 over 15.90 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 8.4 ms, p95 10.1 ms, p99 13.1 ms, max 69.2 ms, n = 75481.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 42.2 ms, p95 47.5 ms, p99 66.9 ms.
+- Max lock wait seen: 26.0 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 18842/1076/15975000/390, 18856/1074/15950000/387, 18883/1062/16100000/387, 18900/1078/16100500/384; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 108 lots (108 settled), V1–V9
+## 2026-10-22T16:03:20.976Z — `05f024f`
+
+`2026-10-22T16:03:20.976Z 05f024f: lock=version, 200 writers, 40 connections, 4 lots, 10 s + soft close: 61730 ledger rows in 15.9 s = 3881 bids/s; placeBid p50 10.1 / p95 13.3 / p99 18.9 ms; end to end p50 51.5 / p95 60.7 / p99 87.2 ms; max lock wait 39.3 ms; 0 timeouts; 2.444 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock version` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 61730 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Lock strategy: version; judgements 150845 for 61730 ledger rows (2.444 per row); version conflicts (guarded UPDATE matched 0 rows) 89115.
+- Outcomes: ACCEPTED_LEAD 3268, ACCEPTED_OUTBID 212, ACCEPTED_RAISE 35, REJECTED_BELOW_MINIMUM 58001, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 14.
+- Bids per second: 3881.4 over 15.90 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 10.1 ms, p95 13.3 ms, p99 18.9 ms, max 80.6 ms, n = 61730.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 51.5 ms, p95 60.7 ms, p99 87.2 ms.
+- Max lock wait seen: 39.3 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 15458/872/11200000/304, 15404/885/11075000/314, 15435/878/11075000/311, 15433/880/11075000/315; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 112 lots (112 settled), V1–V9
+## 2026-10-22T16:05:24.094Z — `05f024f`
+
+`2026-10-22T16:05:24.094Z 05f024f: lock=serializable, 200 writers, 40 connections, 4 lots, 10 s + soft close: 21492 ledger rows in 16.0 s = 1345 bids/s; placeBid p50 16.5 / p95 73.6 / p99 89.1 ms; end to end p50 125.6 / p95 186.8 / p99 213.0 ms; max lock wait 10.9 ms; 2449 timeouts; 7.721 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock serializable` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 21492 (N attempts, N rows; timeouts resent with the same key: 2449; writer failures: 0).
+- Lock strategy: serializable; judgements 165945 for 21492 ledger rows (7.721 per row); 40001 retries 0; seq-index 23505 retries 144453.
+- Outcomes: ACCEPTED_LEAD 1284, ACCEPTED_OUTBID 146, ACCEPTED_RAISE 23, REJECTED_BELOW_MINIMUM 19833, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 6.
+- Bids per second: 1344.8 over 15.98 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 16.5 ms, p95 73.6 ms, p99 89.1 ms, max 175.5 ms, n = 23941.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 125.6 ms, p95 186.8 ms, p99 213.0 ms.
+- Max lock wait seen: 10.9 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 5367/363/885000/135, 5368/359/885000/136, 5358/366/885000/134, 5399/365/915000/133; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 116 lots (116 settled), V1–V9
+## 2026-10-22T16:06:37.262Z — `05f024f`
+
+`2026-10-22T16:06:37.262Z 05f024f: lock=row, 200 writers, 40 connections, 4 lots, 10 s + soft close: 80884 ledger rows in 15.9 s = 5094 bids/s; placeBid p50 5.1 / p95 21.6 / p99 34.5 ms; end to end p50 37.0 / p95 55.0 / p99 69.3 ms; max lock wait 71.6 ms; 0 timeouts; 1.000 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock row` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 80884 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Lock strategy: row; judgements 80884 for 80884 ledger rows (1.000 per row); conflicts 0.
+- Outcomes: ACCEPTED_LEAD 4537, ACCEPTED_OUTBID 383, ACCEPTED_RAISE 36, REJECTED_BELOW_MINIMUM 75711, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 17.
+- Bids per second: 5093.7 over 15.88 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 5.1 ms, p95 21.6 ms, p99 34.5 ms, max 83.8 ms, n = 80884.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 37.0 ms, p95 55.0 ms, p99 69.3 ms.
+- Max lock wait seen: 71.6 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 20218/1238/20325000/463, 20204/1241/20250000/461, 20232/1240/20350000/460, 20230/1237/20200000/454; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 120 lots (120 settled), V1–V9
+## 2026-10-22T16:07:30.769Z — `05f024f`
+
+`2026-10-22T16:07:30.769Z 05f024f: lock=advisory, 200 writers, 40 connections, 4 lots, 10 s + soft close: 74551 ledger rows in 15.9 s = 4690 bids/s; placeBid p50 8.5 / p95 10.3 / p99 13.6 ms; end to end p50 42.7 / p95 48.6 / p99 61.2 ms; max lock wait 36.0 ms; 0 timeouts; 1.000 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock advisory` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 74551 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Lock strategy: advisory; judgements 74551 for 74551 ledger rows (1.000 per row); conflicts 0.
+- Outcomes: ACCEPTED_LEAD 3996, ACCEPTED_OUTBID 215, ACCEPTED_RAISE 40, REJECTED_BELOW_MINIMUM 70081, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 19.
+- Bids per second: 4689.6 over 15.90 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 8.5 ms, p95 10.3 ms, p99 13.6 ms, max 75.0 ms, n = 74551.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 42.7 ms, p95 48.6 ms, p99 61.2 ms.
+- Max lock wait seen: 36.0 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 18628/1062/15650000/393, 18647/1066/15700000/397, 18663/1063/15775000/396, 18613/1060/15650000/389; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 124 lots (124 settled), V1–V9
+## 2026-10-22T16:08:04.241Z — `05f024f`
+
+`2026-10-22T16:08:04.241Z 05f024f: lock=version, 200 writers, 40 connections, 4 lots, 10 s + soft close: 60889 ledger rows in 15.8 s = 3855 bids/s; placeBid p50 10.1 / p95 12.6 / p99 16.7 ms; end to end p50 51.1 / p95 56.7 / p99 71.7 ms; max lock wait 180.4 ms; 0 timeouts; 2.447 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock version` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 60889 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Lock strategy: version; judgements 149008 for 60889 ledger rows (2.447 per row); version conflicts (guarded UPDATE matched 0 rows) 88119.
+- Outcomes: ACCEPTED_LEAD 3243, ACCEPTED_OUTBID 210, ACCEPTED_RAISE 31, REJECTED_BELOW_MINIMUM 57189, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 16.
+- Bids per second: 3854.5 over 15.80 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 10.1 ms, p95 12.6 ms, p99 16.7 ms, max 289.2 ms, n = 60889.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 51.1 ms, p95 56.7 ms, p99 71.7 ms.
+- Max lock wait seen: 180.4 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 15239/866/10825000/324, 15222/875/10875000/333, 15208/876/10825000/336, 15220/867/10800000/328; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 128 lots (128 settled), V1–V9
+## 2026-10-22T16:08:48.629Z — `05f024f`
+
+`2026-10-22T16:08:48.629Z 05f024f: lock=serializable, 200 writers, 40 connections, 4 lots, 10 s + soft close: 17690 ledger rows in 16.0 s = 1105 bids/s; placeBid p50 19.0 / p95 97.3 / p99 107.9 ms; end to end p50 154.5 / p95 234.0 / p99 255.5 ms; max lock wait 2.4 ms; 1761 timeouts; 7.087 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- --lock serializable` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 17690 (N attempts, N rows; timeouts resent with the same key: 1761; writer failures: 0).
+- Lock strategy: serializable; judgements 125374 for 17690 ledger rows (7.087 per row); 40001 retries 0; seq-index 23505 retries 107684.
+- Outcomes: ACCEPTED_LEAD 1048, ACCEPTED_OUTBID 110, ACCEPTED_RAISE 15, REJECTED_BELOW_MINIMUM 16314, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 3.
+- Bids per second: 1104.7 over 16.01 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 19.0 ms, p95 97.3 ms, p99 107.9 ms, max 184.1 ms, n = 19451.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 154.5 ms, p95 234.0 ms, p99 255.5 ms.
+- Max lock wait seen: 2.4 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 4445/288/545000/113, 4378/298/550000/113, 4442/295/535300/115, 4425/292/555000/112; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 05f024f; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 132 lots (132 settled), V1–V9
