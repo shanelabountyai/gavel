@@ -18,8 +18,8 @@ type FixtureAuction = { auction_id: string; soft_close_window_seconds: number; m
 const fixtures: { auctions: FixtureAuction[] } = JSON.parse(readFileSync('fixtures/auctions.json', 'utf8'));
 
 /** One house with fixture auction A1's settings; bidders and lots are created on demand by fixture id. */
-async function house() {
-  const org = await makeOrg('house');
+async function house(slug = 'house') {
+  const org = await makeOrg(slug);
   const a1 = fixtures.auctions.find((a) => a.auction_id === 'A1')!;
   const auction = await db.auction.create({
     data: { orgId: org.id, name: 'A1', softCloseWindowSeconds: a1.soft_close_window_seconds, maxExtensionSeconds: a1.max_extension_seconds, buyerPremiumBps: a1.buyer_premium_bps, opensAt: new Date(a1.lots[0]!.opens_at_ms) },
@@ -128,6 +128,19 @@ describe('placeBid: boundary refusals write nothing and take no lock', () => {
     const other = await makeOrg('other');
     await expect(placeBid({ orgId: other.id, lotId: lot.id, bidderId, maxCents: 25000, idempotencyKey: 'k' })).rejects.toMatchObject({ code: 'LOT_NOT_FOUND' });
     expect(await db.bid.count()).toBe(0);
+  });
+
+  it("an ACTIVE bidder of another house is refused on this house's lot, whichever house the call names", async () => {
+    const h = await house();
+    const lot = await h.lot('L008');
+    const other = await house('other-house');
+    const outsider = await other.bidder('B001'); // registered and ACTIVE, but with the other house only
+    await expect(placeBid({ orgId: h.org.id, lotId: lot.id, bidderId: outsider, maxCents: 25000, idempotencyKey: 'k' }, { now: () => new Date(0) }))
+      .rejects.toMatchObject({ name: 'BidError', code: 'BIDDER_NOT_ACTIVE' });
+    await expect(placeBid({ orgId: other.org.id, lotId: lot.id, bidderId: outsider, maxCents: 25000, idempotencyKey: 'k' }, { now: () => new Date(0) }))
+      .rejects.toMatchObject({ name: 'BidError', code: 'LOT_NOT_FOUND' });
+    expect(await db.bid.count()).toBe(0);
+    expect(await db.lotState.findUniqueOrThrow({ where: { lotId: lot.id } })).toMatchObject({ bidCount: 0, leaderBidderId: null });
   });
 });
 
