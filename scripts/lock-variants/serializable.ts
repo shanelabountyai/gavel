@@ -1,12 +1,14 @@
 // `--lock serializable`: SERIALIZABLE, no FOR UPDATE; a serialization failure (SQLSTATE 40001, raised at the
-// UPDATE, the seq insert or COMMIT) rolls back and the whole transaction is retried on the same connection.
+// UPDATE or COMMIT) rolls back and the whole transaction is retried on the same connection. So does a 23505 on
+// Bid_lotId_seq_key: the first run (D-58 c) showed Postgres reports the seq race as a unique violation, not 40001,
+// because the insert precedes the LotState update and nothing in the transaction read that (lotId, seq) key.
 import type { Client as PgClient } from 'pg';
-import { BidError, sqlState } from '../../src/auction/errors';
+import { BidError, UNIQUE_VIOLATION, constraintName, sqlState } from '../../src/auction/errors';
 import { LOCK_TIMEOUT_MS, type Runner, judgeRead, pgTx, readState } from '../../src/auction/place-bid';
 import { MAX_ATTEMPTS, type Variant } from './variant';
 
 const SERIALIZATION_FAILURE = '40001';
-const stats = { judgements: 0, conflicts: 0 };
+const stats = { judgements: 0, conflicts: 0, seqCollisions: 0 };
 const run =
   (c: PgClient): Runner =>
   async (body) => {
@@ -19,9 +21,11 @@ const run =
         return result;
       } catch (error) {
         await c.query('ROLLBACK');
-        if (sqlState(error) !== SERIALIZATION_FAILURE) throw error;
-        stats.conflicts++;
-        if (attempt === MAX_ATTEMPTS) throw new BidError('BID_TIMED_OUT', `40001 ${MAX_ATTEMPTS} times; resend with the same key`, true, { cause: error });
+        const seqCollision = sqlState(error) === UNIQUE_VIOLATION && constraintName(error) === 'Bid_lotId_seq_key';
+        if (sqlState(error) !== SERIALIZATION_FAILURE && !seqCollision) throw error;
+        if (seqCollision) stats.seqCollisions++;
+        else stats.conflicts++;
+        if (attempt === MAX_ATTEMPTS) throw new BidError('BID_TIMED_OUT', `40001 or seq collision ${MAX_ATTEMPTS} times; resend with the same key`, true, { cause: error });
       }
     }
   };

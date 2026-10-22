@@ -229,7 +229,7 @@ const report = [
   '',
   `- Command: \`npm run load:bids -- ${process.argv.slice(2).join(' ')}\` → writers ${WRITERS}, lots ${LOTS}, seconds ${SECONDS}, ${HTTP ? `against \`npm run e2e:server\` (production build, same .env.test database)` : `connections ${CONNECTIONS}`}; soft-close window ${WINDOW_S} s, cap ${CAP_S} s, start ${START_CENTS} cents, no reserve.`,
   `- Ledger rows: ${rows} (N attempts, N rows; timeouts resent with the same key: ${timeouts}; writer failures: ${failed.length}).`,
-  ...(HTTP ? [] : [`- Lock strategy: ${LOCK}; judgements ${variant.stats.judgements} for ${rows} ledger rows (${judgementsPerRow} per row); ${LOCK === 'serializable' ? '40001 retries' : LOCK === 'version' ? 'version conflicts (guarded UPDATE matched 0 rows)' : 'conflicts'} ${variant.stats.conflicts}.`]),
+  ...(HTTP ? [] : [`- Lock strategy: ${LOCK}; judgements ${variant.stats.judgements} for ${rows} ledger rows (${judgementsPerRow} per row); ${LOCK === 'serializable' ? '40001 retries' : LOCK === 'version' ? 'version conflicts (guarded UPDATE matched 0 rows)' : 'conflicts'} ${variant.stats.conflicts}${variant.stats.seqCollisions === undefined ? '' : `; seq-index 23505 retries ${variant.stats.seqCollisions}`}.`]),
   `- Outcomes: ${[...outcomes.entries()].sort().map(([k, v]) => `${k} ${v}`).join(', ')}.`,
   `- Bids per second: ${(rows / elapsedS).toFixed(1)} over ${elapsedS.toFixed(2)} s from the first attempt's start to the last attempt's end.`,
   ...(HTTP
