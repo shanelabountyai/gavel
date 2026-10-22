@@ -10,6 +10,8 @@
 // at seconds + 6.
 // `--lock advisory|version|serializable` (task 4.2, D-58) swaps the product's FOR UPDATE for a variant under
 // scripts/lock-variants/; the default `row` is the product path. In-process only.
+// `--clock db` (task 4.4 a) keeps the row lock and reads Postgres's clock_timestamp() under it instead of now().
+// `--http <url>,<url>` (task 4.4 b) splits the writers across several server processes on one database.
 import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -39,13 +41,21 @@ const LOTS = arg('lots', 4);
 const SECONDS = arg('seconds', 10);
 const CONNECTIONS = arg('connections', 40);
 const HTTP = process.argv.includes('--http') ? process.argv[process.argv.indexOf('--http') + 1] : undefined;
-if (HTTP !== undefined && !URL.canParse(HTTP)) throw new Error('--http needs a base URL, e.g. http://localhost:6100');
+const URLS = HTTP?.split(',') ?? [];
+if (HTTP !== undefined && !URLS.every((u) => URL.canParse(u))) throw new Error('--http needs base URLs, e.g. http://localhost:6100,http://localhost:6101');
+// A writer's server: lot is i % LOTS, so the process index steps over whole rounds of lots and every lot sees every process.
+const urlFor = (i: number) => URLS[Math.floor(i / LOTS) % URLS.length]!;
 const LOCK = process.argv.includes('--lock') ? process.argv[process.argv.indexOf('--lock') + 1]! : 'row';
 if (!['row', 'advisory', 'version', 'serializable'].includes(LOCK)) throw new Error('--lock must be row, advisory, version or serializable');
 if (HTTP && LOCK !== 'row') throw new Error('--lock is in-process only; the server runs the product path');
+const CLOCK = process.argv.includes('--clock') ? process.argv[process.argv.indexOf('--clock') + 1]! : 'app';
+if (!['app', 'db'].includes(CLOCK)) throw new Error('--clock must be app or db');
+if (CLOCK === 'db' && (HTTP || LOCK !== 'row')) throw new Error('--clock db is in-process with --lock row only');
 const rowStats = { judgements: 0, conflicts: 0 };
 const variant: Variant =
-  LOCK === 'row'
+  CLOCK === 'db'
+    ? ((await import('./lock-variants/clock-db')) as { variant: Variant }).variant
+    : LOCK === 'row'
     ? { stats: rowStats, judge: (...a) => (rowStats.judgements++, judge(...a)) }
     : ((await import(`./lock-variants/${LOCK}.ts`)) as { variant: Variant }).variant;
 // What the server's Prisma pool is capped at, read from the DATABASE_URL this script shares with `npm run start:test`.
@@ -89,9 +99,9 @@ for (let i = 0; i < WRITERS; i++) {
     tokens.push(token);
   }
 }
-if (HTTP) {
-  const h = await fetch(`${HTTP}/api/health`).catch((e: unknown) => { throw new Error(`no server at ${HTTP}: ${String(e)}; start one with npm run e2e:server`); });
-  if (!h.ok) throw new Error(`${HTTP}/api/health answered ${h.status}`);
+for (const u of URLS) {
+  const h = await fetch(`${u}/api/health`).catch((e: unknown) => { throw new Error(`no server at ${u}: ${String(e)}; start one with npm run e2e:server`); });
+  if (!h.ok) throw new Error(`${u}/api/health answered ${h.status}`);
 }
 
 // 2. The shared raw pool and a sampler for the longest lock wait any backend was seen in (an upper bound:
@@ -117,7 +127,7 @@ let lastEnd = 0;
 
 // HTTP mode: the same loop over POST /api/lots/[id]/bids; a 503 (O-8) is the timeout, resent with the same key.
 async function postBid(i: number, lotId: string, maxCents: number, key: string): Promise<BidResponse> {
-  const res = await fetch(`${HTTP}/api/lots/${lotId}/bids`, {
+  const res = await fetch(`${urlFor(i)}/api/lots/${lotId}/bids`, {
     method: 'POST',
     headers: { cookie: `${SESSION_COOKIE}=${tokens[i]}`, 'content-type': 'application/json' },
     body: JSON.stringify({ maxCents, idempotencyKey: key }),
@@ -212,10 +222,11 @@ const pg = (await (async () => {
 const hw = `${os.cpus()[0]!.model}, ${os.cpus().length} cores, ${Math.round(os.totalmem() / 2 ** 30)} GB; Node ${process.version}; ${pg}`;
 const verdict = verify.failure ? `FAILED: lot ${verify.failure.lotId} (#${verify.failure.lotNumber}) ${verify.failure.check}: ${verify.failure.detail}` : `OK, ${verify.lots} lots (${verify.settled} settled), V1–V9`;
 const p = (xs: number[]) => `p50 ${ms(pct(xs, 50))} / p95 ${ms(pct(xs, 95))} / p99 ${ms(pct(xs, 99))} ms`;
+const procs = URLS.length > 1 ? `${URLS.length} server processes (${URLS.map((u) => new URL(u).port).join(', ')}), ` : '';
 const line = HTTP
-  ? `${runId} ${sha}: HTTP, ${WRITERS} writers, server Prisma pool connection_limit=${SERVER_POOL}, ${LOTS} lots, ${SECONDS} s + soft close: ${rows} ledger rows in ${elapsedS.toFixed(1)} s = ` +
+  ? `${runId} ${sha}: HTTP, ${procs}${WRITERS} writers, server Prisma pool connection_limit=${SERVER_POOL}, ${LOTS} lots, ${SECONDS} s + soft close: ${rows} ledger rows in ${elapsedS.toFixed(1)} s = ` +
     `${(rows / elapsedS).toFixed(0)} bids/s; HTTP round trip ${p(bidMs)}; max lock wait ${ms(maxLockWaitMs)} ms; ${timeouts} timeouts (503); ${hw}`
-  : `${runId} ${sha}: lock=${LOCK}, ${WRITERS} writers, ${CONNECTIONS} connections, ${LOTS} lots, ${SECONDS} s + soft close: ${rows} ledger rows in ${elapsedS.toFixed(1)} s = ` +
+  : `${runId} ${sha}: lock=${LOCK}${CLOCK === 'db' ? ', clock=db' : ''}, ${WRITERS} writers, ${CONNECTIONS} connections, ${LOTS} lots, ${SECONDS} s + soft close: ${rows} ledger rows in ${elapsedS.toFixed(1)} s = ` +
     `${(rows / elapsedS).toFixed(0)} bids/s; placeBid ${p(bidMs)}; end to end ${p(totalMs)}; max lock wait ${ms(maxLockWaitMs)} ms; ${timeouts} timeouts; ${judgementsPerRow} judgements per row; ${hw}`;
 // HTTP mode puts the latest in-process line beside it (task 3.7: same hardware, the two numbers together).
 const inProcessLine = HTTP && existsSync(OUT) ? readFileSync(OUT, 'utf8').split('\n').filter((l) => /^`\d{4}-.* writers, \d+ connections, /.test(l)).at(-1) : undefined;
@@ -227,9 +238,9 @@ const report = [
   '',
   `\`${line}\``,
   '',
-  `- Command: \`npm run load:bids -- ${process.argv.slice(2).join(' ')}\` → writers ${WRITERS}, lots ${LOTS}, seconds ${SECONDS}, ${HTTP ? `against \`npm run e2e:server\` (production build, same .env.test database)` : `connections ${CONNECTIONS}`}; soft-close window ${WINDOW_S} s, cap ${CAP_S} s, start ${START_CENTS} cents, no reserve.`,
+  `- Command: \`npm run load:bids -- ${process.argv.slice(2).join(' ')}\` → writers ${WRITERS}, lots ${LOTS}, seconds ${SECONDS}, ${HTTP ? `against ${URLS.length} production server process(es) (${URLS.join(', ')}), same .env.test database` : `connections ${CONNECTIONS}`}; soft-close window ${WINDOW_S} s, cap ${CAP_S} s, start ${START_CENTS} cents, no reserve.`,
   `- Ledger rows: ${rows} (N attempts, N rows; timeouts resent with the same key: ${timeouts}; writer failures: ${failed.length}).`,
-  ...(HTTP ? [] : [`- Lock strategy: ${LOCK}; judgements ${variant.stats.judgements} for ${rows} ledger rows (${judgementsPerRow} per row); ${LOCK === 'serializable' ? '40001 retries' : LOCK === 'version' ? 'version conflicts (guarded UPDATE matched 0 rows)' : 'conflicts'} ${variant.stats.conflicts}${variant.stats.seqCollisions === undefined ? '' : `; seq-index 23505 retries ${variant.stats.seqCollisions}`}.`]),
+  ...(HTTP ? [] : [`- Lock strategy: ${LOCK}; clock: ${CLOCK === 'db' ? 'Postgres clock_timestamp() under the lock' : 'now() from @/core/clock under the lock'}; judgements ${variant.stats.judgements} for ${rows} ledger rows (${judgementsPerRow} per row); ${LOCK === 'serializable' ? '40001 retries' : LOCK === 'version' ? 'version conflicts (guarded UPDATE matched 0 rows)' : 'conflicts'} ${variant.stats.conflicts}${variant.stats.seqCollisions === undefined ? '' : `; seq-index 23505 retries ${variant.stats.seqCollisions}`}.`]),
   `- Outcomes: ${[...outcomes.entries()].sort().map(([k, v]) => `${k} ${v}`).join(', ')}.`,
   `- Bids per second: ${(rows / elapsedS).toFixed(1)} over ${elapsedS.toFixed(2)} s from the first attempt's start to the last attempt's end.`,
   ...(HTTP
