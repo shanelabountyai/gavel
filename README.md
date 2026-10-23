@@ -10,7 +10,7 @@ Learning project, synthetic data only. Every auction house, estate, lot, bidder 
 
 ## Status
 
-**Kickoff kit only (2026-10-19).** No TypeScript exists yet and the saas-foundation clone has not been made. What is here: the PRD, decisions, domain brief, phase-1 tasks, portfolio overlap, the rules file, the Python oracle in `tools/`, and the frozen fixtures. Start with `KICKOFF.md`; session state is in `NEXT.md`.
+**Phases 1–4 complete (2026-10-23); in closure.** Engine, ledger, row lock, contention proof and load script (Phase 1); invoices, corrections and the dispute view (Phase 2); catalog, bidder lot page with polling, bid form, outbox notices and the HTTP bid route (Phase 3); lock-strategy and clock measurements (Phase 4, table below). Demo script: `docs/DEMO.md`. Exec brief: [Gavel in Brief](https://claude.ai/artifact/Qgu3afTJ2dAR8Y2EsM69Dt) (private until shared; screenshots from `e2e/brief-shots.spec.ts`). Session state is in `NEXT.md`.
 
 ## Layout
 
