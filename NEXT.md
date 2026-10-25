@@ -1,5 +1,15 @@
 # NEXT
 
+## ▶ Next item: deploy to gavel.labintelligence.co behind a shared password (D-64). Model: Sonnet 5.5 (Shane's pick, 2026-10-25).
+
+Copy callboard's and boxloop's setup (read their `docs/decisions.md` deploy entries and `vercel.json` first): Vercel project `gavel`, Neon `gavel` with a pool cap and autosuspend, `DEMO_MODE=1`, shared password, Cloudflare A record (DNS-only). The D-64 conditions, in order:
+1. Demo seed with lots scheduled relative to the deploy time, so some lot is always open. It must refuse to run outside DEMO_MODE.
+2. Settlement that doesn't wait for the daily cron (`0 6 * * *`): either an owner "settle closed lots" action that calls the existing `closeLots`, or a seed that includes already-settled lots. No new money logic.
+3. No throughput number quoted for the deployed site.
+4. Update every "not deployed" line in the same change: README, the brief (https://claude.ai/artifact/Qgu3afTJ2dAR8Y2EsM69Dt), CLAUDE.md, the gavel row in `~/.claude/CLAUDE.md`, D-63 b. Fill the build-log card's Live link.
+5. Shane pastes the secrets (DATABASE_URL, password, AUTH secret). Prepare the env lines, never print the values.
+6. Cost review addendum: record the Neon compute baseline and the build count after the first deploy.
+
 ## ▶ Project closed. All five closure deliverables exist (code, DEMO.md, brief, posts 127/128, cost review D-63). Nothing for the next session to build. Build-log card #17 set to shipped 2026-10-25 (https://claude.ai/artifact/28KeGV3xfBwcBuoMEQjFMj, v39: brief, DEMO.md, 7 chips). Still open for Shane: sharing the brief.
 
 **2026-10-24 (Session 29, Mac): closure 4 done: cost review (D-63).** Measured: GitHub Actions 29 runs, 78.3 wall min, 0 ms billable (public repo), no schedule, 0 artifacts: keep. No Vercel project (`vercel project inspect gavel`: none); `vercel.json` cron and ignoreCommand inert, kept for a future deploy. No Neon project in either org; both env files point at localhost. Resend, Stripe and LLM keys unset. Baseline $0/month.
