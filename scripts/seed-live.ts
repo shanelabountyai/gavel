@@ -1,7 +1,10 @@
 // seed:live (D-64 b): a "Live demo sale" in Acme Studio whose lots close over the next 30 days, so the deployed demo
 // always has a lot open to bid on. Writes what the create-auction and create-lot forms write (Auction, Lot, LotState
-// from openState); no bids. Run after seed:demo; run again to add a fresh sale. Synthetic data only.
+// from openState); no bids. Also four demo bidder accounts, registered with paddles, so visitors on /demo can sign in
+// as different people and outbid each other (the one seeded member would only be raising its own maximum).
+// Run after seed:demo; run again to add a fresh sale (the bidders are upserted). Synthetic data only.
 // ponytail: lots run out after 30 days; rerun the script then, or let the cron add a sale if the demo outlives that.
+import { registerBidder } from '../src/auction/bidder';
 import { loadRules } from '../src/auction/load-rules';
 import { openState } from '../src/auction/engine/engine';
 import { now } from '../src/core/clock';
@@ -20,6 +23,13 @@ const LOTS: [title: string, startCents: number, reserveCents: number | null, clo
 ];
 
 const org = await db.org.findUniqueOrThrow({ where: { slug: 'acme' } });
+for (const who of ['ada', 'ben', 'cal', 'dee']) {
+  const email = `bidder-${who}@acme.demo.test`;
+  const name = `Bidder ${who[0]!.toUpperCase()}${who.slice(1)} (Acme Studio)`;
+  const user = await db.user.upsert({ where: { email }, create: { email, name, isDemo: true }, update: { name, isDemo: true } });
+  await db.membership.upsert({ where: { orgId_userId: { orgId: org.id, userId: user.id } }, create: { orgId: org.id, userId: user.id, role: 'member' }, update: {} });
+  await registerBidder(org.id, user.id, 'member');
+}
 const d = loadRules().rules.defaults;
 const t = now().getTime();
 const opensAt = new Date(t - 3_600_000);

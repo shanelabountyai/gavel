@@ -38,6 +38,7 @@ When `curl -s localhost:6100/api/health` prints `{"ok":true}`, open <http://loca
 |---|---|---|
 | `owner@acme.demo.test` | owner of Acme Studio and of "Gavel fixtures (synthetic)" | staff screens, invoices, history |
 | `member@acme.demo.test` | member of Acme Studio | bidding |
+| `bidder-ada@` … `bidder-dee@acme.demo.test` | members of Acme Studio, paddles 1–4 (`npm run seed:live`) | bidding against each other: two windows, two bidders, one lot |
 
 ## 1. The oracle (2 min)
 
