@@ -108,7 +108,7 @@ npm run load:bids                                       # 200 writers, 4 lots, 1
 ## Concede before you're asked
 
 - **Synthetic everything.** Names are from fixed lists, emails are `example.com`; nobody paid anything and there is no payment path, only a mock invoice.
-- **Not deployed.** Local only, one Mac.
+- **The live site is a click-through, not the measurement rig.** <https://gavel.labintelligence.co> (shared password, D-64) runs on Vercel and Neon; no throughput number was taken there. Visitors share the demo accounts, so one visitor's bids are another's ledger. Closed lots settle once a day on the cron, not at the moment they close.
 - **Numbers are one machine's.** Every throughput figure is Apple M4, 10 cores, 24 GB, Postgres 17.11 local. They are not a capacity claim, and a loaded machine produces wrong ones (a 64 load average gave 1.6 bids/s in the run that wrote this script).
 - **Rules are one house's.** Increments, soft close and premium are data in `rules/auction.v1.json`, not an industry standard and not a statement about any state's auction law.
 - **HTTP is slower than in process.** The same bids over the HTTP route measured 1016 bids/s against about 4300 to 5200 in process, because the server's 10-connection Prisma pool is the queue (D-54, D-57).

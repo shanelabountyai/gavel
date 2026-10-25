@@ -12,6 +12,8 @@ Learning project, synthetic data only. Every auction house, estate, lot, bidder 
 
 **Phases 1–4 complete (2026-10-23); in closure.** Engine, ledger, row lock, contention proof and load script (Phase 1); invoices, corrections and the dispute view (Phase 2); catalog, bidder lot page with polling, bid form, outbox notices and the HTTP bid route (Phase 3); lock-strategy and clock measurements (Phase 4, table below). Demo script: `docs/DEMO.md`. Exec brief: [Gavel in Brief](https://claude.ai/artifact/Qgu3afTJ2dAR8Y2EsM69Dt) (private until shared; screenshots from `e2e/brief-shots.spec.ts`). Session state is in `NEXT.md`.
 
+**Live demo (D-64):** <https://gavel.labintelligence.co>, behind a shared password (ask the owner). It runs on Vercel with a Neon Postgres 17 database holding the 36 fixture lots, the demo accounts and a *Live demo sale* whose lots close over 30 days (`npm run seed:live`). Closed lots settle on the daily cron. No throughput figure in this repo was measured there: every number names the Mac it ran on.
+
 ## Layout
 
 | Path | What |
