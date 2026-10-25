@@ -1,6 +1,8 @@
 # NEXT
 
-## ▶ Next session: closure deliverable 4 of 4: the cost review. List everything Gavel leaves running that can bill (GitHub Actions on a public repo, any Neon project, Vercel: none expected; no cron), record keep / slow down / turn off with restore notes in `docs/decisions.md`, measure rather than guess. Then closure is complete. Still open for Shane: build-log card #17, the `CLONES.md` row (says 6000, should say 6100), and sharing the brief.
+## ▶ Project closed. All five closure deliverables exist (code, DEMO.md, brief, posts 127/128, cost review D-63). Nothing for the next session to build. Still open for Shane: build-log card #17, the `CLONES.md` row (says 6000, should say 6100), and sharing the brief.
+
+**2026-10-24 (Session 29, Mac): closure 4 done: cost review (D-63).** Measured: GitHub Actions 29 runs, 78.3 wall min, 0 ms billable (public repo), no schedule, 0 artifacts: keep. No Vercel project (`vercel project inspect gavel`: none); `vercel.json` cron and ignoreCommand inert, kept for a future deploy. No Neon project in either org; both env files point at localhost. Resend, Stripe and LLM keys unset. Baseline $0/month.
 
 **2026-10-23 (Session 28, Mac): closure 3 done: LinkedIn posts.** Ledger (https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i) posts **127** (Impact: "The rule that stops a fat-finger bid also stops the one bidder who knows what the painting is worth", from brief call 2 / O-7) and **128** (MarTech: "It scales. Scales on what?", from brief Evidence / D-60), both sourced to the brief, tech null; queued after #126 (pillars alternate). Ledger page republished with `gavel` in its project list (v72). Harvest choices (Shane): A and B drafted; dropped C (the 196-of-200 serializable run, D-58 c: third "the number lied" post beside #82) and D (refused bid kept: same lesson as #45); D-55 and D-41 not proposed (the "tests green but broken" theme is already in 10+ ledger posts).
 
