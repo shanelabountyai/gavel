@@ -1,6 +1,6 @@
 # NEXT
 
-## ▶ Project closed. All five closure deliverables exist (code, DEMO.md, brief, posts 127/128, cost review D-63). Nothing for the next session to build. Still open for Shane: build-log card #17, committing the `CLONES.md` change in `~/Projects/saas foundation` (gavel row now says 6100, fixed 2026-10-25 in the working tree; the same uncommitted diff also adds the footnote row), and sharing the brief.
+## ▶ Project closed. All five closure deliverables exist (code, DEMO.md, brief, posts 127/128, cost review D-63). Nothing for the next session to build. Still open for Shane: build-log card #17, and sharing the brief.
 
 **2026-10-24 (Session 29, Mac): closure 4 done: cost review (D-63).** Measured: GitHub Actions 29 runs, 78.3 wall min, 0 ms billable (public repo), no schedule, 0 artifacts: keep. No Vercel project (`vercel project inspect gavel`: none); `vercel.json` cron and ignoreCommand inert, kept for a future deploy. No Neon project in either org; both env files point at localhost. Resend, Stripe and LLM keys unset. Baseline $0/month.
 
