@@ -1,6 +1,6 @@
 # NEXT
 
-## ▶ Project closed. All five closure deliverables exist (code, DEMO.md, brief, posts 127/128, cost review D-63). Nothing for the next session to build. Still open for Shane: build-log card #17, and sharing the brief.
+## ▶ Project closed. All five closure deliverables exist (code, DEMO.md, brief, posts 127/128, cost review D-63). Nothing for the next session to build. Build-log card #17 set to shipped 2026-10-25 (https://claude.ai/artifact/28KeGV3xfBwcBuoMEQjFMj, v39: brief, DEMO.md, 7 chips). Still open for Shane: sharing the brief.
 
 **2026-10-24 (Session 29, Mac): closure 4 done: cost review (D-63).** Measured: GitHub Actions 29 runs, 78.3 wall min, 0 ms billable (public repo), no schedule, 0 artifacts: keep. No Vercel project (`vercel project inspect gavel`: none); `vercel.json` cron and ignoreCommand inert, kept for a future deploy. No Neon project in either org; both env files point at localhost. Resend, Stripe and LLM keys unset. Baseline $0/month.
 
