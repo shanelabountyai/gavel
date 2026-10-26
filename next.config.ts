@@ -11,6 +11,9 @@ const securityHeaders = [
 const config: NextConfig = {
   // The generated Prisma client and the pg driver stay on the server.
   serverExternalPackages: ['@prisma/client', 'pg'],
+  // D-64: load-rules.ts reads rules/auction.v1.json at runtime, which the tracer cannot see; without this the
+  // deployed functions have no rules file and every bid, lot and settlement throws ENOENT.
+  outputFileTracingIncludes: { '/**': ['rules/auction.v1.json'] },
   poweredByHeader: false,
   headers: async () => [
     { source: '/:path*', headers: securityHeaders },
