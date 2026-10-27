@@ -9,6 +9,6 @@ import { orgAction } from '@/core/authz/action';
 export const registerBidderAction = orgAction(null, z.object({}), async (ctx) => {
   const b = await registerBidder(ctx.orgId, ctx.userId, ctx.role);
   await audit(ctx, 'bidder.registered', { targetType: 'bidder', targetId: b.id });
-  revalidatePath(`/o/${ctx.slug}/catalog`);
+  revalidatePath(`/o/${ctx.slug}`, 'layout'); // the catalog and the lot page both swap the button for the paddle
   return { paddle: b.paddle };
 });

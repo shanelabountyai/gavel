@@ -25,7 +25,7 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
         <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col" className="num">Start</th><th scope="col" className="num">Reserve</th><th scope="col">Closes (UTC)</th></tr></thead>
         <tbody>
           {auction.lots.map((l) => (
-            <tr key={l.id}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}/history`}>{l.title}</Link></td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td>{l.scheduledEnd.toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
+            <tr key={l.id}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link> · <Link href={`/o/${ctx.slug}/lots/${l.id}/history`} className="muted">History</Link></td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td>{l.scheduledEnd.toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
           ))}
         </tbody>
       </table>

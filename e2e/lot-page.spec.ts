@@ -26,7 +26,7 @@ test('a rival bid and a soft-close extension reach the open lot page by polling'
   await page.goto('/demo');
   await page.getByRole('button', { name: 'member@acme.demo.test' }).click();
   await page.goto(`/o/acme/lots/${lot.id}`);
-  await expect(page.getByTestId('price')).toHaveText('No bids');
+  await expect(page.getByTestId('price')).toHaveText('$100.00'); // no accepted bid: the opening bid, never the state's 0 (AX-01)
   const countdown = async () => Number(await page.getByTestId('countdown').getAttribute('data-seconds'));
   expect(await countdown()).toBeLessThanOrEqual(40);
 

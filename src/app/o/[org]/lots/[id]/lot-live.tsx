@@ -5,11 +5,13 @@ import type { LotView } from '@/auction/lot-view';
 import { BidForm } from './bid-form';
 
 type View = Omit<LotView, 'etag'>;
+/** Who is looking (UX-03, UX-04): a bidder gets the form, a member without a paddle the register button, staff neither. */
+export type Viewer = { kind: 'bidder'; paddle: number } | { kind: 'register' } | { kind: 'staff'; historyHref: string | null };
 const NEAR_CLOSE_MS = 60_000; // D-47: poll every 1 s near the close, 2 s otherwise
 
 // Polls /api/lots/[id]/state with the ETag. The countdown is closesAt minus the server's clock: the offset between the
 // two clocks is measured from X-Server-Time on every response, so the client's own clock only ticks, it never decides.
-export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs }: { slug: string; lotId: string; initial: View; etag: string; serverNowMs: number }) {
+export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, viewer, children }: { slug: string; lotId: string; initial: View; etag: string; serverNowMs: number; viewer: Viewer; children?: React.ReactNode }) {
   const [view, setView] = useState(initial);
   const offset = useRef(0); // server clock minus client clock, ms; measured on every response
   const [serverNow, setServerNow] = useState(serverNowMs); // best estimate of the server's clock, advanced by the ticker
@@ -48,8 +50,11 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs }: 
     return () => clearInterval(t);
   }, [serverNowMs]);
 
-  const left = Math.max(0, Math.ceil((Date.parse(view.closesAt) - serverNow) / 1000));
   const closed = view.status === 'CLOSED';
+  const scheduled = view.status === 'SCHEDULED';
+  // A scheduled lot counts to its open, not its close (UX-02).
+  const left = Math.max(0, Math.ceil((Date.parse(scheduled ? view.opensAt : view.closesAt) - serverNow) / 1000));
+  const noBids = view.bidCount === 0;
   // A later closesAt than the last one seen means a late bid extended the lot; say so for a few seconds.
   const lastClose = useRef(Date.parse(initial.closesAt));
   const [extended, setExtended] = useState<{ ms: number; at: number } | null>(null);
@@ -64,33 +69,48 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs }: 
     return () => clearTimeout(t);
   }, [extended]);
 
+  const utc = (iso: string) => `${iso.slice(0, 19).replace('T', ' ')} UTC`;
   return (
-    <section className="board" data-phase={!closed && left < 60 ? 'final' : undefined} aria-label="Live lot">
-      {stale && <p role="alert" className="board-closed">Connection problem; retrying.</p>}
-      {view.you && (
+    <section className="board" data-phase={!closed && !scheduled && left < 60 ? 'final' : undefined} data-stale={stale || undefined} aria-label="Live lot">
+      {stale && <p role="alert" className="callout" data-tone="warn"><span className="badge" data-tone="warn">Connection problem</span> Retrying; the numbers below may be out of date.</p>}
+      {closed && view.result && (
+        <p className="board-you" data-result={view.result} data-testid="result" aria-live="polite">
+          {view.result === 'WON' ? `You won this lot at ${formatCents(view.priceCents)}.` : view.result === 'NOT_WON' ? 'You did not win. This lot sold to another bidder.' : view.reserveMet ? 'You did not win. This lot closed unsold.' : 'You did not win: the reserve was not met.'}
+          {!view.final && <span className="board-you-note">Final once the sale is settled.</span>}
+        </p>
+      )}
+      {!closed && view.you && (
         <p className="board-you" data-you={view.you} data-testid="you" aria-live="polite">
           {view.you === 'LEADING' ? 'You are the high bidder.' : 'You have been outbid.'}
         </p>
       )}
       <div className="board-main">
         <p className="board-price">
-          <span className="board-label">{closed ? 'Final price' : 'Current price'}</span>
-          <b data-testid="price" aria-live="polite">{view.bidCount === 0 ? 'No bids' : formatCents(view.priceCents)}</b>
+          <span className="board-label">{noBids ? (closed ? 'No bids' : 'Opening bid') : closed ? 'Final price' : 'Current price'}</span>
+          {/* AX-01, DS R-17: with no accepted bid the big number is the opening bid, never the state's 0 */}
+          <b data-testid="price" aria-live="polite">{noBids ? (closed ? '—' : formatCents(view.minNextCents)) : formatCents(view.priceCents)}</b>
         </p>
         <p className="board-clock">
-          <span className="board-label">{closed ? 'Status' : 'Time left'}</span>
+          <span className="board-label">{closed ? 'Status' : scheduled ? 'Opens in' : left < 60 ? 'Final minute' : 'Time left'}</span>
           {closed ? <b data-testid="status">Closed</b> : <b data-testid="countdown" data-seconds={left}>{formatLeft(left)}</b>}
           {extended && <span key={extended.at} className="board-extended">Extended by a late bid, +{formatLeft(Math.round(extended.ms / 1000))}</span>}
         </p>
       </div>
+      {!closed && viewer.kind === 'bidder' && <BidForm slug={slug} lotId={lotId} view={view} paddle={viewer.paddle} disabledReason={scheduled ? `Bidding opens at ${utc(view.opensAt)}.` : undefined} />}
+      {!closed && viewer.kind === 'register' && <div className="board-panel">{children}</div>}
+      {viewer.kind === 'staff' && (
+        <p className="board-panel" data-testid="staff-view">
+          Staff view: staff accounts do not bid.{viewer.historyHref && <> <a href={viewer.historyHref}>Bid history</a></>}
+        </p>
+      )}
+      {closed && viewer.kind !== 'staff' && <p className="board-panel">Bidding has closed on this lot.</p>}
       <dl className="board-facts">
-        {!closed && <div><dt>Status</dt><dd data-testid="status">{view.status === 'OPEN' ? 'Open' : 'Not open yet'}</dd></div>}
-        {!closed && <div><dt>Minimum next bid</dt><dd data-testid="min-next">{formatCents(view.minNextCents)}</dd></div>}
+        {!closed && <div><dt>Status</dt><dd data-testid="status">{scheduled ? 'Scheduled' : 'Open'}</dd></div>}
         <div><dt>Bids</dt><dd data-testid="bid-count">{view.bidCount}</dd></div>
         <div><dt>Reserve</dt><dd>{view.reserveMet ? 'Met' : 'Not met'}</dd></div>
-        <div><dt>Closes</dt><dd><time dateTime={view.closesAt} data-testid="closes-at">{view.closesAt.slice(0, 19).replace('T', ' ')} UTC</time></dd></div>
+        {scheduled && <div><dt>Opens</dt><dd><time dateTime={view.opensAt}>{utc(view.opensAt)}</time></dd></div>}
+        <div><dt>{closed ? 'Closed' : 'Closes'}</dt><dd><time dateTime={view.closesAt} data-testid="closes-at">{utc(view.closesAt)}</time></dd></div>
       </dl>
-      {closed ? <p className="board-closed">Bidding has closed on this lot.</p> : <BidForm slug={slug} lotId={lotId} view={view} />}
     </section>
   );
 }

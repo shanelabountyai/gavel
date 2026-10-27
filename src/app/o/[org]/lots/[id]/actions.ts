@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { placeBid } from '@/auction/place-bid';
 import { BidError } from '@/auction/errors';
+import { bidErrorText } from '@/auction/outcome-labels';
 import { orgAction, ref } from '@/core/authz/action';
 import { db } from '@/core/db';
 
@@ -14,12 +15,12 @@ export const placeBidAction = orgAction(
   async (ctx, input) => {
     if (!(await db.lot.findFirst({ where: { id: input.lotId, orgId: ctx.orgId }, select: { id: true } }))) notFound(); // INV-02
     const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true } });
-    if (!bidder) return { error: 'Register as a bidder first.', retryable: false };
+    if (!bidder) return { error: bidErrorText('BIDDER_NOT_ACTIVE'), code: 'BIDDER_NOT_ACTIVE', retryable: false };
     try {
       const r = await placeBid({ orgId: ctx.orgId, lotId: input.lotId, bidderId: bidder.id, maxCents: input.maxCents, idempotencyKey: input.idempotencyKey });
       return { ok: true as const, outcome: r.outcome, accepted: r.accepted, priceCents: r.priceCents, minNextCents: r.minNextCents, youLead: r.youLead };
     } catch (e) {
-      if (e instanceof BidError) return { error: e.message, retryable: e.code === 'BID_TIMED_OUT' };
+      if (e instanceof BidError) return { error: bidErrorText(e.code), code: e.code, retryable: e.code === 'BID_TIMED_OUT' }; // UX-05: never e.message
       throw e;
     }
   },

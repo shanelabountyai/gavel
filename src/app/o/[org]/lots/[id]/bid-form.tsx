@@ -10,33 +10,41 @@ const DOLLARS = /^(\d{1,7})(?:\.(\d{1,2}))?$/;
 
 // One idempotency key per submission: kept across a double click and across a BID_TIMED_OUT retry, replaced once the
 // server has answered for good. Dollars are parsed as text into integer cents, never through a float.
-export function BidForm({ slug, lotId, view }: { slug: string; lotId: string; view: LotView | Omit<LotView, 'etag'> }) {
+// DS-05: each result has a badge word and a tone, so leading, outbid, refused and a connection problem tell apart in greyscale.
+type Tone = 'lead' | 'outbid' | 'refused' | 'warn';
+type Msg = { badge: string; tone: Tone; text: string; retry: boolean; code?: string };
+const BADGE: Record<Tone, string> = { lead: 'Leading', outbid: 'Outbid', refused: 'Not accepted', warn: 'Try again' };
+const say = (tone: Tone, text: string, retry = false, code?: string): Msg => ({ badge: BADGE[tone], tone, text, retry, code });
+
+export function BidForm({ slug, lotId, view, paddle, disabledReason }: { slug: string; lotId: string; view: LotView | Omit<LotView, 'etag'>; paddle: number; disabledReason?: string }) {
   const key = useRef(crypto.randomUUID());
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<number | null>(null);
-  const [msg, setMsg] = useState<{ text: string; retry: boolean; lead?: boolean } | null>(null);
+  const [msg, setMsg] = useState<Msg | null>(null);
 
   const send = async (maxCents: number) => {
-    if (busy) return;
+    if (busy || disabledReason) return;
     setBusy(true);
     setConfirm(null);
     setMsg(null);
     try {
       const r = (await placeBidAction(slug, { lotId, maxCents, idempotencyKey: key.current })) as
-        | { error: string; retryable?: boolean }
+        | { error: string; code?: string; retryable?: boolean }
         | { ok: true; outcome: string; accepted: boolean; priceCents: number; minNextCents: number; youLead: boolean };
       if (!('ok' in r)) {
         const retry = !!r.retryable;
-        setMsg({ text: r.error, retry });
+        setMsg(say(retry ? 'warn' : 'refused', r.error, retry, r.code));
         if (!retry) key.current = crypto.randomUUID();
       } else {
-        setMsg({ text: r.accepted ? (r.youLead ? `Bid accepted. You lead at ${formatCents(r.priceCents)}.` : `Bid accepted, but you are not leading (${formatCents(r.priceCents)}).`) : `Bid not accepted: ${outcomeLabel(r.outcome).toLowerCase()}. The minimum next bid is ${formatCents(r.minNextCents)}.`, retry: false, lead: r.accepted && r.youLead });
+        setMsg(!r.accepted ? say('refused', `${outcomeLabel(r.outcome)}. The minimum next bid is ${formatCents(r.minNextCents)}.`, false, r.outcome)
+          : r.youLead ? say('lead', `Bid accepted. You lead at ${formatCents(r.priceCents)}.`, false, r.outcome)
+          : say('outbid', `Bid accepted, but another bidder's maximum is higher (${formatCents(r.priceCents)}).`, false, r.outcome));
         key.current = crypto.randomUUID();
         setText('');
       }
     } catch {
-      setMsg({ text: 'Connection problem. Press Bid again to resend the same bid.', retry: true });
+      setMsg(say('warn', 'Connection problem. Press Bid again to resend the same bid.', true));
     } finally {
       setBusy(false);
     }
@@ -45,18 +53,21 @@ export function BidForm({ slug, lotId, view }: { slug: string; lotId: string; vi
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const m = DOLLARS.exec(text.trim());
-    if (!m) return setMsg({ text: 'Enter a whole-cent amount such as 250 or 250.50.', retry: false });
+    if (!m) return setMsg(say('refused', 'Enter a whole-cent amount such as 250 or 250.50.', false, 'INVALID_AMOUNT'));
     const maxCents = Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0'));
-    if (maxCents <= 0) return setMsg({ text: 'The amount must be above zero.', retry: false });
+    if (maxCents <= 0) return setMsg(say('refused', 'The amount must be above zero.', false, 'INVALID_AMOUNT'));
     const ref = view.bidCount === 0 ? view.minNextCents : view.priceCents;
     if (maxCents > FAT_FINGER * ref) return setConfirm(maxCents);
     void send(maxCents);
   };
 
+  const invalid = msg?.code === 'INVALID_AMOUNT';
   return (
     <form onSubmit={submit} aria-label="Place a bid">
-      <label>Your maximum ($) <input name="max" inputMode="decimal" autoComplete="off" value={text} onChange={(e) => { setText(e.target.value); setConfirm(null); key.current = crypto.randomUUID(); }} /></label>
-      <button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Bid'}</button>
+      <p className="form-hint">Minimum next bid <b data-testid="min-next">{formatCents(view.minNextCents)}</b> · paddle {paddle}</p>
+      <label>Your maximum ($) <input name="max" inputMode="decimal" autoComplete="off" value={text} aria-invalid={invalid || undefined} disabled={!!disabledReason} onChange={(e) => { setText(e.target.value); setConfirm(null); key.current = crypto.randomUUID(); }} /></label>
+      <button type="submit" disabled={busy || !!disabledReason}>{busy ? 'Sending…' : 'Bid'}</button>
+      {disabledReason && <p className="form-hint" data-testid="bid-disabled">{disabledReason}</p>}
       {confirm !== null && (
         <p role="alertdialog" data-testid="confirm">
           {formatCents(confirm)} is more than {FAT_FINGER}× the current price. Bid it?{' '}
@@ -64,7 +75,12 @@ export function BidForm({ slug, lotId, view }: { slug: string; lotId: string; vi
           <button type="button" onClick={() => setConfirm(null)}>Cancel</button>
         </p>
       )}
-      {msg && !(msg.lead && view.you === 'OUTBID') && <p role="status" data-testid="bid-msg">{msg.text}</p>}
+      {/* A lead the poll has since overturned is stale; the board's outbid banner says what is true now. */}
+      {msg && !(msg.tone === 'lead' && view.you === 'OUTBID') && (
+        <p role="status" data-testid="bid-msg" className="callout" data-tone={msg.tone} data-code={msg.code}>
+          <span className="badge" data-tone={msg.tone}>{msg.badge}</span> {msg.text}
+        </p>
+      )}
     </form>
   );
 }
