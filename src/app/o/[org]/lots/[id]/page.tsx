@@ -14,11 +14,15 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   const { id } = await params;
   const v = await lotView(ctx.userId, id);
   const { etag, ...view } = v ?? { etag: '' };
-  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true } }));
+  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, consignor: true, auction: { select: { name: true } } } }));
   if (!v || !lot) notFound();
   return (
     <main>
-      <h1>Lot {lot.number}: {lot.title}</h1>
+      <header className="lot-head">
+        <p className="lot-number">Lot {lot.number} · {lot.auction.name}</p>
+        <h1>{lot.title}</h1>
+        {lot.consignor && <p className="muted">Consigned by {lot.consignor}</p>}
+      </header>
       <LotLive slug={ctx.slug} lotId={id} initial={view as Omit<typeof v, 'etag'>} etag={etag} serverNowMs={now().getTime()} />
     </main>
   );

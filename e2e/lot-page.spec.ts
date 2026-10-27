@@ -27,7 +27,7 @@ test('a rival bid and a soft-close extension reach the open lot page by polling'
   await page.getByRole('button', { name: 'member@acme.demo.test' }).click();
   await page.goto(`/o/acme/lots/${lot.id}`);
   await expect(page.getByTestId('price')).toHaveText('No bids');
-  const countdown = async () => Number(await page.getByTestId('countdown').textContent());
+  const countdown = async () => Number(await page.getByTestId('countdown').getAttribute('data-seconds'));
   expect(await countdown()).toBeLessThanOrEqual(40);
 
   await bid(mine, 20000);

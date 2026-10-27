@@ -1,0 +1,142 @@
+/* Gavel's whole design system (docs/design-brief.md). Plain elements are styled directly so every page, the
+   template's included, reads the same; the few classes below are for the lot page's price board and for badges. */
+:root {
+  --paper: #f4f5f2;
+  --surface: #ffffff;
+  --ink: #1c2320;
+  --muted: #5e6762;
+  --rule: #d5d9d4;
+  --baize: #1f5a44; /* actions, "you lead" */
+  --baize-soft: #e3eee8;
+  --oxblood: #8e2a2a; /* outbid, the final minute, refusals */
+  --oxblood-soft: #f6e6e4;
+  --focus: #2f6fd6;
+  --radius: 6px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #121815;
+    --surface: #1a221e;
+    --ink: #e6ece8;
+    --muted: #9aa7a0;
+    --rule: #2e3a34;
+    --baize: #6cc59d;
+    --baize-soft: #1b3229;
+    --oxblood: #ec8b84;
+    --oxblood-soft: #3a2220;
+    --focus: #7eaaf5;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-franklin), system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Shell: the org nav, then one content column. */
+nav {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem;
+  padding: 0.85rem max(1rem, calc((100vw - 72rem) / 2));
+  background: var(--surface); border-bottom: 1px solid var(--rule);
+  font-size: 0.9375rem;
+}
+nav strong { font-weight: 800; font-size: 1.0625rem; margin-right: 0.5rem; }
+main { max-width: 72rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+
+h1 { font-size: clamp(1.75rem, 4vw, 2.5rem); line-height: 1.1; font-weight: 800; letter-spacing: -0.015em; margin: 0 0 0.75rem; max-width: 30ch; }
+h2 { font-size: 1.25rem; font-weight: 700; margin: 2.5rem 0 0.75rem; }
+p { max-width: 70ch; }
+a { color: var(--baize); text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+.muted { color: var(--muted); }
+
+/* Tables: the catalog, invoices and the ledger. Money and counts align right on tabular figures. */
+table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
+th, td { padding: 0.6rem 0.85rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rule); }
+thead th { font-size: 0.8125rem; font-weight: 600; color: var(--muted); background: var(--paper); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+tfoot th, tfoot td { font-weight: 700; border-top: 2px solid var(--ink); border-bottom: 0; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+.table-scroll { overflow-x: auto; border-radius: var(--radius); }
+.table-scroll table { min-width: 56rem; }
+.table-scroll td { white-space: nowrap; }
+
+/* Forms and buttons. */
+form { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: end; }
+label { display: grid; gap: 0.25rem; font-size: 0.875rem; font-weight: 600; }
+input, select, textarea {
+  font: inherit; font-weight: 400; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--muted); border-radius: var(--radius); padding: 0.55rem 0.7rem; min-width: 12rem;
+}
+button {
+  font: inherit; font-weight: 700; cursor: pointer;
+  padding: 0.6rem 1.15rem; border-radius: var(--radius);
+  border: 1px solid var(--baize); background: var(--baize); color: var(--paper);
+}
+button:hover { filter: brightness(1.08); }
+button:disabled { opacity: 0.6; cursor: progress; }
+button[type='button'] { background: transparent; color: var(--baize); }
+[role='status'], [role='alert'] { margin: 0.75rem 0 0; }
+[role='alert'] { color: var(--oxblood); font-weight: 600; }
+ul { padding-left: 1.25rem; }
+li { margin: 0.35rem 0; }
+
+/* Badges: an outcome is always a word; colour only reinforces it. */
+.badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; white-space: nowrap; border: 1px solid var(--rule); color: var(--muted); }
+.badge[data-tone='good'] { background: var(--baize-soft); border-color: transparent; color: var(--baize); }
+.badge[data-tone='bad'] { background: var(--oxblood-soft); border-color: transparent; color: var(--oxblood); }
+tr.extended td { background: var(--baize-soft); }
+tr.extended td:first-child { box-shadow: inset 4px 0 0 var(--baize); }
+
+/* The lot page's price board: the one loud thing in the app. */
+.lot-head { display: grid; gap: 0.25rem; margin-bottom: 1.5rem; }
+.lot-head h1, .lot-head p { margin: 0; }
+.lot-head .lot-number { font-size: 1rem; font-weight: 700; color: var(--muted); margin: 0; }
+.board { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; max-width: 46rem; }
+.board-you { margin: 0; padding: 0.85rem 1.5rem; font-size: 1.125rem; font-weight: 800; }
+.board-you[data-you='LEADING'] { background: var(--baize); color: var(--paper); }
+.board-you[data-you='OUTBID'] { background: var(--oxblood); color: var(--paper); }
+.board-main { display: grid; grid-template-columns: 1fr auto; gap: 1rem 2rem; padding: 1.5rem; align-items: end; }
+.board-price { margin: 0; }
+.board-price b { display: block; font-size: clamp(3rem, 12vw, 5.5rem); line-height: 0.95; font-weight: 800; letter-spacing: -0.03em; }
+.board-clock { margin: 0; text-align: right; }
+.board-clock b { display: block; font-size: clamp(2rem, 7vw, 3rem); line-height: 1; font-weight: 800; }
+.board[data-phase='final'] .board-clock b { color: var(--oxblood); }
+.board-extended { display: inline-block; margin-top: 0.35rem; font-weight: 700; color: var(--baize); animation: extended 1.6s ease-out; }
+@keyframes extended { from { background: var(--baize-soft); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .board-extended { animation: none; } }
+.board-label { display: block; font-size: 0.875rem; font-weight: 600; color: var(--muted); }
+.board-facts { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; margin: 0; padding: 1rem 1.5rem; border-top: 1px solid var(--rule); font-size: 0.9375rem; }
+.board-facts div { display: grid; }
+.board-facts dt { color: var(--muted); font-size: 0.8125rem; }
+.board-facts dd { margin: 0; font-weight: 700; }
+.board form { padding: 1.25rem 1.5rem 1.5rem; border-top: 1px solid var(--rule); background: var(--paper); }
+.board form input { font-size: 1.25rem; width: 11rem; min-width: 0; }
+.board form button[type='submit'] { font-size: 1.125rem; padding: 0.65rem 2rem; }
+.board form [role='status'] { flex-basis: 100%; font-weight: 600; }
+.board-closed { margin: 0; padding: 1.25rem 1.5rem; border-top: 1px solid var(--rule); font-weight: 700; }
+@media (max-width: 30rem) {
+  .board-main { grid-template-columns: 1fr; }
+  .board-clock { text-align: left; }
+  .board form input { width: 100%; }
+  .board form button[type='submit'] { width: 100%; }
+}
+
+/* The scope-honesty line on every page. */
+.scope { max-width: 72rem; margin: 0 auto; padding: 1.5rem 1rem 2.5rem; color: var(--muted); font-size: 0.8125rem; border-top: 1px solid var(--rule); }
+.scope p { max-width: 90ch; margin: 0; }
+.outcome-key { display: block; font-size: 0.75rem; margin-top: 0.15rem; }
+/* Invoices: one table per buyer, so fix the columns to line up down the page. */
+.invoice table { table-layout: fixed; }
+.invoice th:first-child { width: 4.5rem; }
+.invoice thead th:nth-child(2) { width: 46%; }

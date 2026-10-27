@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
+import { outcomeLabel, outcomeTone } from '@/auction/outcome-labels';
 import { prismaTx } from '@/auction/place-bid';
 import { loadLot } from '@/auction/verify-sql';
 import { inOrg, requireOrg } from '@/core/authz/guards';
@@ -32,36 +33,38 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   return (
     <main>
       <h1>Lot {lot.number} history: {lot.title}</h1>
-      <p>{bids.length} {bids.length === 1 ? 'row' : 'rows'}, in seq order. What a bidder was shown is the price and leader after the row before theirs.</p>
+      <p className="muted">{bids.length} {bids.length === 1 ? 'attempt' : 'attempts'}, in the order they were judged, accepted or refused. Highlighted rows extended the close. What a bidder saw is the price and leader after the row before theirs.</p>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr>
-            <th scope="col">Seq</th><th scope="col">Bidder</th><th scope="col">Max</th><th scope="col">Outcome</th>
-            <th scope="col">Price before</th><th scope="col">Price after</th><th scope="col">Leader before</th><th scope="col">Leader after</th>
+            <th scope="col" className="num">Seq</th><th scope="col">Bidder</th><th scope="col" className="num">Max</th><th scope="col">Outcome</th>
+            <th scope="col" className="num">Price before</th><th scope="col" className="num">Price after</th><th scope="col">Leader before</th><th scope="col">Leader after</th>
             <th scope="col">Close before</th><th scope="col">Close after</th><th scope="col">Placed at</th>
           </tr>
         </thead>
         <tbody>
           {bids.map((b) => (
-            <tr key={b.id} data-seq={b.seq}>
-              <td>{b.seq}</td><td>{who(b.bidderId)}</td><td>{formatCents(b.maxCents)}</td><td>{b.outcome}</td>
-              <td>{formatCents(b.priceBeforeCents)}</td><td>{formatCents(b.priceAfterCents)}</td><td>{who(b.leaderBeforeId)}</td><td>{who(b.leaderAfterId)}</td>
+            <tr key={b.id} data-seq={b.seq} className={b.closesAtAfter > b.closesAtBefore ? 'extended' : undefined}>
+              <td className="num">{b.seq}</td><td>{who(b.bidderId)}</td><td className="num">{formatCents(b.maxCents)}</td><td><Outcome k={b.outcome} /></td>
+              <td className="num">{formatCents(b.priceBeforeCents)}</td><td className="num">{formatCents(b.priceAfterCents)}</td><td>{who(b.leaderBeforeId)}</td><td>{who(b.leaderAfterId)}</td>
               <td>{iso(b.closesAtBefore)}</td><td>{iso(b.closesAtAfter)}</td><td>{iso(b.placedAt)}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
       <h2>Settlement</h2>
       {chain.length === 0 ? <p>Not settled.</p> : (
         <table>
           <thead>
-            <tr><th scope="col">Step</th><th scope="col">Outcome</th><th scope="col">Winner</th><th scope="col">Hammer</th><th scope="col">Premium</th><th scope="col">Total</th><th scope="col">Reason</th><th scope="col">Corrected by</th></tr>
+            <tr><th scope="col">Step</th><th scope="col">Outcome</th><th scope="col">Winner</th><th scope="col" className="num">Hammer</th><th scope="col" className="num">Premium</th><th scope="col" className="num">Total</th><th scope="col">Reason</th><th scope="col">Corrected by</th></tr>
           </thead>
           <tbody>
             {chain.map((s, i) => (
               <tr key={s.id}>
-                <td>{i === 0 ? 'Settled' : `Correction ${i}`}</td><td>{s.outcome}</td><td>{who(s.winner)}</td>
-                <td>{formatCents(s.hammerCents)}</td><td>{formatCents(s.premiumCents)}</td><td>{formatCents(s.totalCents)}</td>
+                <td>{i === 0 ? 'Settled' : `Correction ${i}`}</td><td><Outcome k={s.outcome} /></td><td>{who(s.winner)}</td>
+                <td className="num">{formatCents(s.hammerCents)}</td><td className="num">{formatCents(s.premiumCents)}</td><td className="num">{formatCents(s.totalCents)}</td>
                 <td>{'reason' in s ? s.reason : '—'}</td><td>{'correctedByUserId' in s ? s.correctedByUserId : '—'}</td>
               </tr>
             ))}
@@ -70,4 +73,9 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
       )}
     </main>
   );
+}
+
+// The label for people, the key for the record: staff read both (docs/design-brief.md).
+function Outcome({ k }: { k: string }) {
+  return <><span className="badge" data-tone={outcomeTone(k)}>{outcomeLabel(k)}</span> <small className="muted outcome-key">{k}</small></>;
 }

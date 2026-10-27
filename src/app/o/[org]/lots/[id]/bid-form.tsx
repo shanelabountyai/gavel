@@ -2,6 +2,7 @@
 import { useRef, useState } from 'react';
 import { formatCents } from '@/auction/engine/money';
 import type { LotView } from '@/auction/lot-view';
+import { outcomeLabel } from '@/auction/outcome-labels';
 import { placeBidAction } from './actions';
 
 const FAT_FINGER = 10; // O-7: a max above 10× the current price asks first; the engine caps nothing
@@ -14,7 +15,7 @@ export function BidForm({ slug, lotId, view }: { slug: string; lotId: string; vi
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<number | null>(null);
-  const [msg, setMsg] = useState<{ text: string; retry: boolean } | null>(null);
+  const [msg, setMsg] = useState<{ text: string; retry: boolean; lead?: boolean } | null>(null);
 
   const send = async (maxCents: number) => {
     if (busy) return;
@@ -30,7 +31,7 @@ export function BidForm({ slug, lotId, view }: { slug: string; lotId: string; vi
         setMsg({ text: r.error, retry });
         if (!retry) key.current = crypto.randomUUID();
       } else {
-        setMsg({ text: r.accepted ? (r.youLead ? `Bid accepted. You lead at ${formatCents(r.priceCents)}.` : `Bid accepted, but you are not leading (${formatCents(r.priceCents)}).`) : `Bid not accepted (${r.outcome}). Next minimum ${formatCents(r.minNextCents)}.`, retry: false });
+        setMsg({ text: r.accepted ? (r.youLead ? `Bid accepted. You lead at ${formatCents(r.priceCents)}.` : `Bid accepted, but you are not leading (${formatCents(r.priceCents)}).`) : `Bid not accepted: ${outcomeLabel(r.outcome).toLowerCase()}. The minimum next bid is ${formatCents(r.minNextCents)}.`, retry: false, lead: r.accepted && r.youLead });
         key.current = crypto.randomUUID();
         setText('');
       }
@@ -63,7 +64,7 @@ export function BidForm({ slug, lotId, view }: { slug: string; lotId: string; vi
           <button type="button" onClick={() => setConfirm(null)}>Cancel</button>
         </p>
       )}
-      {msg && <p role="status" data-testid="bid-msg">{msg.text}</p>}
+      {msg && !(msg.lead && view.you === 'OUTBID') && <p role="status" data-testid="bid-msg">{msg.text}</p>}
     </form>
   );
 }

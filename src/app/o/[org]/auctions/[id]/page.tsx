@@ -19,12 +19,13 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
   return (
     <main>
       <h1>{auction.name}</h1>
-      <p>Opens {auction.opensAt.toISOString().slice(0, 16).replace('T', ' ')} UTC · <Link href={`/o/${ctx.slug}/auctions/${id}/invoices`}>Invoices</Link></p>
+      <p className="muted">Opens {auction.opensAt.toISOString().slice(0, 16).replace('T', ' ')} UTC. Soft close: a bid in the last {auction.softCloseWindowSeconds / 60} min extends the lot, up to {auction.maxExtensionSeconds / 60} min in all. Buyer&apos;s premium {formatCents(auction.buyerPremiumBps).slice(1)}%.</p>
+      <p><Link href={`/o/${ctx.slug}/auctions/${id}/invoices`}>Invoices for this sale</Link></p>
       <table>
-        <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Start</th><th scope="col">Reserve</th><th scope="col">Closes (UTC)</th></tr></thead>
+        <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col" className="num">Start</th><th scope="col" className="num">Reserve</th><th scope="col">Closes (UTC)</th></tr></thead>
         <tbody>
           {auction.lots.map((l) => (
-            <tr key={l.id}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}/history`}>{l.title}</Link></td><td>{formatCents(l.startCents)}</td><td>{l.reserveCents === null ? '—' : formatCents(l.reserveCents)}</td><td>{l.scheduledEnd.toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
+            <tr key={l.id}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}/history`}>{l.title}</Link></td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td>{l.scheduledEnd.toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
           ))}
         </tbody>
       </table>

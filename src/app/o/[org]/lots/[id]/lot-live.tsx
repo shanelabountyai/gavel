@@ -50,18 +50,54 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs }: 
 
   const left = Math.max(0, Math.ceil((Date.parse(view.closesAt) - serverNow) / 1000));
   const closed = view.status === 'CLOSED';
+  // A later closesAt than the last one seen means a late bid extended the lot; say so for a few seconds.
+  const lastClose = useRef(Date.parse(initial.closesAt));
+  const [extended, setExtended] = useState<{ ms: number; at: number } | null>(null);
+  useEffect(() => {
+    const c = Date.parse(view.closesAt);
+    if (c > lastClose.current) setExtended({ ms: c - lastClose.current, at: c });
+    lastClose.current = c;
+  }, [view.closesAt]);
+  useEffect(() => {
+    if (!extended) return;
+    const t = setTimeout(() => setExtended(null), 8000);
+    return () => clearTimeout(t);
+  }, [extended]);
+
   return (
-    <section aria-live="polite">
-      {stale && <p role="alert">Connection problem; retrying.</p>}
-      <p>Status: <span data-testid="status">{view.status}</span></p>
-      <p>Current price: <span data-testid="price">{view.bidCount === 0 ? 'No bids' : formatCents(view.priceCents)}</span></p>
-      {!closed && <p>Next minimum bid: <span data-testid="min-next">{formatCents(view.minNextCents)}</span></p>}
-      <p>Bids: <span data-testid="bid-count">{view.bidCount}</span></p>
-      <p>Reserve: {view.reserveMet ? 'met' : 'not met'}</p>
-      {view.you && <p data-testid="you">{view.you === 'LEADING' ? 'You are the high bidder.' : 'You have been outbid.'}</p>}
-      <p>{closed ? 'Closed' : <>Time left: <span data-testid="countdown">{left}</span> s</>}</p>
-      {!closed && <BidForm slug={slug} lotId={lotId} view={view} />}
-      <p>Closes (UTC): <span data-testid="closes-at">{view.closesAt}</span></p>
+    <section className="board" data-phase={!closed && left < 60 ? 'final' : undefined} aria-label="Live lot">
+      {stale && <p role="alert" className="board-closed">Connection problem; retrying.</p>}
+      {view.you && (
+        <p className="board-you" data-you={view.you} data-testid="you" aria-live="polite">
+          {view.you === 'LEADING' ? 'You are the high bidder.' : 'You have been outbid.'}
+        </p>
+      )}
+      <div className="board-main">
+        <p className="board-price">
+          <span className="board-label">{closed ? 'Final price' : 'Current price'}</span>
+          <b data-testid="price" aria-live="polite">{view.bidCount === 0 ? 'No bids' : formatCents(view.priceCents)}</b>
+        </p>
+        <p className="board-clock">
+          <span className="board-label">{closed ? 'Status' : 'Time left'}</span>
+          {closed ? <b data-testid="status">Closed</b> : <b data-testid="countdown" data-seconds={left}>{formatLeft(left)}</b>}
+          {extended && <span key={extended.at} className="board-extended">Extended by a late bid, +{formatLeft(Math.round(extended.ms / 1000))}</span>}
+        </p>
+      </div>
+      <dl className="board-facts">
+        {!closed && <div><dt>Status</dt><dd data-testid="status">{view.status === 'OPEN' ? 'Open' : 'Not open yet'}</dd></div>}
+        {!closed && <div><dt>Minimum next bid</dt><dd data-testid="min-next">{formatCents(view.minNextCents)}</dd></div>}
+        <div><dt>Bids</dt><dd data-testid="bid-count">{view.bidCount}</dd></div>
+        <div><dt>Reserve</dt><dd>{view.reserveMet ? 'Met' : 'Not met'}</dd></div>
+        <div><dt>Closes</dt><dd><time dateTime={view.closesAt} data-testid="closes-at">{view.closesAt.slice(0, 19).replace('T', ' ')} UTC</time></dd></div>
+      </dl>
+      {closed ? <p className="board-closed">Bidding has closed on this lot.</p> : <BidForm slug={slug} lotId={lotId} view={view} />}
     </section>
   );
+}
+
+/** 0:42 under an hour, then 1 h 12 m, then 3 d 4 h. */
+function formatLeft(s: number) {
+  if (s >= 86_400) return `${Math.floor(s / 86_400)} d ${Math.floor((s % 86_400) / 3600)} h`;
+  if (s >= 3600) return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} m`;
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }

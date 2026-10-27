@@ -39,6 +39,7 @@ test('create auction and lot, see it in the catalog; reserve below start is refu
   expect(lot.state?.closesAt).toEqual(lot.scheduledEnd);
 
   await page.goto('/o/gavel-fixtures/catalog');
-  await expect(page.getByRole('row', { name: new RegExp(`${name}.*Walnut desk`) })).toBeVisible();
-  await expect(page.getByText('150.00')).toHaveCount(0); // the reserve is never shown
+  await expect(page.getByRole('row', { name: new RegExp(`Walnut desk.*${name}`) })).toBeVisible();
+  // The $150.00 reserve is never shown. Scoped to this lot's row: the catalog now shows current prices, and other lots may stand at $150.00.
+  await expect(page.getByRole('row', { name: /Walnut desk/ })).not.toContainText('150.00');
 });

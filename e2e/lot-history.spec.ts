@@ -38,7 +38,7 @@ test('history lists every ledger row of a SNIPE lot, first and last as in expect
 
   for (const [i, w] of [[0, want[0]!], [want.length - 1, want.at(-1)!]] as const) {
     await expect(rows.nth(i).locator('td')).toHaveText([
-      w.seq!, paddle(w.bidder_id!), cents(w.max_cents!), w.outcome!, cents(w.price_before_cents!), cents(w.price_after_cents!),
+      w.seq!, paddle(w.bidder_id!), cents(w.max_cents!), new RegExp(`${w.outcome!}$`), cents(w.price_before_cents!), cents(w.price_after_cents!),
       w.leader_before ? paddle(w.leader_before) : '—', w.leader_after ? paddle(w.leader_after) : '—',
       iso(w.closes_before_ms!), iso(w.closes_after_ms!), iso(w.placed_at_ms!),
     ]);

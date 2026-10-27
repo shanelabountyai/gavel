@@ -30,23 +30,23 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
   return (
     <main>
       <h1>Invoices: {auction.name}</h1>
-      <p>Buyer&apos;s premium {formatCents(auction.buyerPremiumBps).slice(1)}% of hammer. {invoices.length} {invoices.length === 1 ? 'buyer' : 'buyers'}.</p>
+      <p className="muted">Buyer&apos;s premium {formatCents(auction.buyerPremiumBps).slice(1)}% of hammer. {invoices.length} {invoices.length === 1 ? 'buyer' : 'buyers'}.</p>
       {invoices.map((i) => {
         const b = bidder.get(i.bidderId);
         return (
-          <section key={i.bidderId}>
+          <section key={i.bidderId} className="invoice">
             <h2>Paddle {b?.paddle} · {b?.user.name ?? b?.user.email}</h2>
             <table>
               <thead>
-                <tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Hammer</th><th scope="col">Premium</th><th scope="col">Total</th></tr>
+                <tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col" className="num">Hammer</th><th scope="col" className="num">Premium</th><th scope="col" className="num">Total</th></tr>
               </thead>
               <tbody>
                 {i.lots.map((l) => (
-                  <tr key={l.lotId}><td>{l.lotNumber}</td><td>{title.get(l.lotId)}</td><td>{formatCents(l.hammerCents)}</td><td>{formatCents(l.premiumCents)}</td><td>{formatCents(l.totalCents)}</td></tr>
+                  <tr key={l.lotId}><td>{l.lotNumber}</td><td>{title.get(l.lotId)}</td><td className="num">{formatCents(l.hammerCents)}</td><td className="num">{formatCents(l.premiumCents)}</td><td className="num">{formatCents(l.totalCents)}</td></tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr><th scope="row" colSpan={2}>Due</th><td>{formatCents(i.hammerCents)}</td><td>{formatCents(i.premiumCents)}</td><td>{formatCents(i.totalCents)}</td></tr>
+                <tr><th scope="row" colSpan={2}>Due</th><td className="num">{formatCents(i.hammerCents)}</td><td className="num">{formatCents(i.premiumCents)}</td><td className="num">{formatCents(i.totalCents)}</td></tr>
               </tfoot>
             </table>
           </section>
