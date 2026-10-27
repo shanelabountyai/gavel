@@ -13,6 +13,8 @@ export default async function Catalog({ params }: { params: Promise<{ org: strin
   const ctx = await requireOrg((await params).org);
   const lots = await db.lot.findMany({ where: inOrg(ctx), orderBy: [{ auction: { opensAt: 'asc' } }, { number: 'asc' }], select: { id: true, number: true, title: true, startCents: true, scheduledEnd: true, auction: { select: { name: true } }, state: { select: { priceCents: true, bidCount: true, closesAt: true } } } });
   const t = now().getTime();
+  const isClosed = (l: (typeof lots)[number]) => !l.state || l.state.closesAt.getTime() <= t;
+  lots.sort((a, b) => Number(isClosed(a)) - Number(isClosed(b))); // open lots first; stable, so sale and lot order hold within each
   const me = ctx.role === 'member' ? await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } } }) : null;
   return (
     <main>
@@ -23,7 +25,7 @@ export default async function Catalog({ params }: { params: Promise<{ org: strin
           <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Auction</th><th scope="col" className="num">Start</th><th scope="col" className="num">Current</th><th scope="col">Closes (UTC)</th></tr></thead>
           <tbody>
             {lots.map((l) => {
-              const closed = !l.state || l.state.closesAt.getTime() <= t;
+              const closed = isClosed(l);
               return (
                 <tr key={l.id}>
                   <td>{l.number}</td>
