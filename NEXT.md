@@ -1,6 +1,9 @@
 # NEXT
 
-## ▶ Project closed and deployed. Nothing for the next session to build.
+## ▶ Next item: the lot-page fix bundle (D-66), from `docs/prds/README.md` merged P0s 1–7 and 10.
+
+Read `docs/prds/README.md` first, then the cited findings in `ux-gaps.md` (UX-01..06) and `design-gaps.md` (DS-01, 03, 04, 05, 10). Two bugs are verified: closed lots keep saying "You are the high bidder." (`src/auction/lot-view.ts` sets `you` from the leader alone, ignoring close and reserve), and `bidCount` (every written row) drives "Bids" and the catalog's "No bids"/price (`lot-live.tsx:78,89`, `catalog/page.tsx:35`); use `acceptedCount`. Order: write a decisions entry for the lot-view change (it widens D-50's key set: e.g. `result: 'WON' | 'NOT_WON' | null` and `opensAt`), test first against the engine's settle path, then the screens. Keep the e2e test ids. Gate: unit + invariants, the touched Playwright specs on the production build, `auction:eval`, `auction:verify`, `rules:lint`, `foundation:drift`; push deploys to gavel.labintelligence.co.
+
 
 **2026-10-25 to 10-27 (Session 30, Mac): deployed (D-64, D-65) and styled.** Live at https://gavel.labintelligence.co behind the shared password; Vercel `gavel`, Neon `gavel` (super-term-55029779). Shane's two-bidder check passed on the live site; `auction:verify` on the live database OK (44 lots, 37 settled). Production-only defects fixed: rules file missing from the bundle, no menu link to Catalog/Auctions, demo sign-in landing outside the org, closed lots listed first. First design pass shipped (`docs/design-brief.md`, `src/app/globals.css`); `formatCents` now prints thousands separators. Brief republished (v3: live link, styled screenshots) and shared; build-log card #17 has its Live link (v40). Cost baseline in D-65: $0.07 Vercel, 0.88 h Neon, daily cron; keep all.
 - **Live sale runs out 2026-11-24.** To refresh: `ALLOW_CLOUD_DB=1 npx dotenv -e <file with the Neon DATABASE_URL> -- npx tsx scripts/seed-live.ts` (connection string from `neonctl connection-string --project-id super-term-55029779`).
