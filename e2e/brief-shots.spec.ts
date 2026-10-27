@@ -35,7 +35,8 @@ test('bidder lot page: proxy lead inside the soft close', async ({ page }) => {
   await page.getByRole('button', { name: 'member@acme.demo.test' }).click();
   await page.goto(`/o/acme/lots/${lot.id}`);
   await page.getByTestId('you').waitFor();
-  await page.screenshot({ path: `${out}/lot-shot.png`, clip: { x: 0, y: 0, width: 640, height: 410 } });
+  await page.setViewportSize({ width: 800, height: 900 }); // the board is 46rem; no empty half-page beside it
+  await page.locator('main').screenshot({ path: `${out}/lot-shot.png` });
 });
 
 test('staff history: two late bids refused and kept', async ({ page }) => {
@@ -47,5 +48,5 @@ test('staff history: two late bids refused and kept', async ({ page }) => {
   await page.getByRole('button', { name: 'owner@acme.demo.test' }).click();
   await page.goto(`/o/gavel-fixtures/lots/${lot.id}/history`);
   await page.locator('tbody tr[data-seq]').first().waitFor();
-  await page.screenshot({ path: `${out}/history-shot.png`, clip: { x: 0, y: 0, width: 1260, height: 395 } });
+  await page.locator('main').screenshot({ path: `${out}/history-shot.png` });
 });
