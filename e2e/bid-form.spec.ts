@@ -4,8 +4,8 @@ import { db } from '../src/core/db';
 import { seedDemo } from '../scripts/seed-demo';
 
 // Task 3.5: double click writes one ledger row (one key per submission); a max above 10× the price asks first, and a
-// cancelled one writes nothing.
-test('double click writes one row; a 50× max confirms, and cancel writes nothing', async ({ page }) => {
+// cancelled one writes nothing. D-68: the board shows the caller's own maximum, and a refused raise quotes it.
+test('double click writes one row; a 50× max confirms, and cancel writes nothing; a refused raise names the max', async ({ page }) => {
   await seedDemo();
   const org = await db.org.findUniqueOrThrow({ where: { slug: 'acme' } });
   const me = await db.user.findUniqueOrThrow({ where: { email: 'member@acme.demo.test' } });
@@ -38,4 +38,10 @@ test('double click writes one row; a 50× max confirms, and cancel writes nothin
   await page.getByRole('button', { name: /Yes, bid/ }).click();
   await expect(page.getByTestId('bid-msg')).toContainText('Bid accepted');
   expect(await rows()).toBe(2);
+
+  await expect(page.getByTestId('your-max')).toContainText('Your maximum: $5,000.00');
+  await page.getByLabel('Your maximum ($)').fill('200'); // below the $5,000 already placed
+  await page.getByRole('button', { name: 'Bid', exact: true }).click();
+  await expect(page.getByTestId('bid-msg')).toContainText('Your maximum is already $5,000.00; enter more to raise it.');
+  expect(await rows()).toBe(3); // refused, recorded all the same (D-14)
 });

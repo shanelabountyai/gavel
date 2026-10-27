@@ -1,6 +1,7 @@
 'use server';
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
+import { ownMaxCents } from '@/auction/lot-view';
 import { placeBid } from '@/auction/place-bid';
 import { BidError } from '@/auction/errors';
 import { bidErrorText } from '@/auction/outcome-labels';
@@ -18,7 +19,9 @@ export const placeBidAction = orgAction(
     if (!bidder) return { error: bidErrorText('BIDDER_NOT_ACTIVE'), code: 'BIDDER_NOT_ACTIVE', retryable: false };
     try {
       const r = await placeBid({ orgId: ctx.orgId, lotId: input.lotId, bidderId: bidder.id, maxCents: input.maxCents, idempotencyKey: input.idempotencyKey });
-      return { ok: true as const, outcome: r.outcome, accepted: r.accepted, priceCents: r.priceCents, minNextCents: r.minNextCents, youLead: r.youLead };
+      // UX R7 (D-68): a refused raise quotes the caller's own maximum, read only on that outcome to keep it off the hot path
+      const yourMaxCents = r.outcome === 'REJECTED_NOT_ABOVE_OWN_MAX' ? await ownMaxCents(input.lotId, bidder.id) : null;
+      return { ok: true as const, outcome: r.outcome, accepted: r.accepted, priceCents: r.priceCents, minNextCents: r.minNextCents, youLead: r.youLead, yourMaxCents };
     } catch (e) {
       if (e instanceof BidError) return { error: bidErrorText(e.code), code: e.code, retryable: e.code === 'BID_TIMED_OUT' }; // UX-05: never e.message
       throw e;

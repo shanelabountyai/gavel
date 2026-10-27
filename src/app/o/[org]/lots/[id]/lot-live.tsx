@@ -80,8 +80,13 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
         </p>
       )}
       {!closed && view.you && (
-        <p className="board-you" data-you={view.you} data-testid="you" aria-live="polite">
-          {view.you === 'LEADING' ? 'You are the high bidder.' : 'You have been outbid.'}
+        <p className="board-you" data-you={view.you} aria-live="polite">
+          <span data-testid="you">{view.you === 'LEADING' ? 'You are the high bidder.' : 'You have been outbid.'}</span>
+          {view.yourMaxCents !== null && (
+            <span className="board-you-note" data-testid="your-max">
+              {view.you === 'LEADING' ? `Your maximum: ${formatCents(view.yourMaxCents)}.` : `Your maximum ${formatCents(view.yourMaxCents)} was exceeded.`}
+            </span>
+          )}
         </p>
       )}
       <div className="board-main">

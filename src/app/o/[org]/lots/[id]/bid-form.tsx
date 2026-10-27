@@ -31,13 +31,14 @@ export function BidForm({ slug, lotId, view, paddle, disabledReason }: { slug: s
     try {
       const r = (await placeBidAction(slug, { lotId, maxCents, idempotencyKey: key.current })) as
         | { error: string; code?: string; retryable?: boolean }
-        | { ok: true; outcome: string; accepted: boolean; priceCents: number; minNextCents: number; youLead: boolean };
+        | { ok: true; outcome: string; accepted: boolean; priceCents: number; minNextCents: number; youLead: boolean; yourMaxCents: number | null };
       if (!('ok' in r)) {
         const retry = !!r.retryable;
         setMsg(say(retry ? 'warn' : 'refused', r.error, retry, r.code));
         if (!retry) key.current = crypto.randomUUID();
       } else {
-        setMsg(!r.accepted ? say('refused', `${outcomeLabel(r.outcome)}. The minimum next bid is ${formatCents(r.minNextCents)}.`, false, r.outcome)
+        setMsg(r.yourMaxCents !== null ? say('refused', `Your maximum is already ${formatCents(r.yourMaxCents)}; enter more to raise it.`, false, r.outcome)
+          : !r.accepted ? say('refused', `${outcomeLabel(r.outcome)}. The minimum next bid is ${formatCents(r.minNextCents)}.`, false, r.outcome)
           : r.youLead ? say('lead', `Bid accepted. You lead at ${formatCents(r.priceCents)}.`, false, r.outcome)
           : say('outbid', `Bid accepted, but another bidder's maximum is higher (${formatCents(r.priceCents)}).`, false, r.outcome));
         key.current = crypto.randomUUID();

@@ -1,5 +1,5 @@
-// Task 3.3: the lot read endpoint. The body is a closed set of keys (no max, reserve, paddle or identity), `you` is the
-// caller's alone, a second poll with the ETag is a 304, an outsider's lot is a 404. Clock injected for bids.
+// Task 3.3: the lot read endpoint. The body is a closed set of keys (no reserve, paddle or identity, no other bidder's
+// max), `you` and `yourMaxCents` are the caller's alone (D-68), a second poll with the ETag is a 304, an outsider's lot is a 404. Clock injected for bids.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { GET } from '@/app/api/lots/[id]/state/route';
 import { registerBidder } from '@/auction/bidder';
@@ -13,7 +13,7 @@ import { addMember, makeOrg } from '../helpers/org';
 beforeEach(resetAuthTables);
 
 const T = () => new Date('2026-06-01T12:00:00Z');
-const KEYS = ['bidCount', 'closesAt', 'final', 'minNextCents', 'opensAt', 'priceCents', 'reserveMet', 'result', 'status', 'you'];
+const KEYS = ['bidCount', 'closesAt', 'final', 'minNextCents', 'opensAt', 'priceCents', 'reserveMet', 'result', 'status', 'you', 'yourMaxCents'];
 
 // end: the scheduled close. Bids are placed at T, the view reads the real clock, so an end just after T is a closed lot.
 async function setup(end = new Date('2099-01-01T00:00:00Z'), reserveCents: number | null = 100000) {
@@ -50,6 +50,21 @@ describe('GET /api/lots/[id]/state (task 3.3)', () => {
     expect(forA).toMatchObject({ status: 'OPEN', priceCents: 20500, minNextCents: 21000, bidCount: 2, reserveMet: false, result: null, final: false, opensAt: '2020-01-01T00:00:00.000Z' });
     const text = JSON.stringify(forA) + JSON.stringify(forB);
     for (const secret of [a.bidder.id, b.bidder.id, a.user.id, b.user.id, a.user.email, '100000']) expect(text).not.toContain(secret);
+    // D-68: each caller sees their own maximum and never the other's
+    expect({ a: forA.yourMaxCents, b: forB.yourMaxCents }).toEqual({ a: 20000, b: 30000 });
+    expect(JSON.stringify(forA)).not.toContain('30000');
+    expect(JSON.stringify(forB)).not.toContain('20000');
+  });
+
+  it('own maximum follows a raise and ignores a refused attempt (D-68)', async () => {
+    const { who, bid, poll } = await setup();
+    const a = await who('a@example.test');
+    const c = await who('c@example.test');
+    await bid(a, 20000);
+    await bid(a, 40000); // ACCEPTED_RAISE
+    await bid(a, 35000); // REJECTED_NOT_ABOVE_OWN_MAX: a ledger row, not a maximum
+    expect(await (await poll(a.user.id)).json()).toMatchObject({ you: 'LEADING', yourMaxCents: 40000 });
+    expect((await (await poll(c.user.id)).json()).yourMaxCents).toBeNull(); // registered, no bid
   });
 
   it('a second poll with the ETag is a 304, a new bid changes it', async () => {
@@ -75,7 +90,7 @@ describe('GET /api/lots/[id]/state (task 3.3)', () => {
     const outsider = await db.user.create({ data: { email: 'o@example.test' } });
     expect((await poll(outsider.id)).status).toBe(404);
     const staff = await addMember(org.id, 'scorekeeper', 's@example.test');
-    expect((await (await poll(staff.id)).json()).you).toBeNull();
+    expect(await (await poll(staff.id)).json()).toMatchObject({ you: null, yourMaxCents: null });
     await who('a@example.test');
   });
 
