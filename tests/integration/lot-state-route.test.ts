@@ -3,22 +3,24 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { GET } from '@/app/api/lots/[id]/state/route';
 import { registerBidder } from '@/auction/bidder';
-import { placeBid } from '@/auction/place-bid';
+import { closeLots } from '@/auction/close';
+import { placeBid, prismaTx } from '@/auction/place-bid';
 import { db } from '@/core/db';
+import type { Prisma } from '@/generated/prisma/client';
 import { resetAuthTables, signInAs } from '../helpers/auth';
 import { addMember, makeOrg } from '../helpers/org';
 
 beforeEach(resetAuthTables);
 
 const T = () => new Date('2026-06-01T12:00:00Z');
-const KEYS = ['bidCount', 'closesAt', 'minNextCents', 'priceCents', 'reserveMet', 'status', 'you'];
+const KEYS = ['bidCount', 'closesAt', 'final', 'minNextCents', 'opensAt', 'priceCents', 'reserveMet', 'result', 'status', 'you'];
 
-async function setup() {
+// end: the scheduled close. Bids are placed at T, the view reads the real clock, so an end just after T is a closed lot.
+async function setup(end = new Date('2099-01-01T00:00:00Z'), reserveCents: number | null = 100000) {
   const org = await makeOrg('house');
   const auction = await db.auction.create({ data: { orgId: org.id, name: 'A', softCloseWindowSeconds: 120, maxExtensionSeconds: 1800, buyerPremiumBps: 1000, opensAt: new Date('2020-01-01T00:00:00Z') } });
-  const end = new Date('2099-01-01T00:00:00Z');
   const lot = await db.lot.create({
-    data: { orgId: org.id, auctionId: auction.id, number: 1, title: 'L', startCents: 10000, reserveCents: 100000, scheduledEnd: end,
+    data: { orgId: org.id, auctionId: auction.id, number: 1, title: 'L', startCents: 10000, reserveCents, scheduledEnd: end,
       state: { create: { orgId: org.id, priceCents: 0, leaderMaxCents: 0, bidCount: 0, acceptedCount: 0, closesAt: end, extensionCount: 0 } } },
   });
   const who = async (email: string) => {
@@ -45,7 +47,7 @@ describe('GET /api/lots/[id]/state (task 3.3)', () => {
     expect(Object.keys(forA).sort()).toEqual(KEYS);
     expect(Object.keys(forB).sort()).toEqual(KEYS);
     expect({ a: forA.you, b: forB.you }).toEqual({ a: 'OUTBID', b: 'LEADING' });
-    expect(forA).toMatchObject({ status: 'OPEN', priceCents: 20500, minNextCents: 21000, bidCount: 2, reserveMet: false });
+    expect(forA).toMatchObject({ status: 'OPEN', priceCents: 20500, minNextCents: 21000, bidCount: 2, reserveMet: false, result: null, final: false, opensAt: '2020-01-01T00:00:00.000Z' });
     const text = JSON.stringify(forA) + JSON.stringify(forB);
     for (const secret of [a.bidder.id, b.bidder.id, a.user.id, b.user.id, a.user.email, '100000']) expect(text).not.toContain(secret);
   });
@@ -75,5 +77,37 @@ describe('GET /api/lots/[id]/state (task 3.3)', () => {
     const staff = await addMember(org.id, 'scorekeeper', 's@example.test');
     expect((await (await poll(staff.id)).json()).you).toBeNull();
     await who('a@example.test');
+  });
+
+  it('Bids counts accepted bids only: a refused attempt leaves 0 (AX-01)', async () => {
+    const { who, bid, poll } = await setup();
+    const a = await who('a@example.test');
+    await bid(a, 5000); // below the 10000 start: REJECTED_BELOW_MINIMUM, a ledger row all the same
+    expect(await (await poll(a.user.id)).json()).toMatchObject({ bidCount: 0, you: null, minNextCents: 10000 });
+  });
+
+  it('a closed lot says won / not won, never leading; final once settled (D-67)', async () => {
+    const end = new Date(T().getTime() + 30_000);
+    const { who, bid, poll, org } = await setup(end, 20000);
+    const a = await who('a@example.test');
+    const b = await who('b@example.test');
+    const c = await who('c@example.test');
+    await bid(a, 30000);
+    await bid(b, 25000); // A leads at 25500, reserve met
+    const view = async (u: { user: { id: string } }) => (await poll(u.user.id)).json();
+    expect(await view(a)).toMatchObject({ status: 'CLOSED', result: 'WON', you: null, final: false, priceCents: 25500 });
+    expect(await view(b)).toMatchObject({ result: 'NOT_WON', you: null, final: false });
+    expect(await view(c)).toMatchObject({ result: null, you: null });
+    await closeLots(new Date(end.getTime() + 600_000), prismaTx(db as unknown as Prisma.TransactionClient));
+    expect(await view(a)).toMatchObject({ result: 'WON', final: true, priceCents: 25500 });
+    expect(await view(b)).toMatchObject({ result: 'NOT_WON', final: true });
+    expect(org).toBeTruthy();
+  });
+
+  it('a leader under the reserve is told the lot closed unsold', async () => {
+    const { who, bid, poll } = await setup(new Date(T().getTime() + 30_000));
+    const a = await who('a@example.test');
+    await bid(a, 20000); // reserve 100000
+    expect(await (await poll(a.user.id)).json()).toMatchObject({ status: 'CLOSED', result: 'UNSOLD', reserveMet: false, you: null });
   });
 });
