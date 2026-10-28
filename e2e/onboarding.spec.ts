@@ -10,6 +10,9 @@ test.beforeAll(() => db.query('DELETE FROM "RateLimit"')); // the server sees ev
 // required TOTP enrolment, because the creator is its owner (INV-22).
 test('new email → org created → lands in /o/[slug]', async ({ page }) => {
   const email = `e2e-onboard-${Date.now()}@example.test`;
+  await page.goto('/'); // UX-11: the landing names Gavel, not the template
+  await expect(page.getByRole('heading', { name: 'Gavel' })).toBeVisible();
+  await expect(page.getByText('SaaS Foundation')).toHaveCount(0);
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
   await page.getByRole('button', { name: 'Email me a link' }).click();
@@ -34,6 +37,8 @@ test('new email → org created → lands in /o/[slug]', async ({ page }) => {
   await page.getByRole('link', { name: 'Done' }).click();
 
   await page.getByRole('link', { name: /^Acme / }).click();
-  await expect(page).toHaveURL(/\/o\/acme-\d+$/);
-  await expect(page.getByRole('heading', { name: 'Nothing here yet' })).toBeVisible();
+  // UX-11: org Home sends staff (the owner) on to the auctions; the menu carries no template leftovers.
+  await expect(page).toHaveURL(/\/o\/acme-\d+\/auctions$/);
+  await expect(page.getByText('Nothing here yet')).toHaveCount(0);
+  for (const gone of ['Projects', 'Delete org', 'Home']) await expect(page.getByRole('link', { name: gone, exact: true })).toHaveCount(0);
 });

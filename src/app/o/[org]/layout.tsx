@@ -9,8 +9,8 @@ export default async function OrgLayout({ children, params }: { children: React.
   const org = await db.org.findUniqueOrThrow({ where: { id: ctx.orgId }, select: { name: true } });
   const base = `/o/${ctx.slug}`;
   const links = ([
-    [base, 'Home'], [`${base}/catalog`, 'Catalog'], can(ctx.role, 'results.write') && [`${base}/auctions`, 'Auctions'],
-    [`${base}/projects`, 'Projects'], [`${base}/settings/members`, 'Members'], can(ctx.role, 'org.delete') && [`${base}/settings/danger`, 'Delete org'],
+    // UX-11: no Home (it redirects), no template Projects, Delete org only under settings.
+    [`${base}/catalog`, 'Catalog'], can(ctx.role, 'results.write') && [`${base}/auctions`, 'Auctions'], [`${base}/settings/members`, 'Members'],
     ['/onboarding', 'Your orgs'], ['/account/security', 'Account'],
   ] as const).filter((l): l is [string, string] => !!l).map(([href, label]) => <li key={href}><Link href={href}>{label}</Link></li>);
   return (
