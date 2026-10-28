@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { bidErrorText } from '@/auction/outcome-labels';
 
-const CODES = ['MISSING_KEY', 'INVALID_AMOUNT', 'LOT_NOT_FOUND', 'BIDDER_NOT_ACTIVE', 'BID_TIMED_OUT', 'IDEMPOTENCY_MISMATCH', 'SOMETHING_NEW'];
+const CODES = ['MISSING_KEY', 'INVALID_AMOUNT', 'LOT_NOT_FOUND', 'BIDDER_NOT_ACTIVE', 'TERMS_NOT_ACCEPTED', 'BID_TIMED_OUT', 'IDEMPOTENCY_MISMATCH', 'SOMETHING_NEW'];
 
 describe('bidErrorText', () => {
   it.each(CODES)('%s reads as a sentence with no developer words', (code) => {

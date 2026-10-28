@@ -5,8 +5,9 @@ import type { LotView } from '@/auction/lot-view';
 import { BidForm } from './bid-form';
 
 type View = Omit<LotView, 'etag'>;
-/** Who is looking (UX-03, UX-04): a bidder gets the form, a member without a paddle the register button, staff neither. */
-export type Viewer = { kind: 'bidder'; paddle: number } | { kind: 'register' } | { kind: 'staff'; historyHref: string | null };
+/** Who is looking (UX-03, UX-04): a bidder gets the form, a member without a paddle the register button, a bidder who has
+ * not accepted the sale's terms the terms (D-72), staff none of these. */
+export type Viewer = { kind: 'bidder'; paddle: number } | { kind: 'register' } | { kind: 'terms' } | { kind: 'staff'; historyHref: string | null };
 const NEAR_CLOSE_MS = 60_000; // D-47: poll every 1 s near the close, 2 s otherwise
 
 // Polls /api/lots/[id]/state with the ETag. The countdown is closesAt minus the server's clock: the offset between the
@@ -102,7 +103,7 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
         </p>
       </div>
       {!closed && viewer.kind === 'bidder' && <BidForm slug={slug} lotId={lotId} view={view} paddle={viewer.paddle} disabledReason={scheduled ? `Bidding opens at ${utc(view.opensAt)}.` : undefined} />}
-      {!closed && viewer.kind === 'register' && <div className="board-panel">{children}</div>}
+      {!closed && (viewer.kind === 'register' || viewer.kind === 'terms') && <div className="board-panel" data-testid={viewer.kind === 'terms' ? 'terms-panel' : undefined}>{children}</div>}
       {viewer.kind === 'staff' && (
         <p className="board-panel" data-testid="staff-view">
           Staff view: staff accounts do not bid.{viewer.historyHref && <> <a href={viewer.historyHref}>Bid history</a></>}

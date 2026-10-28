@@ -166,6 +166,7 @@ input[aria-invalid='true'] { border: 2px solid var(--oxblood); }
 .form-hint b { color: var(--ink); }
 .board-panel { margin: 0; padding: 1.25rem 1.5rem; border-top: 1px solid var(--rule); background: var(--paper); font-weight: 700; }
 .board-panel form { padding: 0; border: 0; }
+.terms-text { white-space: pre-wrap; font-weight: 400; }
 /* DS-01: at 375×667 price, clock, minimum and Bid sit on the first screen. Price and clock share a row, and the
    facts come after the form. */
 @media (max-width: 30rem) {

@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { z } from 'zod';
 import { loadRules } from '@/auction/load-rules';
 import { openState } from '@/auction/engine/engine';
+import { publishTerms } from '@/auction/terms';
 import { audit } from '@/core/audit';
 import { orgAction, ref } from '@/core/authz/action';
 import { inOrg } from '@/core/authz/guards';
@@ -89,5 +90,17 @@ export const updateSaleTerms = orgAction(
       await audit(ctx, 'auction.terms_updated', { targetType: 'auction', targetId: auction.id }, tx);
     });
     redirect(`/o/${ctx.slug}/auctions/${auction.id}`);
+  },
+);
+
+// D-72 (AX-03): a new version of the terms of sale, fixed once the sale has a bid. publishTerms refuses with the
+// message; the AuctionTerms_fixed_after_bid trigger is the guard.
+export const publishTermsAction = orgAction(
+  'results.write',
+  z.object({ auctionId: ref('auction'), text: z.string().max(20_000, 'Keep the terms under 20,000 characters.') }),
+  async (ctx, i) => {
+    if (!(await db.auction.findFirst({ where: { id: i.auctionId, ...inOrg(ctx) }, select: { id: true } }))) notFound(); // INV-02
+    await publishTerms(ctx, i.auctionId, i.text);
+    redirect(`/o/${ctx.slug}/auctions/${i.auctionId}`);
   },
 );

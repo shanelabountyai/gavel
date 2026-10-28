@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NO_STORE = { 'Cache-Control': 'no-store' };
 // O-8: BID_TIMED_OUT is a 503 with Retry-After, resend with the same key. Everything else is final.
-const STATUS: Record<BidErrorCode, number> = { MISSING_KEY: 400, INVALID_AMOUNT: 400, LOT_NOT_FOUND: 404, BIDDER_NOT_ACTIVE: 403, IDEMPOTENCY_MISMATCH: 409, BID_TIMED_OUT: 503 };
+const STATUS: Record<BidErrorCode, number> = { MISSING_KEY: 400, INVALID_AMOUNT: 400, LOT_NOT_FOUND: 404, BIDDER_NOT_ACTIVE: 403, TERMS_NOT_ACCEPTED: 403, IDEMPOTENCY_MISMATCH: 409, BID_TIMED_OUT: 503 };
 
 // Task 3.7: the bid path over HTTP (the 3.5 form goes through the server action; this is what load:bids --http drives).
 // Body { maxCents, idempotencyKey }; the key is the client's (D-17). placeBid does the boundary checks: a wrong type

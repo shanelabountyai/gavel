@@ -4,7 +4,8 @@ import { formatCents } from '@/auction/engine/money';
 import { inOrg, requireOrg } from '@/core/authz/guards';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
-import { createLot, updateSaleTerms } from '../actions';
+import { acceptancesFor, currentTerms } from '@/auction/terms';
+import { createLot, publishTermsAction, updateSaleTerms } from '../actions';
 
 export const metadata = { title: 'Auction' };
 
@@ -18,6 +19,7 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
   if (!auction) notFound();
   const hasBids = (await db.bid.count({ where: { lot: { auctionId: id } }, take: 1 })) > 0;
   const due = auction.paymentDueAt?.toISOString().slice(0, 16);
+  const [terms, accepted] = await Promise.all([currentTerms(id), acceptancesFor(id)]);
   return (
     <main>
       <h1>{auction.name}</h1>
@@ -36,6 +38,29 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
           <button type="submit">Save payment and pickup</button>
         </ActionForm>
       )}
+      <h2>Terms of sale</h2>
+      {terms ? (
+        <section data-testid="terms-current">
+          <p className="muted">Version {terms.version}, published {terms.publishedAt.toISOString().slice(0, 16).replace('T', ' ')} UTC. Hash <code>{terms.sha256.slice(0, 12)}</code>. Bidders accept this version before they bid.</p>
+          <p className="terms-text">{terms.text}</p>
+        </section>
+      ) : <p className="muted">No terms of sale yet: bidders may bid without accepting any.</p>}
+      {hasBids ? <p className="muted">Fixed since bidding started; no new version can be published.</p> : (
+        <ActionForm action={publishTermsAction.bind(null, ctx.slug)}>
+          <input type="hidden" name="auctionId" value={id} />
+          <label>{terms ? 'New version of the terms' : 'Terms of sale'} <textarea name="text" rows={6} maxLength={20_000} required defaultValue={terms?.text} /></label>
+          <button type="submit">{terms ? 'Publish a new version' : 'Publish terms'}</button>
+        </ActionForm>
+      )}
+      {accepted.length > 0 && (
+        <table data-testid="terms-acceptances">
+          <thead><tr><th scope="col">Paddle</th><th scope="col" className="num">Version</th><th scope="col">Hash</th><th scope="col">Accepted (UTC)</th></tr></thead>
+          <tbody>
+            {accepted.map((a) => <tr key={`${a.bidderId}-${a.sha256}`}><td>#{a.paddle}</td><td className="num">{a.version ?? '?'}</td><td><code>{a.sha256.slice(0, 12)}</code></td><td>{a.acceptedAt.toISOString().slice(0, 19).replace('T', ' ')}</td></tr>)}
+          </tbody>
+        </table>
+      )}
+      <h2>Lots</h2>
       <table>
         <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col" className="num">Start</th><th scope="col" className="num">Reserve</th><th scope="col">Closes (UTC)</th></tr></thead>
         <tbody>

@@ -26,6 +26,7 @@ const BID_ERRORS: Record<BidErrorCode, string> = {
   INVALID_AMOUNT: 'Enter a whole-cent amount such as 250 or 250.50.',
   LOT_NOT_FOUND: 'This lot is no longer in the sale.',
   BIDDER_NOT_ACTIVE: 'Register to bid first.',
+  TERMS_NOT_ACCEPTED: 'Accept the terms of sale for this auction first.',
   BID_TIMED_OUT: 'The lot is busy. Press Bid again; your bid will not be placed twice.',
   IDEMPOTENCY_MISMATCH: 'That bid was already sent with a different amount. Enter your maximum again.',
 };

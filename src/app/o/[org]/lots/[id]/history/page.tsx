@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
 import { outcomeLabel, outcomeTone } from '@/auction/outcome-labels';
 import { prismaTx } from '@/auction/place-bid';
+import { acceptancesFor, currentTerms } from '@/auction/terms';
 import { loadLot } from '@/auction/verify-sql';
 import { inOrg, requireOrg } from '@/core/authz/guards';
 import { db } from '@/core/db';
@@ -18,7 +19,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   const ctx = await requireOrg((await params).org, 'audit.read');
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const lot = await db.lot.findFirst({ where: { id, ...inOrg(ctx) }, select: { id: true, number: true, title: true } });
+  const lot = await db.lot.findFirst({ where: { id, ...inOrg(ctx) }, select: { id: true, number: true, title: true, auctionId: true } });
   if (!lot) notFound();
   const [bids, loaded] = await Promise.all([
     db.bid.findMany({ where: { lotId: id, ...inOrg(ctx) }, orderBy: { seq: 'asc' } }),
@@ -27,6 +28,9 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   const ids = [...new Set([...bids.flatMap((b) => [b.bidderId, b.leaderBeforeId, b.leaderAfterId]), ...[loaded.settlement, ...loaded.corrections].map((s) => s?.winner)].filter((x): x is string => !!x))];
   const bidders = await db.bidder.findMany({ where: { id: { in: ids }, ...inOrg(ctx) }, select: { id: true, paddle: true } });
   const pad = new Map(bidders.map((b) => [b.id, `#${b.paddle}`]));
+  // D-72: which terms each bidder in this lot accepted, and when, beside the sale's current hash
+  const bidderIds = [...new Set(bids.map((b) => b.bidderId))];
+  const [terms, accepted] = await Promise.all([currentTerms(lot.auctionId), acceptancesFor(lot.auctionId, bidderIds)]);
   const who = (x: string | null | undefined) => (x ? (pad.get(x) ?? '?') : '—');
   const chain = [loaded.settlement, ...loaded.corrections].filter((s) => s !== null);
 
@@ -54,6 +58,22 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
         </tbody>
       </table>
       </div>
+      <h2>Terms of sale</h2>
+      {!terms ? <p className="muted">This sale has no terms of sale; no acceptance was required.</p> : (
+        <>
+          <p className="muted">Current version {terms.version}, hash <code>{terms.sha256}</code>.</p>
+          <table data-testid="terms-acceptances">
+            <thead><tr><th scope="col">Bidder</th><th scope="col" className="num">Version</th><th scope="col">Hash</th><th scope="col">Accepted at</th></tr></thead>
+            <tbody>
+              {bidderIds.map((id) => {
+                const rows = accepted.filter((a) => a.bidderId === id);
+                return rows.length === 0 ? <tr key={id}><td>{who(id)}</td><td className="num">—</td><td>—</td><td className="muted">none on record</td></tr>
+                  : rows.map((a) => <tr key={`${id}-${a.sha256}`}><td>{who(id)}</td><td className="num">{a.version ?? '?'}</td><td><code>{a.sha256}</code></td><td>{iso(a.acceptedAt)}</td></tr>);
+              })}
+            </tbody>
+          </table>
+        </>
+      )}
       <h2>Settlement</h2>
       {chain.length === 0 ? <p>Not settled.</p> : (
         <table>
