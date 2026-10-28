@@ -66,3 +66,28 @@ export const createLot = orgAction(
     redirect(`/o/${ctx.slug}/auctions/${auction.id}`);
   },
 );
+
+// D-71 (AX-06): payment due date and pickup text, editable until the sale's first bid. The refusal here is the
+// message; the Auction_terms_fixed_after_bid trigger is the guard (a bid committing between the two is refused there).
+const termsFields = z.object({
+  paymentDueAt: z.union([z.literal('').transform(() => null), utc]),
+  pickupText: z.string().trim().max(500),
+  pickupWindowText: z.string().trim().max(200),
+});
+
+export const updateSaleTerms = orgAction(
+  'results.write',
+  z.object({ auctionId: ref('auction'), paymentDueAt: z.string(), pickupText: z.string(), pickupWindowText: z.string() }),
+  async (ctx, raw) => {
+    const auction = await db.auction.findFirst({ where: { id: raw.auctionId, ...inOrg(ctx) } });
+    if (!auction) notFound();
+    const parsed = termsFields.safeParse(raw);
+    if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
+    if (await db.bid.count({ where: { lot: { auctionId: auction.id } }, take: 1 })) throw new Refused('This sale has bids; payment and pickup terms are fixed.');
+    await db.$transaction(async (tx) => {
+      await tx.auction.update({ where: { id: auction.id }, data: parsed.data });
+      await audit(ctx, 'auction.terms_updated', { targetType: 'auction', targetId: auction.id }, tx);
+    });
+    redirect(`/o/${ctx.slug}/auctions/${auction.id}`);
+  },
+);

@@ -139,10 +139,10 @@ Each requirement lists what it changes, using these labels:
 - *Changes:* schema (one table). No rules, ledger or settlement change. D (states the race honestly: a bid that passed the boundary before the suspension committed is judged normally). G/F: none.
 
 **R-06 The buyer's own invoice, with due date and pickup (AX-06).**
-- [ ] The `Auction` row gains `paymentDueAt`, `pickupText` and `pickupWindowText`, editable until the first bid.
-- [ ] A new route lists the caller's invoices across auctions. It reuses `invoicesForAuction` filtered to the caller's `Bidder` and reads the current settlement rows, so corrections show up with no extra step (D-42 Q1).
-- [ ] The `won` notice adds the due date and pickup text.
-- [ ] Another bidder's invoice returns 404.
+- [x] The `Auction` row gains `paymentDueAt`, `pickupText` and `pickupWindowText`, editable until the first bid.
+- [x] A new route lists the caller's invoices across auctions. It reuses `invoicesForAuction` filtered to the caller's `Bidder` and reads the current settlement rows, so corrections show up with no extra step (D-42 Q1).
+- [x] The `won` notice adds the due date and pickup text.
+- [x] Another bidder's invoice returns 404.
 - *Changes:* schema (three columns), read only. Settlement unchanged. D. G: none, because invoice goldens already exist (D-43).
 
 ### P1

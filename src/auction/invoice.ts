@@ -1,17 +1,23 @@
-// Task 2.1 (D-42 Q1): the invoices of one auction, derived on read from each lot's current settlement.
+// Task 2.1 (D-42 Q1): invoices derived on read from each lot's current settlement.
 // Nothing is stored, so auction:verify has no invoice check; V8 already proves every settlement it sums.
 import { type Invoice, type SettledLot, invoice } from '@/auction/engine/engine';
 import type { Tx } from '@/auction/place-bid';
 
-export async function invoicesForAuction(q: Tx, orgId: string, auctionId: string): Promise<Invoice[]> {
-  // A lot's current settlement is the row no other row supersedes (D-44).
+// A lot's current settlement is the row no other row supersedes (D-44); `by` filters that tip, never a superseded row.
+async function current(q: Tx, orgId: string, by: string, id: string): Promise<Invoice[]> {
   const rows = await q.query<SettledLot>(
     `SELECT l."auctionId"::text AS "auctionId", l."id"::text AS "lotId", l."number" AS "lotNumber", s."outcome",
             s."winnerBidderId"::text AS "winner", s."hammerCents", s."premiumCents", s."totalCents"
        FROM "Settlement" s JOIN "Lot" l ON l."id" = s."lotId"
-      WHERE l."auctionId" = $1::uuid AND l."orgId" = $2::uuid
+      WHERE ${by} = $1::uuid AND l."orgId" = $2::uuid
         AND NOT EXISTS (SELECT 1 FROM "Settlement" n WHERE n."supersedesId" = s."id")`,
-    [auctionId, orgId],
+    [id, orgId],
   );
   return invoice(rows);
 }
+
+/** Staff: every buyer's invoice for one sale. */
+export const invoicesForAuction = (q: Tx, orgId: string, auctionId: string) => current(q, orgId, 'l."auctionId"', auctionId);
+
+/** D-71 (AX-06): one bidder's own invoices across the house's sales; a correction that moves a win moves the line. */
+export const invoicesForBidder = (q: Tx, orgId: string, bidderId: string) => current(q, orgId, 's."winnerBidderId"', bidderId);

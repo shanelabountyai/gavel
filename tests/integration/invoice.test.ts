@@ -2,7 +2,7 @@
 // winner's SOLD rows in fixtures/expected_lots.csv (summed here, not by the code under test).
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { invoicesForAuction } from '@/auction/invoice';
+import { invoicesForAuction, invoicesForBidder } from '@/auction/invoice';
 import { prismaTx } from '@/auction/place-bid';
 import { db } from '@/core/db';
 import type { Prisma } from '@/generated/prisma/client';
@@ -15,7 +15,7 @@ const [head, ...rows] = readFileSync('fixtures/expected_lots.csv', 'utf8').trim(
 const cols = head!.split(',');
 const lots = rows.map((r) => Object.fromEntries(r.split(',').map((v, i) => [cols[i]!, v])));
 
-describe('invoicesForAuction (task 2.1)', () => {
+describe('invoicesForAuction (task 2.1) and invoicesForBidder (D-71)', () => {
   beforeAll(async () => {
     await resetAuthTables();
     expect((await runDb()).ok).toBe(true);
@@ -42,5 +42,20 @@ describe('invoicesForAuction (task 2.1)', () => {
   it('another org sees no invoices for the auction', async () => {
     const auction = await db.auction.findFirstOrThrow({ where: { name: data.auctions[0]!.name } });
     expect(await invoicesForAuction(q, '00000000-0000-0000-0000-000000000000', auction.id)).toEqual([]);
+  });
+
+  it('D-71: each bidder sees exactly their own invoices across every sale, and nobody else\'s', async () => {
+    const auctions = await db.auction.findMany({ where: { name: { in: data.auctions.map((a) => a.name) } } });
+    const all = (await Promise.all(auctions.map((a) => invoicesForAuction(q, a.orgId, a.id)))).flat();
+    const bidders = await db.bidder.findMany({ where: { orgId: { in: [...new Set(auctions.map((a) => a.orgId))] } } });
+    let seen = 0;
+    for (const b of bidders) {
+      const mine = await invoicesForBidder(q, b.orgId, b.id);
+      expect(mine).toEqual(all.filter((i) => i.bidderId === b.id).sort((x, y) => (x.auctionId < y.auctionId ? -1 : 1)));
+      seen += mine.length;
+    }
+    expect(seen).toBe(all.length);
+    expect(seen).toBeGreaterThan(0);
+    expect(await invoicesForBidder(q, '00000000-0000-0000-0000-000000000000', bidders[0]!.id)).toEqual([]);
   });
 });

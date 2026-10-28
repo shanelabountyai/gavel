@@ -8,6 +8,7 @@ import { placeBid, prismaTx, type Runner } from '@/auction/place-bid';
 import { db } from '@/core/db';
 import type { Prisma } from '@/generated/prisma/client';
 import { drainOutbox } from '@/modules/notifications/outbox';
+import { templates } from '@/modules/notifications/templates';
 import { resetAuthTables } from '../helpers/auth';
 import { makeOrg } from '../helpers/org';
 
@@ -21,9 +22,9 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-async function house() {
+async function house(terms: { paymentDueAt?: Date; pickupText?: string; pickupWindowText?: string } = {}) {
   const org = await makeOrg('house');
-  const auction = await db.auction.create({ data: { orgId: org.id, name: 'A', softCloseWindowSeconds: 0, maxExtensionSeconds: 0, buyerPremiumBps: 1500, opensAt: new Date(T0) } });
+  const auction = await db.auction.create({ data: { orgId: org.id, name: 'A', softCloseWindowSeconds: 0, maxExtensionSeconds: 0, buyerPremiumBps: 1500, opensAt: new Date(T0), ...terms } });
   const bidder = async (paddle: number) => {
     const user = await db.user.create({ data: { email: `b${paddle}@example.com` } });
     return (await db.bidder.create({ data: { orgId: org.id, userId: user.id, paddle } })).id;
@@ -40,7 +41,7 @@ async function house() {
   let k = 0;
   const bid = (lotId: string, bidderId: string, maxCents: number, run?: Runner) =>
     placeBid({ orgId: org.id, lotId, bidderId, maxCents, idempotencyKey: `k${++k}` }, { now: () => new Date(T0 + 60_000), ...(run ? { run } : {}) });
-  return { org, bidder, lot, bid };
+  return { org, auction, bidder, lot, bid };
 }
 
 describe('outbid and won notices through the outbox (task 3.6)', () => {
@@ -101,5 +102,20 @@ describe('outbid and won notices through the outbox (task 3.6)', () => {
 
     expect(await closeLots(new Date(END + 1), q)).toEqual({ considered: 0, settled: 0 });
     expect(await db.outbox.count()).toBe(1);
+  });
+
+  it('D-71: the won notice carries the sale\'s due date and pickup; the terms are fixed once the sale has a bid', async () => {
+    const h = await house({ paymentDueAt: new Date(Date.UTC(2026, 0, 8, 17, 0)), pickupText: 'Barn 2, 14 Mill Road', pickupWindowText: 'Sat 9:00–12:00' });
+    const b1 = await h.bidder(1);
+    const sold = await h.lot(1);
+    await db.auction.update({ where: { id: h.auction.id }, data: { pickupText: 'Barn 3, 14 Mill Road' } }); // no bid yet: editable
+    await h.bid(sold.id, b1, 1000);
+    await expect(db.auction.update({ where: { id: h.auction.id }, data: { pickupText: 'Elsewhere' } })).rejects.toThrow(/terms are fixed/);
+    await db.auction.update({ where: { id: h.auction.id }, data: { name: 'Renamed' } }); // the trigger guards the terms only
+
+    await closeLots(new Date(END + 1), q);
+    const [n] = await db.outbox.findMany();
+    expect(n!.data).toMatchObject({ due: '2026-01-08 17:00 UTC', pickup: 'Barn 3, 14 Mill Road', pickupWindow: 'Sat 9:00–12:00' });
+    expect(templates.won!(n!.data as Record<string, unknown>).body).toMatch(/Payment is due by 2026-01-08 17:00 UTC\. Pickup: Barn 3, 14 Mill Road, Sat 9:00–12:00\.$/);
   });
 });

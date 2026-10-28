@@ -6,16 +6,20 @@
 
 /// A sale. Its three rule settings are copied from rules/auction.v1.json defaults at creation (D-7).
 model Auction {
-  id                     String   @id @default(uuid()) @db.Uuid
-  orgId                  String   @db.Uuid
-  org                    Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  id                     String    @id @default(uuid()) @db.Uuid
+  orgId                  String    @db.Uuid
+  org                    Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
   name                   String
   softCloseWindowSeconds Int
   maxExtensionSeconds    Int
   buyerPremiumBps        Int
-  opensAt                DateTime @db.Timestamptz(6)
-  createdAt              DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt              DateTime @updatedAt @db.Timestamptz(6)
+  opensAt                DateTime  @db.Timestamptz(6)
+  // D-71 (AX-06): shown on the buyer's invoice and the won notice; trigger: unchanged once the sale has a bid
+  paymentDueAt           DateTime? @db.Timestamptz(6)
+  pickupText             String    @default("")
+  pickupWindowText       String    @default("")
+  createdAt              DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @db.Timestamptz(6)
   lots                   Lot[]
 
   @@index([orgId])
