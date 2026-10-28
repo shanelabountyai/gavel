@@ -1,3 +1,5 @@
+import { audit } from '@/core/audit';
+import { now } from '@/core/clock';
 import { db } from '@/core/db';
 import { Refused } from '@/core/errors';
 
@@ -18,4 +20,26 @@ export async function registerBidder(orgId: string, userId: string, role: string
     }
   }
   throw new Refused('Registration is busy. Try again.');
+}
+
+// D-70 (AX-05). Suspend or reinstate, with a reason. The conditional UPDATE takes the Bidder row lock and
+// re-checks the status under it (READ COMMITTED re-evaluates the WHERE after a wait), so two staff clicking at
+// once give one change and one refusal. The history row and the audit event commit with it. placeBid reads
+// Bidder.status at its boundary, before the lot lock: an attempt that passed the boundary first is judged normally.
+export async function setBidderStatus(
+  actor: { orgId: string; userId: string },
+  bidderId: string,
+  status: 'ACTIVE' | 'SUSPENDED',
+  reason: string,
+) {
+  const why = reason.trim();
+  if (!why) throw new Refused('Give a reason.');
+  const from = status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED';
+  return db.$transaction(async (tx) => {
+    const { count } = await tx.bidder.updateMany({ where: { id: bidderId, orgId: actor.orgId, status: from }, data: { status } });
+    if (count === 0) throw new Refused(status === 'SUSPENDED' ? 'That bidder is already suspended.' : 'That bidder is already active.');
+    const row = await tx.bidderStatusChange.create({ data: { orgId: actor.orgId, bidderId, status, reason: why, byUserId: actor.userId, changedAt: now() } });
+    await audit(actor, status === 'SUSPENDED' ? 'bidder.suspended' : 'bidder.reinstated', { targetType: 'bidder', targetId: bidderId, data: { reason: why } }, tx);
+    return row;
+  });
 }

@@ -132,10 +132,10 @@ Each requirement lists what it changes, using these labels:
 - *Changes:* rule data (two outcomes, so a new hash in D-23 and V9). Schema. Ledger invariant V6. Settlement. D, G (withdraw before, at, and after a bid), F (a new `WITHDRAWN` fixture kind). **Contradicts brief §2** ("nothing on [a lot] changes once it has a bid"). The `Lot` row is unchanged, but the lot's outcome now has a second input; record that in the D entry.
 
 **R-05 Suspend and reinstate a bidder (AX-05).**
-- [ ] A staff screen (`results.write`) lists bidders with paddle, status and accepted-bid count, and offers Suspend and Reinstate, each with a required reason.
-- [ ] Each change is an audit event, and a `BidderStatusChange` insert-only row keeps the history. `Bidder.status` is its projection, and a test asserts the two agree.
-- [ ] A suspended bidder's new attempts are refused at the boundary, as today (`place-bid.ts:77`).
-- [ ] The screen states in plain words that **standing maximums stay live** until R-19 exists, and that the remedy after the close is a D-44 correction.
+- [x] A staff screen (`results.write`) lists bidders with paddle, status and accepted-bid count, and offers Suspend and Reinstate, each with a required reason.
+- [x] Each change is an audit event, and a `BidderStatusChange` insert-only row keeps the history. `Bidder.status` is its projection, and a test asserts the two agree.
+- [x] A suspended bidder's new attempts are refused at the boundary, as today (`place-bid.ts:77`).
+- [x] The screen states in plain words that **standing maximums stay live** until R-19 exists, and that the remedy after the close is a D-44 correction.
 - *Changes:* schema (one table). No rules, ledger or settlement change. D (states the race honestly: a bid that passed the boundary before the suspension committed is judged normally). G/F: none.
 
 **R-06 The buyer's own invoice, with due date and pickup (AX-06).**

@@ -67,18 +67,35 @@ enum BidderStatus {
 
 /// A user registered with one house (org): a paddle number. The boundary admits ACTIVE only (brief §4 row 1).
 model Bidder {
-  id        String       @id @default(uuid()) @db.Uuid
-  orgId     String       @db.Uuid
-  org       Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  userId    String       @db.Uuid
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  paddle    Int
-  status    BidderStatus @default(ACTIVE)
-  createdAt DateTime     @default(now()) @db.Timestamptz(6)
-  bids      Bid[]
+  id            String               @id @default(uuid()) @db.Uuid
+  orgId         String               @db.Uuid
+  org           Org                  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId        String               @db.Uuid
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paddle        Int
+  status        BidderStatus         @default(ACTIVE)
+  createdAt     DateTime             @default(now()) @db.Timestamptz(6)
+  bids          Bid[]
+  statusChanges BidderStatusChange[]
 
   @@unique([orgId, userId])
   @@unique([orgId, paddle])
+}
+
+/// D-70 (AX-05): suspend / reinstate history, insert-only by trigger. `Bidder.status` is its projection:
+/// the latest row's `status`, or ACTIVE with no rows. `byUserId` carries no FK, as AuditEvent's actor.
+model BidderStatusChange {
+  id        String       @id @default(uuid()) @db.Uuid
+  orgId     String       @db.Uuid
+  bidderId  String       @db.Uuid
+  bidder    Bidder       @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  status    BidderStatus // the status from this row on
+  reason    String // CHECK not blank
+  byUserId  String       @db.Uuid
+  changedAt DateTime     @db.Timestamptz(6) // now() from @/core/clock, read after the Bidder row is locked
+
+  @@index([bidderId, changedAt])
+  @@index([orgId])
 }
 
 /// D-14: one row per well-formed attempt, accepted or rejected, with the state before and after it.

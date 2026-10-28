@@ -15,5 +15,8 @@ export async function seedApp(org: { orgId: string; userId: string }, key: 'a' |
     data: { id: lotId, orgId: org.orgId, auctionId: auction.id, number: 1, title: `harness lot ${key}`, startCents: 10000, scheduledEnd: end,
       state: { create: { orgId: org.orgId, priceCents: 0, leaderMaxCents: 0, bidCount: 0, acceptedCount: 0, closesAt: end, extensionCount: 0 } } },
   });
-  return { auction: auction.id, lot: lot.id };
+  const bidder = await db.bidder.create({
+    data: { id: `00000000-0000-4000-8000-${key === 'a' ? '000000009021' : '000000009022'}`, orgId: org.orgId, userId: org.userId, paddle: 1 },
+  });
+  return { auction: auction.id, lot: lot.id, bidder: bidder.id };
 }
