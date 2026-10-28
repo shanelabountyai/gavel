@@ -114,11 +114,11 @@ Each requirement lists what it changes, using these labels:
 - *Changes:* lot-view read only. D: amends D-50's closed key set. G/F: none.
 
 **R-03 Terms of sale, accepted before bidding (AX-03).**
-- [ ] New insert-only table `AuctionTerms` (`auctionId`, `version`, `text`, `sha256`).
-- [ ] New insert-only table `TermsAcceptance` (`auctionId`, `bidderId`, `termsSha256`, `acceptedAt` from `@/core/clock`), unique on `(auctionId, bidderId, termsSha256)`.
-- [ ] Terms cannot be changed once any lot in the auction has a `Bid` row, mirroring D-21's publish refusal.
-- [ ] `placeBid` refuses at the boundary with `TERMS_NOT_ACCEPTED` when no acceptance exists for the auction's current terms hash. Nothing is written and no lock is taken.
-- [ ] The staff dispute view shows the hash and acceptance time for each bidder in the lot.
+- [x] New insert-only table `AuctionTerms` (`auctionId`, `version`, `text`, `sha256`).
+- [x] New insert-only table `TermsAcceptance` (`auctionId`, `bidderId`, `termsSha256`, `acceptedAt` from `@/core/clock`), unique on `(auctionId, bidderId, termsSha256)`.
+- [x] Terms cannot be changed once any lot in the auction has a `Bid` row, mirroring D-21's publish refusal.
+- [x] `placeBid` refuses at the boundary with `TERMS_NOT_ACCEPTED` when no acceptance exists for the auction's current terms hash. Nothing is written and no lock is taken.
+- [x] The staff dispute view shows the hash and acceptance time for each bidder in the lot.
 - *Changes:* schema (two tables, append-only triggers). Ledger unchanged, because the check happens before the lock. D (new boundary refusal; amends D-47 Q2). G/F: none. The engine is untouched.
 
 **R-04 Withdraw a lot before the close (AX-04).**
