@@ -17,6 +17,7 @@ import { openState } from '@/auction/engine/engine';
 import { loadRules } from '@/auction/load-rules';
 import { pgRunner, pgTx, placeBid, prismaTx, type BidResponse, type Runner, type Tx } from '@/auction/place-bid';
 import { verifyLot } from '@/auction/verify-sql';
+import { withdrawInTx } from '@/auction/withdraw';
 import { db } from '@/core/db';
 import type { Prisma } from '@/generated/prisma/client';
 import { resetAuthTables } from '../helpers/auth';
@@ -70,7 +71,7 @@ async function house(n: number) {
   }
   const bid = (i: number, deps: { run: Runner; now: () => Date }) =>
     placeBid({ orgId: org.id, lotId: lot.id, bidderId: bidders[i]!, maxCents: maxOf(i), idempotencyKey: `k${i}` }, deps);
-  return { lotId: lot.id, bidders, bid };
+  return { orgId: org.id, lotId: lot.id, bidders, bid };
 }
 
 /** pgRunner with a pause after the body: the transaction keeps the row lock until `release`, then ends with `end`. */
@@ -200,6 +201,37 @@ describe('the contention proof (brief §8, D-18)', () => {
         `barrier N=${n}: rows ${rows.length}, accepted ${st.acceptedCount} (LEAD ${count('ACCEPTED_LEAD')}, OUTBID ${count('ACCEPTED_OUTBID')}), ` +
           `REJECTED_BELOW_MINIMUM ${count('REJECTED_BELOW_MINIMUM')}, closesAt T−1000+W, extensionCount ${st.extensionCount}, replays ${again.length}, verify OK`,
       );
+    },
+    RACE_TIMEOUT,
+  );
+
+  it.each(SIZES)(
+    'N=%i writers queued behind a holder that withdraws the lot (D-73): every one is REJECTED_LOT_WITHDRAWN, N rows, LotState untouched, verify clean',
+    async (n) => {
+      const h = await house(n);
+      const before = await rawConnections();
+      const pinned = () => new Date(T - 1000);
+      const clients = await Promise.all(Array.from({ length: n }, raw));
+      let first: BidResponse[];
+      try {
+        // The N bids passed the boundary (which read no withdrawal) and are queued on the row; the holder then runs the
+        // product's withdrawal body in its own transaction, at T − 2 s, and commits. Only a read under the lock can see it.
+        first = await behindRowLock('LotState', h.lotId, n, () => Promise.all(clients.map((c, i) => h.bid(i, { run: pgRunner(c), now: pinned }))), 'lotId', (holder) =>
+          withdrawInTx(pgTx(holder), { orgId: h.orgId, lotId: h.lotId, reason: 'barrier: title problem', userId: crypto.randomUUID() }, () => new Date(T - 2000)),
+        );
+      } finally {
+        await Promise.all(clients.map((c) => c.end()));
+      }
+      const rows = await db.bid.findMany({ where: { lotId: h.lotId }, orderBy: { seq: 'asc' } });
+      expect(rows.map((r) => r.seq)).toEqual(Array.from({ length: n }, (_, k) => k + 1)); // N attempts, N rows
+      expect(rows.every((r) => r.outcome === 'REJECTED_LOT_WITHDRAWN' && !r.accepted && r.placedAt.getTime() === T - 1000)).toBe(true);
+      expect(first.every((r) => r.outcome === 'REJECTED_LOT_WITHDRAWN' && !r.accepted && !r.replayed)).toBe(true);
+      expect(await db.lotState.findUniqueOrThrow({ where: { lotId: h.lotId } })).toMatchObject({ bidCount: n, acceptedCount: 0, leaderBidderId: null, priceCents: 0, closesAt: new Date(T), extensionCount: 0 });
+      expect(await db.lotWithdrawal.findUnique({ where: { lotId: h.lotId } })).toMatchObject({ withdrawnAt: new Date(T - 2000), reason: 'barrier: title problem' });
+      expect(await db.outbox.count()).toBe(0); // no leader to tell, nobody outbid
+      expect(await verifyLot(q, h.lotId, rules)).toBeNull();
+      expect(await rawConnections()).toBe(before);
+      console.info(`barrier withdraw N=${n}: rows ${rows.length}, all REJECTED_LOT_WITHDRAWN, verify OK`);
     },
     RACE_TIMEOUT,
   );

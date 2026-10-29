@@ -10,9 +10,11 @@ const LABELS: Record<string, [label: string, tone: Tone]> = {
   REJECTED_LOT_CLOSED: ['Closed', 'bad'],
   REJECTED_BELOW_MINIMUM: ['Below minimum', 'bad'],
   REJECTED_NOT_ABOVE_OWN_MAX: ['Not above your maximum', 'bad'],
+  REJECTED_LOT_WITHDRAWN: ['Lot withdrawn', 'bad'],
   SOLD: ['Sold', 'good'],
   UNSOLD_NO_BIDS: ['No bids', 'plain'],
   UNSOLD_RESERVE_NOT_MET: ['Reserve not met', 'plain'],
+  UNSOLD_WITHDRAWN: ['Withdrawn', 'plain'],
   UNSOLD_BY_CORRECTION: ['Withdrawn by correction', 'plain'],
 };
 

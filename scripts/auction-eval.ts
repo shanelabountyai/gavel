@@ -26,7 +26,7 @@ type AuctionsJson = {
     soft_close_window_seconds: number;
     max_extension_seconds: number;
     buyer_premium_bps: number;
-    lots: { lot_id: string; kind: string; lot_number: number; title: string; start_cents: number; reserve_cents: number | null; opens_at_ms: number; scheduled_end_ms: number }[];
+    lots: { lot_id: string; kind: string; lot_number: number; title: string; start_cents: number; reserve_cents: number | null; opens_at_ms: number; scheduled_end_ms: number; withdrawn_at_ms?: number }[];
   }[];
 };
 
@@ -39,6 +39,7 @@ function loadFixtures(asOfArg?: number) {
     .flatMap((a) => a.lots.map((l) => ({ lot_id: l.lot_id, auction_id: a.auction_id, kind: l.kind, lot_number: l.lot_number, title: l.title, lot: {
       startCents: l.start_cents, reserveCents: l.reserve_cents, opensAtMs: l.opens_at_ms, scheduledEndMs: l.scheduled_end_ms,
       softCloseWindowMs: a.soft_close_window_seconds * 1000, maxExtensionMs: a.max_extension_seconds * 1000, buyerPremiumBps: a.buyer_premium_bps,
+      withdrawnAtMs: l.withdrawn_at_ms ?? null, // D-73: the WITHDRAWN lots carry the instant; every other lot has no key
     } as Lot })))
     .sort((a, b) => (a.lot_id < b.lot_id ? -1 : 1));
   const fileOrder: FileSub[] = readFileSync(`${FIXTURES}/submissions.jsonl`, 'utf8').trim().split('\n').map((raw) => JSON.parse(raw));
@@ -81,13 +82,14 @@ export async function runDb(asOfArg?: number): Promise<{ ok: boolean; report: st
   const { db } = await import('../src/core/db');
   const { placeBid, prismaTx } = await import('../src/auction/place-bid');
   const { closeLots } = await import('../src/auction/close');
+  const { withdrawLot } = await import('../src/auction/withdraw');
   const { loadLot } = await import('../src/auction/verify-sql');
   const { BidError } = await import('../src/auction/errors');
   const { rules, hash } = loadRules();
   const { data, lots, fileOrder, subs, asOf } = loadFixtures(asOfArg);
   const q = prismaTx(db as unknown as Parameters<typeof prismaTx>[0]);
 
-  await db.$executeRawUnsafe('TRUNCATE "Settlement", "Bid", "LotState", "Lot", "Auction", "BidderStatusChange", "TermsAcceptance", "AuctionTerms", "Bidder"');
+  await db.$executeRawUnsafe('TRUNCATE "Settlement", "Bid", "LotWithdrawal", "LotState", "Lot", "Auction", "BidderStatusChange", "TermsAcceptance", "AuctionTerms", "Bidder"');
   const org = await db.org.upsert({ where: { slug: 'gavel-fixtures' }, update: {}, create: { slug: 'gavel-fixtures', name: 'Gavel fixtures (synthetic)' } });
   const bidderUuid = new Map<string, string>();
   const fid = new Map<string, string>(); // uuid → fixture bidder id
@@ -112,9 +114,19 @@ export async function runDb(asOfArg?: number): Promise<{ ok: boolean; report: st
   }
 
   // Drive. A not-written outcome (REPLAY, IDEMPOTENCY_MISMATCH) reports the projection as it stood after the call.
+  // D-73: a WITHDRAWN lot is withdrawn through the staff path with the clock pinned to its withdrawn_at_ms, just before
+  // the first submission at or after that instant (the oracle's half-open rule), or after the file when none follows.
+  const STAFF = '00000000-0000-4000-8000-000000000073'; // byUserId carries no FK
+  const withdrawn = new Set<string>();
+  const withdraw = async (f: FixtureLot) => {
+    withdrawn.add(f.lot_id);
+    await withdrawLot({ orgId: org.id, lotId: lotUuid.get(f.lot_id)!, reason: `fixture kind ${f.kind}`, userId: STAFF }, { now: () => new Date(f.lot.withdrawnAtMs!) });
+  };
   const seen = new Map<string, { outcome: string; seq: number | null; written: boolean; price: number; leader: string | null; closesMs: number }>();
   for (const s of fileOrder) {
     const lotId = lotUuid.get(s.lot_id)!;
+    const f = lots.find((x) => x.lot_id === s.lot_id)!;
+    if (f.lot.withdrawnAtMs !== null && !withdrawn.has(f.lot_id) && f.lot.withdrawnAtMs <= s.placed_at_ms) await withdraw(f);
     let r: Awaited<ReturnType<typeof placeBid>> | null = null;
     try {
       r = await placeBid({ orgId: org.id, lotId, bidderId: bidderUuid.get(s.bidder_id)!, maxCents: s.max_cents, idempotencyKey: s.idempotency_key }, { now: () => new Date(s.placed_at_ms), rules });
@@ -125,6 +137,7 @@ export async function runDb(asOfArg?: number): Promise<{ ok: boolean; report: st
     seen.set(s.submission_id, { outcome: r === null ? 'IDEMPOTENCY_MISMATCH' : r.replayed ? 'REPLAY' : r.outcome, seq: r?.seq ?? null, written: r !== null && !r.replayed,
       price: st.priceCents, leader: asFid(st.leaderBidderId), closesMs: st.closesAt.getTime() });
   }
+  for (const f of lots) if (f.lot.withdrawnAtMs !== null && !withdrawn.has(f.lot_id)) await withdraw(f);
   await closeLots(new Date(asOf), q, { rules, hash });
 
   // Read back: the Bid table row by row, LotState and Settlement per lot.
@@ -182,7 +195,7 @@ function report(half: string, data: AuctionsJson, hash: string, asOf: number, re
     `Gavel auction:eval (${half}) — seed ${data.seed}, rules sha256 ${hash}, as_of ${asOf}`,
     `lots ${results.length}  bidders ${data.bidders.length}  submissions ${bidLines.length - 1}  rows written ${sum(lotRows.map((r) => r.bid_count))}`,
     'outcomes: ' + sorted(outcomes).map(([k, v]) => `${k} ${v}`).join(', '),
-    `settlement: SOLD ${sold.length}  UNSOLD_NO_BIDS ${lotRows.filter((r) => r.outcome === 'UNSOLD_NO_BIDS').length}  UNSOLD_RESERVE_NOT_MET ${lotRows.filter((r) => r.outcome === 'UNSOLD_RESERVE_NOT_MET').length}`,
+    `settlement: SOLD ${sold.length}  UNSOLD_NO_BIDS ${lotRows.filter((r) => r.outcome === 'UNSOLD_NO_BIDS').length}  UNSOLD_RESERVE_NOT_MET ${lotRows.filter((r) => r.outcome === 'UNSOLD_RESERVE_NOT_MET').length}  UNSOLD_WITHDRAWN ${lotRows.filter((r) => r.outcome === 'UNSOLD_WITHDRAWN').length}`,
     `hammer total ${sum(sold.map((r) => r.hammer))} cents  premium total ${sum(sold.map((r) => r.premium))} cents  grand total ${sum(sold.map((r) => r.total))} cents`,
     `extended lots ${extLots.length}  extensions ${sum(lotRows.map((r) => r.extension_count))}  at hard cap ${lotRows.filter((r) => r.at_cap).length}  max extension ${Math.floor(Math.max(0, ...lotRows.map((r) => r.extension_total_ms)) / 1000)} s`,
     'kind -> outcome: ' + sorted(kinds).map(([k, v]) => `${k} ${v}`).join(', '),

@@ -4,7 +4,10 @@
 // rules:lint and stored on every Settlement row. A new hash means a new D-23 row and regenerated fixtures.
 import { createHash } from 'node:crypto';
 
-export const RULES_V1_HASH = 'b4cce697db2d9cd82a1b7aab9622f07b61e899f6f812ce0024829ecc111961f8'; // D-23
+export const RULES_V1_HASH = 'a7b214408f02a34ec1c7964ecd31d1fce6eca5b6b2aea8a5964edb8d6ef8c43f'; // D-23 (D-73: the withdrawn outcomes)
+/** Every hash D-23 has listed, oldest first. V9 accepts a settlement row computed under any of them: the rows settled
+ * before a list grew were computed by the same arithmetic, and settle(fold(ledger)) still reproduces them (V8). */
+export const RULES_HASHES_D23 = ['b4cce697db2d9cd82a1b7aab9622f07b61e899f6f812ce0024829ecc111961f8', RULES_V1_HASH] as const;
 
 export const ACCEPTED_OUTCOMES = ['ACCEPTED_LEAD', 'ACCEPTED_OUTBID', 'ACCEPTED_RAISE'] as const;
 export const REJECTED_OUTCOMES = [
@@ -12,9 +15,10 @@ export const REJECTED_OUTCOMES = [
   'REJECTED_LOT_CLOSED',
   'REJECTED_BELOW_MINIMUM',
   'REJECTED_NOT_ABOVE_OWN_MAX',
+  'REJECTED_LOT_WITHDRAWN', // D-73: at or after the lot's withdrawnAt
 ] as const;
 export const NOT_WRITTEN_OUTCOMES = ['REPLAY', 'IDEMPOTENCY_MISMATCH'] as const;
-export const SETTLEMENT_OUTCOMES = ['SOLD', 'UNSOLD_NO_BIDS', 'UNSOLD_RESERVE_NOT_MET'] as const;
+export const SETTLEMENT_OUTCOMES = ['SOLD', 'UNSOLD_NO_BIDS', 'UNSOLD_RESERVE_NOT_MET', 'UNSOLD_WITHDRAWN'] as const;
 
 export type AcceptedOutcome = (typeof ACCEPTED_OUTCOMES)[number];
 export type RejectedOutcome = (typeof REJECTED_OUTCOMES)[number];

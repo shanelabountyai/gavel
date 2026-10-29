@@ -33,9 +33,9 @@ describe('auction:eval database half, auction:close, auction:verify', () => {
 
   it('the database replay reproduces expected_bids.csv and expected_lots.csv, and verify is OK after it', async () => {
     const { ok, report } = await runDb();
-    expect(report).toContain('OK: expected_bids.csv (220 rows) and expected_lots.csv (36 rows)');
+    expect(report).toContain('OK: expected_bids.csv (233 rows) and expected_lots.csv (39 rows)');
     expect(ok).toBe(true);
-    expect(await verifyAll(q, rules)).toEqual({ lots: 36, settled: 36, failure: null });
+    expect(await verifyAll(q, rules)).toEqual({ lots: 39, settled: 39, failure: null });
   }, 60_000);
 
   it('auction:close is idempotent: a second run settles nothing and writes no row', async () => {

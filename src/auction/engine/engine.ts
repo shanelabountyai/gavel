@@ -4,7 +4,10 @@
 import { assertBps, assertCents, roundHalfUp } from './money';
 import type { BidOutcome, NotWrittenOutcome, Rules, SettlementOutcome } from './rules';
 
-/** Catalog data plus the auction's settings, flattened: nothing here changes once the lot has a bid. */
+/** Catalog data plus the auction's settings, flattened: nothing here changes once the lot has a bid, except that
+ * `withdrawnAtMs` is set once if staff withdraw the lot (D-73). It is the lot's one input beside the ledger: the lot is
+ * CLOSED from that instant, every later attempt is REJECTED_LOT_WITHDRAWN, and it settles UNSOLD_WITHDRAWN. The bid path
+ * reads it under the same row lock as the state, after the lock is granted. */
 export type Lot = {
   readonly startCents: number;
   readonly reserveCents: number | null;
@@ -13,7 +16,10 @@ export type Lot = {
   readonly softCloseWindowMs: number;
   readonly maxExtensionMs: number;
   readonly buyerPremiumBps: number;
+  readonly withdrawnAtMs: number | null;
 };
+
+const withdrawn = (lot: Lot, nowMs: number): boolean => lot.withdrawnAtMs !== null && nowMs >= lot.withdrawnAtMs;
 
 /** The projection one LotState row holds (D-16): a fold over the ledger, never stored truth. */
 export type LotState = {
@@ -43,7 +49,8 @@ export type BidResult = {
 
 export const hardCloseMs = (lot: Lot): number => lot.scheduledEndMs + lot.maxExtensionMs;
 
-export const openState = (lot: Lot): LotState => ({
+/** Only the scheduled end is read; a lot being created has no withdrawal yet, so the field may be left off. */
+export const openState = (lot: Omit<Lot, 'withdrawnAtMs'> & { readonly withdrawnAtMs?: number | null }): LotState => ({
   priceCents: 0,
   leader: null,
   leaderMaxCents: 0,
@@ -94,7 +101,8 @@ export function applyBid(lot: Lot, state: LotState, bidderId: string, maxCents: 
   });
   const rejected = (outcome: BidOutcome) => result(outcome, { ...state, bidCount: seq }, false);
 
-  // §6: open on [opensAt, closesAt); both refusals are rows.
+  // §6: open on [opensAt, closesAt); all three refusals are rows. Withdrawn first: it holds while SCHEDULED too (GB-24h).
+  if (withdrawn(lot, nowMs)) return rejected('REJECTED_LOT_WITHDRAWN');
   if (nowMs < lot.opensAtMs) return rejected('REJECTED_LOT_NOT_OPEN');
   if (nowMs >= state.closesAtMs) return rejected('REJECTED_LOT_CLOSED');
 
@@ -161,7 +169,7 @@ export type ReplayOutcome = {
 };
 
 export const lotStatus = (lot: Lot, state: LotState, nowMs: number): 'SCHEDULED' | 'OPEN' | 'CLOSED' =>
-  nowMs < lot.opensAtMs ? 'SCHEDULED' : nowMs < state.closesAtMs ? 'OPEN' : 'CLOSED';
+  withdrawn(lot, nowMs) ? 'CLOSED' : nowMs < lot.opensAtMs ? 'SCHEDULED' : nowMs < state.closesAtMs ? 'OPEN' : 'CLOSED';
 
 /**
  * Submissions in arrival order through the D-17 idempotency check, then applyBid. A prior row with the same
@@ -238,10 +246,12 @@ const sold = (winner: string, winningSeq: number, hammerCents: number, premiumBp
   return { outcome: 'SOLD', winner, winningSeq, hammerCents, premiumCents, totalCents: hammerCents + premiumCents, closedAtMs };
 };
 
-/** D-22: null until CLOSED; then unsold (zero amounts, no winner) or SOLD with the one half-up rounding. */
+/** D-22: null until CLOSED; then unsold (zero amounts, no winner) or SOLD with the one half-up rounding.
+ * D-73: a withdrawn lot is UNSOLD_WITHDRAWN whatever the ledger says, closed at the withdrawal, not at closesAt. */
 export function settle(lot: Lot, state: LotState, nowMs: number): Settlement | null {
   if (lotStatus(lot, state, nowMs) !== 'CLOSED') return null;
-  const unsold = (outcome: SettlementOutcome): Settlement => ({ outcome, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: state.closesAtMs });
+  const unsold = (outcome: SettlementOutcome, closedAtMs = state.closesAtMs): Settlement => ({ outcome, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs });
+  if (lot.withdrawnAtMs !== null) return unsold('UNSOLD_WITHDRAWN', lot.withdrawnAtMs);
   if (state.leader === null) return unsold('UNSOLD_NO_BIDS');
   if (!reserveMet(lot, state)) return unsold('UNSOLD_RESERVE_NOT_MET');
   return sold(state.leader, state.leaderSeq!, state.priceCents, lot.buyerPremiumBps, state.closesAtMs);
@@ -257,7 +267,7 @@ export type CorrectedSettlement = Omit<Settlement, 'outcome'> & {
 };
 /** What a correction may set, and nothing else (D-42 Q2): the winner (null = unsold) and the premium rate. */
 export type CorrectionTarget = { readonly winner: string | null; readonly premiumBps: number };
-export type CorrectionRefusal = 'NOT_AN_ACCEPTED_BIDDER' | 'RESERVE_NOT_MET';
+export type CorrectionRefusal = 'NOT_AN_ACCEPTED_BIDDER' | 'RESERVE_NOT_MET' | 'LOT_WITHDRAWN';
 
 /**
  * The settlement a correction to `target` writes. The fold's own leader gets settle()'s hammer back; any other
@@ -268,6 +278,7 @@ export function resettle(lot: Lot, rows: readonly FoldRow[], rules: Rules, targe
   const folded = fold(lot, rows, rules);
   const original = settle(lot, folded, folded.closesAtMs)!; // at its own closesAt a lot is CLOSED
   assertBps(target.premiumBps);
+  if (lot.withdrawnAtMs !== null && target.winner !== null) return { refused: 'LOT_WITHDRAWN' }; // D-73: a withdrawn lot is never sold, by correction either
   if (target.winner === null) {
     return { outcome: UNSOLD_BY_CORRECTION, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: original.closedAtMs, premiumBps: target.premiumBps };
   }

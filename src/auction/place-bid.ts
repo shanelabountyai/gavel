@@ -104,8 +104,9 @@ export async function placeBid(input: BidInput, deps: Deps = {}): Promise<BidRes
   }
 }
 
-/** The pure engine's view of a catalog row (the auction's settings flattened in, D-34). */
-export const toLot = (r: { startCents: number; reserveCents: number | null; scheduledEnd: Date; auction: { opensAt: Date; softCloseWindowSeconds: number; maxExtensionSeconds: number; buyerPremiumBps: number } }): Lot => ({
+/** The pure engine's view of a catalog row (the auction's settings flattened in, D-34). `withdrawal` is the LotWithdrawal
+ * row when the caller joined it (D-73); the bid path ignores whatever the boundary read and re-reads it under the lock. */
+export const toLot = (r: { startCents: number; reserveCents: number | null; scheduledEnd: Date; auction: { opensAt: Date; softCloseWindowSeconds: number; maxExtensionSeconds: number; buyerPremiumBps: number }; withdrawal?: { withdrawnAt: Date } | null }): Lot => ({
   startCents: r.startCents,
   reserveCents: r.reserveCents,
   opensAtMs: r.auction.opensAt.getTime(),
@@ -113,6 +114,7 @@ export const toLot = (r: { startCents: number; reserveCents: number | null; sche
   softCloseWindowMs: r.auction.softCloseWindowSeconds * 1000,
   maxExtensionMs: r.auction.maxExtensionSeconds * 1000,
   buyerPremiumBps: r.auction.buyerPremiumBps,
+  withdrawnAtMs: r.withdrawal?.withdrawnAt.getTime() ?? null,
 });
 
 export type StateRow = {
@@ -173,9 +175,13 @@ export async function readState(tx: Tx, lotId: string, forUpdate: boolean): Prom
   return row;
 }
 
-/** Everything after the state is read and serialized: clock, idempotency, engine, ledger row, projection, notice. */
-export async function judgeRead(tx: Tx, b: BidInput, lot: Lot, rules: Rules, now: () => Date, row: StateRow): Promise<BidResponse> {
-  const placedAt = now(); // D-15: once, after FOR UPDATE returned
+/** Everything after the state is read and serialized: withdrawal, clock, idempotency, engine, ledger row, projection, notice. */
+export async function judgeRead(tx: Tx, b: BidInput, boundaryLot: Lot, rules: Rules, now: () => Date, row: StateRow): Promise<BidResponse> {
+  // D-73: a fresh statement after the lock, so a withdrawal that committed while this bid waited is seen. The row the
+  // boundary read is not enough: at READ COMMITTED a blocked FOR UPDATE keeps its statement's snapshot, and the
+  // withdrawer never writes LotState, so nothing in that statement would have re-read it.
+  const lot: Lot = { ...boundaryLot, withdrawnAtMs: await readWithdrawnAt(tx, b.lotId) };
+  const placedAt = now(); // D-15: once, after FOR UPDATE returned (and after the withdrawal read, so withdrawnAt <= placedAt when it is seen)
   const state = toState(row);
   const prior = await findPrior(tx, b);
   if (prior) return priorResponse(prior, b.maxCents, state, lot, rules, b.bidderId);
@@ -184,6 +190,12 @@ export async function judgeRead(tx: Tx, b: BidInput, lot: Lot, rules: Rules, now
   await updateState(tx, b.lotId, r.state);
   await notifyOutbid(tx, b, r);
   return response(r.outcome, r.accepted, r.state.bidCount, false, r.state, lot, rules, b.bidderId);
+}
+
+/** The lot's withdrawal instant in epoch ms, or null (D-73). One indexed read; the cost sits on every bid (docs/LOAD.md). */
+export async function readWithdrawnAt(tx: Tx, lotId: string): Promise<number | null> {
+  const [w] = await tx.query<{ withdrawnAt: Date }>(`SELECT "withdrawnAt" FROM "LotWithdrawal" WHERE "lotId" = $1::uuid`, [lotId]);
+  return w ? w.withdrawnAt.getTime() : null;
 }
 
 export async function findPrior(tx: Tx, b: BidInput): Promise<PriorRow | undefined> {

@@ -62,6 +62,7 @@ export type CorrectionErrorCode =
   | 'SETTLEMENT_NOT_FOUND' // no such settlement on this lot in this house
   | 'NOT_AN_ACCEPTED_BIDDER' // D-42 Q2: the new winner has no accepted row in the lot's ledger
   | 'RESERVE_NOT_MET' // the new winner's price is below the reserve
+  | 'LOT_WITHDRAWN' // D-73: the lot was withdrawn; it is never sold, by correction either
   | 'NO_CHANGE' // the correction would write the row it supersedes again
   | 'STALE_SETTLEMENT' // the predecessor is already superseded: the unique on supersedesId refused it (D-44)
   | 'CORRECTION_TIMED_OUT'; // lock_timeout on the lot's LotState row: retryable

@@ -13,7 +13,7 @@ import { addMember, makeOrg } from '../helpers/org';
 beforeEach(resetAuthTables);
 
 const T = () => new Date('2026-06-01T12:00:00Z');
-const KEYS = ['bidCount', 'closesAt', 'final', 'minNextCents', 'opensAt', 'priceCents', 'reserveMet', 'result', 'status', 'you', 'yourMaxCents'];
+const KEYS = ['bidCount', 'closesAt', 'final', 'minNextCents', 'opensAt', 'priceCents', 'reserveMet', 'result', 'status', 'withdrawnAt', 'you', 'yourMaxCents']; // D-73 added withdrawnAt
 
 // end: the scheduled close. Bids are placed at T, the view reads the real clock, so an end just after T is a closed lot.
 async function setup(end = new Date('2099-01-01T00:00:00Z'), reserveCents: number | null = 100000) {

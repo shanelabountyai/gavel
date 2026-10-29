@@ -24,6 +24,8 @@ export type LotView = {
   readonly result: 'WON' | 'NOT_WON' | 'UNSOLD' | null;
   /** A Settlement row exists, so `result` and the price will not change short of a correction. */
   readonly final: boolean;
+  /** D-73: the instant staff withdrew the lot, or null. A withdrawn lot is CLOSED from it and its `result` is UNSOLD. */
+  readonly withdrawnAt: string | null;
   /** Every ledger row (bidCount, so a refused attempt refreshes pollers), status, and the current settlement. */
   readonly etag: string;
 };
@@ -39,7 +41,7 @@ export async function ownMaxCents(lotId: string, bidderId: string): Promise<numb
 /** null = not found or not yours (a lot in another house is a 404, INV-02). */
 export async function lotView(userId: string, lotId: string): Promise<LotView | null> {
   if (!UUID.test(lotId)) return null;
-  const row = await db.lot.findUnique({ where: { id: lotId }, include: { auction: true, state: true } });
+  const row = await db.lot.findUnique({ where: { id: lotId }, include: { auction: true, state: true, withdrawal: true } });
   if (!row?.state || !(await db.membership.findUnique({ where: { orgId_userId: { orgId: row.orgId, userId } }, select: { userId: true } }))) return null;
   const lot = toLot(row);
   const state = toState(row.state);
@@ -71,6 +73,7 @@ export async function lotView(userId: string, lotId: string): Promise<LotView | 
     yourMaxCents,
     result,
     final: !!tip,
+    withdrawnAt: row.withdrawal?.withdrawnAt.toISOString() ?? null,
     etag: `"${state.bidCount}-${status}-${tip?.id.slice(0, 8) ?? ''}"`,
   };
 }

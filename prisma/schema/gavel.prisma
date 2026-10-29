@@ -6,20 +6,20 @@
 
 /// A sale. Its three rule settings are copied from rules/auction.v1.json defaults at creation (D-7).
 model Auction {
-  id                     String    @id @default(uuid()) @db.Uuid
-  orgId                  String    @db.Uuid
-  org                    Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  id                     String            @id @default(uuid()) @db.Uuid
+  orgId                  String            @db.Uuid
+  org                    Org               @relation(fields: [orgId], references: [id], onDelete: Cascade)
   name                   String
   softCloseWindowSeconds Int
   maxExtensionSeconds    Int
   buyerPremiumBps        Int
-  opensAt                DateTime  @db.Timestamptz(6)
+  opensAt                DateTime          @db.Timestamptz(6)
   // D-71 (AX-06): shown on the buyer's invoice and the won notice; trigger: unchanged once the sale has a bid
-  paymentDueAt           DateTime? @db.Timestamptz(6)
-  pickupText             String    @default("")
-  pickupWindowText       String    @default("")
-  createdAt              DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt              DateTime  @updatedAt @db.Timestamptz(6)
+  paymentDueAt           DateTime?         @db.Timestamptz(6)
+  pickupText             String            @default("")
+  pickupWindowText       String            @default("")
+  createdAt              DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime          @updatedAt @db.Timestamptz(6)
   lots                   Lot[]
   terms                  AuctionTerms[]
   termsAcceptances       TermsAcceptance[]
@@ -63,20 +63,21 @@ model TermsAcceptance {
 
 /// Catalog data. Nothing here changes once the lot has a bid; closing time lives on LotState.
 model Lot {
-  id           String       @id @default(uuid()) @db.Uuid
-  orgId        String       @db.Uuid
-  auctionId    String       @db.Uuid
-  auction      Auction      @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  id           String         @id @default(uuid()) @db.Uuid
+  orgId        String         @db.Uuid
+  auctionId    String         @db.Uuid
+  auction      Auction        @relation(fields: [auctionId], references: [id], onDelete: Cascade)
   number       Int
   title        String
-  description  String       @default("")
+  description  String         @default("")
   imageUrl     String?
-  consignor    String       @default("") // a text field; no consignor model (PRD non-goals)
+  consignor    String         @default("") // a text field; no consignor model (PRD non-goals)
   startCents   Int // CHECK > 0
   reserveCents Int? // CHECK null or >= startCents
-  scheduledEnd DateTime     @db.Timestamptz(6) // trigger: > auction.opensAt
-  createdAt    DateTime     @default(now()) @db.Timestamptz(6)
+  scheduledEnd DateTime       @db.Timestamptz(6) // trigger: > auction.opensAt
+  createdAt    DateTime       @default(now()) @db.Timestamptz(6)
   state        LotState?
+  withdrawal   LotWithdrawal?
   bids         Bid[]
   settlements  Settlement[]
 
@@ -98,6 +99,23 @@ model LotState {
   acceptedCount  Int
   closesAt       DateTime @db.Timestamptz(6)
   extensionCount Int
+}
+
+/// D-73 (AX-04): staff withdrew the lot. One row per lot, insert-only by trigger. The engine reads `withdrawnAt` as the
+/// lot's one input beside the ledger: CLOSED from that instant, every later attempt REJECTED_LOT_WITHDRAWN (a Bid row),
+/// settlement UNSOLD_WITHDRAWN closed at `withdrawnAt`. Written under FOR UPDATE on the lot's LotState row with the clock
+/// read after the lock; LotState itself is not written. A BEFORE INSERT trigger refuses a lot already closed or settled.
+/// `byUserId` carries no FK, as AuditEvent's actor.
+model LotWithdrawal {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  lotId       String   @unique @db.Uuid
+  lot         Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  reason      String // CHECK not blank
+  byUserId    String   @db.Uuid
+  withdrawnAt DateTime @db.Timestamptz(6) // now() from @/core/clock, read after the LotState row is locked
+
+  @@index([orgId])
 }
 
 enum BidderStatus {

@@ -6,7 +6,7 @@ import { MoneyError } from '@/auction/engine/money';
 import { loadRules } from '@/auction/load-rules';
 
 const { rules } = loadRules();
-const lot: Lot = { startCents: 1000, reserveCents: null, opensAtMs: 0, scheduledEndMs: 100_000, softCloseWindowMs: 0, maxExtensionMs: 0, buyerPremiumBps: 1500 };
+const lot: Lot = { startCents: 1000, reserveCents: null, opensAtMs: 0, scheduledEndMs: 100_000, softCloseWindowMs: 0, maxExtensionMs: 0, buyerPremiumBps: 1500, withdrawnAtMs: null };
 const sub = (n: number, bidderId: string, maxCents: number): Submission => ({ submissionId: `s${n}`, bidderId, maxCents, placedAtMs: n, idempotencyKey: `k${n}` });
 const rowsOf = (l: Lot, subs: Submission[]) => replay(l, subs, rules).rows;
 

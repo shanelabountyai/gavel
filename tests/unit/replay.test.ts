@@ -8,7 +8,7 @@ import { run } from '../../scripts/auction-eval';
 
 const { rules } = loadRules();
 const T = 3_600_000;
-const G: Lot = { startCents: 10_000, reserveCents: null, opensAtMs: 0, scheduledEndMs: T, softCloseWindowMs: 120_000, maxExtensionMs: 600_000, buyerPremiumBps: 1500 };
+const G: Lot = { startCents: 10_000, reserveCents: null, opensAtMs: 0, scheduledEndMs: T, softCloseWindowMs: 120_000, maxExtensionMs: 600_000, buyerPremiumBps: 1500, withdrawnAtMs: null };
 const R: Lot = { ...G, reserveCents: 25_000 };
 let n = 0;
 const sub = (bidderId: string, maxCents: number, placedAtMs: number, idempotencyKey = `k${++n}`): Submission => ({ submissionId: `S${n}`, bidderId, maxCents, placedAtMs, idempotencyKey });
@@ -78,13 +78,13 @@ describe('GB-09, GB-21 unsold outcomes', () => {
 describe('the frozen fixtures (brief §10–§11)', () => {
   it('auction:eval reproduces expected_bids.csv and expected_lots.csv column for column', () => {
     const { ok, report } = run();
-    expect(report, report).toContain('OK: expected_bids.csv (220 rows) and expected_lots.csv (36 rows)');
+    expect(report, report).toContain('OK: expected_bids.csv (233 rows) and expected_lots.csv (39 rows)');
     expect(ok).toBe(true);
   });
   it('replays every lot twice and diffs nothing (determinism)', () => {
-    const lots = JSON.parse(readFileSync('fixtures/auctions.json', 'utf8')).auctions.flatMap((a: { soft_close_window_seconds: number; max_extension_seconds: number; buyer_premium_bps: number; lots: { lot_id: string; start_cents: number; reserve_cents: number | null; opens_at_ms: number; scheduled_end_ms: number }[] }) =>
+    const lots = JSON.parse(readFileSync('fixtures/auctions.json', 'utf8')).auctions.flatMap((a: { soft_close_window_seconds: number; max_extension_seconds: number; buyer_premium_bps: number; lots: { lot_id: string; start_cents: number; reserve_cents: number | null; opens_at_ms: number; scheduled_end_ms: number; withdrawn_at_ms?: number }[] }) =>
       a.lots.map((l) => ({ id: l.lot_id, lot: { startCents: l.start_cents, reserveCents: l.reserve_cents, opensAtMs: l.opens_at_ms, scheduledEndMs: l.scheduled_end_ms,
-        softCloseWindowMs: a.soft_close_window_seconds * 1000, maxExtensionMs: a.max_extension_seconds * 1000, buyerPremiumBps: a.buyer_premium_bps } as Lot })));
+        softCloseWindowMs: a.soft_close_window_seconds * 1000, maxExtensionMs: a.max_extension_seconds * 1000, buyerPremiumBps: a.buyer_premium_bps, withdrawnAtMs: l.withdrawn_at_ms ?? null } as Lot })));
     const subs = readFileSync('fixtures/submissions.jsonl', 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     for (const { id, lot } of lots) {
       const list: Submission[] = subs.filter((s) => s.lot_id === id).map((s) => ({ submissionId: s.submission_id, bidderId: s.bidder_id, maxCents: s.max_cents, placedAtMs: s.placed_at_ms, idempotencyKey: s.idempotency_key }));
@@ -93,6 +93,6 @@ describe('the frozen fixtures (brief §10–§11)', () => {
       expect(twice).toEqual(once);
       expect(fold(lot, once.rows, rules)).toEqual(once.state);
     }
-    expect(lots).toHaveLength(36);
+    expect(lots).toHaveLength(39);
   });
 });
