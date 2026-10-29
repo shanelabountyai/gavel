@@ -71,7 +71,7 @@ class Gen:
     def state(self, lot: dict, a: dict):
         """Replay this lot's submissions so far (in time order) and return (state, min_next)."""
         L = Lot(lot["lot_id"], a["auction_id"], lot["start_cents"], lot["reserve_cents"], lot["opens_at_ms"], lot["scheduled_end_ms"],
-                a["soft_close_window_seconds"] * 1000, a["max_extension_seconds"] * 1000, a["buyer_premium_bps"])
+                a["soft_close_window_seconds"] * 1000, a["max_extension_seconds"] * 1000, a["buyer_premium_bps"], lot.get("withdrawn_at_ms"))
         subs = [Submission(s["submission_id"], s["lot_id"], s["bidder_id"], s["max_cents"], s["placed_at_ms"], s["idempotency_key"])
                 for s in self.subs if s["lot_id"] == lot["lot_id"]]
         subs.sort(key=lambda x: x.placed_at_ms)
@@ -134,6 +134,18 @@ def build(seed: int) -> dict:
                    "opens_at_ms": a["opens_at_ms"], "scheduled_end_ms": sched_end}
             a["lots"].append(lot)
             script(g, lot, a, bands, ids)
+    # R-04 (D-73): one WITHDRAWN lot per sale, numbered after the others and drawn from a second generator seeded
+    # seed + 1, so L001-L036 and their submissions are byte for byte the kickoff set. `withdrawn_at_ms` is set on
+    # these lots only; every other lot has no such key.
+    rng2 = random.Random(seed + 1)
+    for a in auctions:
+        lot_n += 1
+        start = rng2.choice([2500, 5000, 10000, 20000, 50000]) if a["auction_id"] != "A2" else rng2.choice([50000, 100000, 250000])
+        lot = {"lot_id": f"L{lot_n:03d}", "auction_id": a["auction_id"], "lot_number": len(a["lots"]) + 1,
+               "title": a["titles"][len(a["lots"]) % len(a["titles"])], "kind": "WITHDRAWN", "start_cents": start, "reserve_cents": None,
+               "opens_at_ms": a["opens_at_ms"], "scheduled_end_ms": T0_MS + (lot_n - 1) * 2 * MIN}
+        a["lots"].append(lot)
+        script_withdrawn(g, lot, a, bands, ids, rng2)
     for a in auctions:
         del a["titles"]
 
@@ -254,6 +266,45 @@ def script(g: Gen, lot: dict, a: dict, bands: list, ids: list) -> None:
         g.submit(lot, pool[0], start * 2, lot["opens_at_ms"])            # at open: accepted
     else:
         raise AssertionError(kind)
+
+
+def script_withdrawn(g: Gen, lot: dict, a: dict, bands: list, ids: list, rng: random.Random) -> None:
+    """R-04: the house withdraws the lot before it closes. A1: after three bids (the leader is told); A2: with no
+    bids; A3: inside a soft-close extension. From the withdrawal on, every attempt is REJECTED_LOT_WITHDRAWN and a row;
+    a resend of an earlier key is still a REPLAY. The lot settles UNSOLD_WITHDRAWN, closed at the withdrawal."""
+    W = a["soft_close_window_seconds"] * SEC
+    end = lot["scheduled_end_ms"]
+    start = lot["start_cents"]
+    pool = rng.sample(ids, 6)
+    quiet_from = lot["opens_at_ms"] + 10 * MIN
+    quiet_to = end - W - 10 * MIN
+    m = start
+
+    def ladder(n: int, lo: int, hi: int, bidders: list) -> None:
+        nonlocal m
+        ts = sorted(rng.randrange(lo, hi) for _ in range(n))
+        for i, t in enumerate(ts):
+            m = m + rng.randrange(1, 6) * inc_for(m, bands) * rng.choice([1, 1, 2, 3])
+            g.submit(lot, bidders[i % len(bidders)], m, t)
+
+    if a["auction_id"] == "A1":
+        ladder(3, quiet_from, quiet_to, pool[:2])
+        first = g.subs[-3]
+        wd = quiet_to + 5 * MIN
+        lot["withdrawn_at_ms"] = wd
+        g.submit(lot, pool[2], m * 2, wd)                 # at the instant (half-open): rejected, a row
+        g.submit(lot, pool[3], m * 3, wd + 1 * MIN)       # after: rejected, a row
+        g.submit(lot, first["bidder_id"], first["max_cents"], wd + 2 * MIN, key=first["idempotency_key"])  # a resend of a pre-withdrawal key: REPLAY, no row
+    elif a["auction_id"] == "A2":
+        wd = quiet_from + 1 * MIN
+        lot["withdrawn_at_ms"] = wd
+        g.submit(lot, pool[0], start * 2, wd + 30 * SEC)  # the only attempt, after the withdrawal: a row, never a leader
+    else:
+        ladder(4, quiet_from, quiet_to, pool[:2])
+        g.submit(lot, pool[4], m * 2, end - 1 * SEC)      # T-1 s by a new bidder: extends
+        wd = end + 10 * SEC                               # withdrawn inside the extension, before the new close
+        lot["withdrawn_at_ms"] = wd
+        g.submit(lot, pool[5], m * 4, end + 20 * SEC)     # would have led and extended again; rejected WITHDRAWN instead
 
 
 def write(data: dict, out: str) -> None:

@@ -135,6 +135,18 @@
      "scheduled_end_ms": 1794061320000,
      "start_cents": 5000,
      "title": "Cedar chest"
+    },
+    {
+     "auction_id": "A1",
+     "kind": "WITHDRAWN",
+     "lot_id": "L037",
+     "lot_number": 13,
+     "opens_at_ms": 1793800800000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794064320000,
+     "start_cents": 20000,
+     "title": "Oak roll-top desk",
+     "withdrawn_at_ms": 1794063900000
     }
    ],
    "max_extension_seconds": 1800,
@@ -277,6 +289,18 @@
      "scheduled_end_ms": 1794062760000,
      "start_cents": 50000,
      "title": "Pickup toolbox, aluminum"
+    },
+    {
+     "auction_id": "A2",
+     "kind": "WITHDRAWN",
+     "lot_id": "L038",
+     "lot_number": 13,
+     "opens_at_ms": 1793887200000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794064440000,
+     "start_cents": 250000,
+     "title": "Skid steer, 2,100 hrs",
+     "withdrawn_at_ms": 1793887860000
     }
    ],
    "max_extension_seconds": 900,
@@ -419,6 +443,18 @@
      "scheduled_end_ms": 1794064200000,
      "start_cents": 20000,
      "title": "Oak roll-top desk"
+    },
+    {
+     "auction_id": "A3",
+     "kind": "WITHDRAWN",
+     "lot_id": "L039",
+     "lot_number": 13,
+     "opens_at_ms": 1793973600000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794064560000,
+     "start_cents": 5000,
+     "title": "Cedar chest",
+     "withdrawn_at_ms": 1794064570000
     }
    ],
    "max_extension_seconds": 600,

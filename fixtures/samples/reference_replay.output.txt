@@ -1,10 +1,10 @@
-Gavel reference replay — seed 20261019, rules 1500 bps default premium, as_of 1794068400000
-lots 36  bidders 40  submissions 220  rows written 214
-outcomes: ACCEPTED_LEAD 150, ACCEPTED_OUTBID 19, ACCEPTED_RAISE 3, IDEMPOTENCY_MISMATCH 3, REJECTED_BELOW_MINIMUM 27, REJECTED_LOT_CLOSED 9, REJECTED_LOT_NOT_OPEN 3, REJECTED_NOT_ABOVE_OWN_MAX 3, REPLAY 3
-settlement: SOLD 31  UNSOLD_NO_BIDS 3  UNSOLD_RESERVE_NOT_MET 2
+Gavel reference replay — seed 20261019, rules 1500 bps default premium, as_of 1794069720000
+lots 39  bidders 40  submissions 233  rows written 226
+outcomes: ACCEPTED_LEAD 158, ACCEPTED_OUTBID 19, ACCEPTED_RAISE 3, IDEMPOTENCY_MISMATCH 3, REJECTED_BELOW_MINIMUM 27, REJECTED_LOT_CLOSED 9, REJECTED_LOT_NOT_OPEN 3, REJECTED_LOT_WITHDRAWN 4, REJECTED_NOT_ABOVE_OWN_MAX 3, REPLAY 4
+settlement: SOLD 31  UNSOLD_NO_BIDS 3  UNSOLD_RESERVE_NOT_MET 2  UNSOLD_WITHDRAWN 3
 hammer total 10730200 cents  premium total 1248403 cents  grand total 11978603 cents
-extended lots 7  extensions 45  at hard cap 3  max extension 1800 s
-kind -> outcome: BELOW_MIN/SOLD 3, CHAIN_TO_CAP/SOLD 3, EARLY/SOLD 3, LATE/SOLD 3, NO_BIDS/UNSOLD_NO_BIDS 3, OWN_RAISE/SOLD 3, PROXY_WAR/SOLD 4, REPLAY/SOLD 3, RESERVE_MET/SOLD 2, RESERVE_NOT_MET/UNSOLD_RESERVE_NOT_MET 2, SNIPE/SOLD 4, TIE/SOLD 3
+extended lots 8  extensions 46  at hard cap 3  max extension 1800 s
+kind -> outcome: BELOW_MIN/SOLD 3, CHAIN_TO_CAP/SOLD 3, EARLY/SOLD 3, LATE/SOLD 3, NO_BIDS/UNSOLD_NO_BIDS 3, OWN_RAISE/SOLD 3, PROXY_WAR/SOLD 4, REPLAY/SOLD 3, RESERVE_MET/SOLD 2, RESERVE_NOT_MET/UNSOLD_RESERVE_NOT_MET 2, SNIPE/SOLD 4, TIE/SOLD 3, WITHDRAWN/UNSOLD_WITHDRAWN 3
   L001 A1 PROXY_WAR        bids  12 acc   8 price    16000 leader B003  ext  0 (   0 s) SOLD                   total 18400
   L002 A1 TIE              bids   4 acc   3 price   202500 leader B020  ext  0 (   0 s) SOLD                   total 232875
   L003 A1 RESERVE_NOT_MET  bids   5 acc   5 price     5500 leader B028  ext  0 (   0 s) UNSOLD_RESERVE_NOT_MET total 0
@@ -41,4 +41,7 @@ kind -> outcome: BELOW_MIN/SOLD 3, CHAIN_TO_CAP/SOLD 3, EARLY/SOLD 3, LATE/SOLD 
   L034 A3 EARLY            bids   2 acc   1 price     5000 leader B003  ext  0 (   0 s) SOLD                   total 5625
   L035 A3 PROXY_WAR        bids  13 acc  11 price     4300 leader B034  ext  0 (   0 s) SOLD                   total 4838
   L036 A3 SNIPE            bids   7 acc   7 price   615000 leader B010  ext  3 ( 149 s) SOLD                   total 691875
+  L037 A1 WITHDRAWN        bids   5 acc   3 price    23500 leader B021  ext  0 (   0 s) UNSOLD_WITHDRAWN       total 0
+  L038 A2 WITHDRAWN        bids   1 acc   0 price        0 leader -     ext  0 (   0 s) UNSOLD_WITHDRAWN       total 0
+  L039 A3 WITHDRAWN        bids   6 acc   5 price     6900 leader B039  ext  1 (  59 s) UNSOLD_WITHDRAWN       total 0
 wrote expected_bids.csv and expected_lots.csv

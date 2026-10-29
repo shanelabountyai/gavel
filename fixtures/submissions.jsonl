@@ -218,3 +218,16 @@
 {"bidder_id": "B032", "idempotency_key": "k-S00218", "lot_id": "L036", "max_cents": 600000, "placed_at_ms": 1794064199000, "submission_id": "S00218"}
 {"bidder_id": "B010", "idempotency_key": "k-S00219", "lot_id": "L036", "max_cents": 615000, "placed_at_ms": 1794064230000, "submission_id": "S00219"}
 {"bidder_id": "B006", "idempotency_key": "k-S00220", "lot_id": "L036", "max_cents": 610000, "placed_at_ms": 1794064289000, "submission_id": "S00220"}
+{"bidder_id": "B021", "idempotency_key": "k-S00221", "lot_id": "L037", "max_cents": 22500, "placed_at_ms": 1793809993709, "submission_id": "S00221"}
+{"bidder_id": "B014", "idempotency_key": "k-S00222", "lot_id": "L037", "max_cents": 23000, "placed_at_ms": 1793841134888, "submission_id": "S00222"}
+{"bidder_id": "B021", "idempotency_key": "k-S00223", "lot_id": "L037", "max_cents": 25000, "placed_at_ms": 1793887981748, "submission_id": "S00223"}
+{"bidder_id": "B031", "idempotency_key": "k-S00224", "lot_id": "L037", "max_cents": 50000, "placed_at_ms": 1794063900000, "submission_id": "S00224"}
+{"bidder_id": "B004", "idempotency_key": "k-S00225", "lot_id": "L037", "max_cents": 75000, "placed_at_ms": 1794063960000, "submission_id": "S00225"}
+{"bidder_id": "B021", "idempotency_key": "k-S00221", "lot_id": "L037", "max_cents": 22500, "placed_at_ms": 1794064020000, "submission_id": "S00226"}
+{"bidder_id": "B015", "idempotency_key": "k-S00227", "lot_id": "L038", "max_cents": 500000, "placed_at_ms": 1793887890000, "submission_id": "S00227"}
+{"bidder_id": "B008", "idempotency_key": "k-S00228", "lot_id": "L039", "max_cents": 5100, "placed_at_ms": 1793986363278, "submission_id": "S00228"}
+{"bidder_id": "B018", "idempotency_key": "k-S00229", "lot_id": "L039", "max_cents": 5600, "placed_at_ms": 1794001623516, "submission_id": "S00229"}
+{"bidder_id": "B008", "idempotency_key": "k-S00230", "lot_id": "L039", "max_cents": 6000, "placed_at_ms": 1794017037396, "submission_id": "S00230"}
+{"bidder_id": "B018", "idempotency_key": "k-S00231", "lot_id": "L039", "max_cents": 6800, "placed_at_ms": 1794033880035, "submission_id": "S00231"}
+{"bidder_id": "B039", "idempotency_key": "k-S00232", "lot_id": "L039", "max_cents": 13600, "placed_at_ms": 1794064559000, "submission_id": "S00232"}
+{"bidder_id": "B014", "idempotency_key": "k-S00233", "lot_id": "L039", "max_cents": 27200, "placed_at_ms": 1794064580000, "submission_id": "S00233"}

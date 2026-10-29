@@ -14,7 +14,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from auctionlib import (Lot, Rules, Submission, apply_bid, fold, increment_for, min_next_bid,  # noqa: E402
+from auctionlib import (Lot, Rules, Submission, apply_bid, fold, increment_for, lot_status, min_next_bid,  # noqa: E402
                         open_state, replay, round_half_up, settle, LedgerRow)
 
 FAILS = 0
@@ -156,6 +156,26 @@ def main() -> int:
     check("GB-23a tie at 49800", (s.price_cents, s.leader), (49800, "A"))
     r = bid(G, s, "C", 60000, 300_000)
     check("GB-23b 60000 beats 49800: price 49800 + 500, next minimum + 1000", (r.state.price_cents, min_next_bid(G, r.state, R)), (50300, 51300))
+
+    print("-- GB-24 a withdrawn lot (R-04, D-73): closed from the withdrawal, every later attempt a row, never a sale")
+    WD = 1_000_000  # the instant staff withdrew
+    Wd = Lot("W", "A", 10000, None, 0, T, W, CAP, 1500, withdrawn_at_ms=WD)
+    s = bid(Wd, open_state(Wd), "A", 15000, 100_000).state  # before the withdrawal: judged as on any lot
+    check("GB-24a before: status OPEN, settle None", (lot_status(Wd, s, WD - 1), settle(Wd, s, WD - 1)), ("OPEN", None))
+    r = bid(Wd, s, "B", 50000, WD)
+    check("GB-24b at the instant: REJECTED_LOT_WITHDRAWN, row written, nothing moves", (r.outcome, r.accepted, r.state.bid_count, r.state.price_cents, r.state.leader, r.state.closes_at_ms, r.extended), ("REJECTED_LOT_WITHDRAWN", False, 2, 10000, "A", T, False))
+    r2 = bid(Wd, r.state, "B", 50000, T - 1_000)
+    check("GB-24c later, still before closesAt: WITHDRAWN, not CLOSED", (r2.outcome, r2.state.bid_count), ("REJECTED_LOT_WITHDRAWN", 3))
+    check("GB-24d status CLOSED from the withdrawal though closesAt is later", (lot_status(Wd, r2.state, WD), r2.state.closes_at_ms), ("CLOSED", T))
+    st = settle(Wd, r2.state, WD)
+    check("GB-24e settle: UNSOLD_WITHDRAWN, no winner, zero amounts, closedAt = withdrawnAt (the leader does not buy)", (st.outcome, st.winner, st.winning_seq, st.hammer_cents, st.total_cents, st.closed_at_ms), ("UNSOLD_WITHDRAWN", None, None, 0, 0, WD))
+    e = Lot("W0", "A", 10000, None, 0, T, W, CAP, 1500, withdrawn_at_ms=WD)
+    check("GB-24f withdrawn with no bids: UNSOLD_WITHDRAWN, not NO_BIDS", settle(e, open_state(e), T).outcome, "UNSOLD_WITHDRAWN")
+    rows = [LedgerRow(1, "s1", "A", 15000, 100_000, "k1", "ACCEPTED_LEAD", True, 0, 10000, None, "A", T, T, False),
+            LedgerRow(2, "s2", "B", 50000, WD, "k2", "REJECTED_LOT_WITHDRAWN", False, 10000, 10000, "A", "A", T, T, False)]
+    check("GB-24g fold re-derives the WITHDRAWN row from the lot's withdrawn_at", fold(Wd, rows, R), r.state)
+    sched = Lot("WS", "A", 10000, None, 2_000_000, T, W, CAP, 1500, withdrawn_at_ms=WD)
+    check("GB-24h withdrawn while SCHEDULED: WITHDRAWN before NOT_OPEN; CLOSED, never SCHEDULED, from then", (bid(sched, open_state(sched), "A", 15000, WD).outcome, lot_status(sched, open_state(sched), WD), lot_status(sched, open_state(sched), WD - 1)), ("REJECTED_LOT_WITHDRAWN", "CLOSED", "SCHEDULED"))
 
     print("OK" if FAILS == 0 else f"FAIL: {FAILS}")
     return 0 if FAILS == 0 else 1

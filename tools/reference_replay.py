@@ -37,7 +37,8 @@ def load(fixtures: str):
     for a in data["auctions"]:
         for l in a["lots"]:
             lots[l["lot_id"]] = (Lot(l["lot_id"], a["auction_id"], l["start_cents"], l["reserve_cents"], l["opens_at_ms"], l["scheduled_end_ms"],
-                                     a["soft_close_window_seconds"] * 1000, a["max_extension_seconds"] * 1000, a["buyer_premium_bps"]), l)
+                                     a["soft_close_window_seconds"] * 1000, a["max_extension_seconds"] * 1000, a["buyer_premium_bps"],
+                                     l.get("withdrawn_at_ms")), l)
     subs = defaultdict(list)
     with open(os.path.join(fixtures, "submissions.jsonl"), encoding="utf-8") as f:
         for line in f:
@@ -103,7 +104,8 @@ def main() -> int:
     print("outcomes: " + ", ".join(f"{k} {v}" for k, v in sorted(outcomes.items())))
     sold = [r for r in lot_rows if r["outcome"] == "SOLD"]
     print(f"settlement: SOLD {len(sold)}  UNSOLD_NO_BIDS {sum(1 for r in lot_rows if r['outcome'] == 'UNSOLD_NO_BIDS')}  "
-          f"UNSOLD_RESERVE_NOT_MET {sum(1 for r in lot_rows if r['outcome'] == 'UNSOLD_RESERVE_NOT_MET')}")
+          f"UNSOLD_RESERVE_NOT_MET {sum(1 for r in lot_rows if r['outcome'] == 'UNSOLD_RESERVE_NOT_MET')}  "
+          f"UNSOLD_WITHDRAWN {sum(1 for r in lot_rows if r['outcome'] == 'UNSOLD_WITHDRAWN')}")
     print(f"hammer total {sum(r['hammer_cents'] for r in sold)} cents  premium total {sum(r['premium_cents'] for r in sold)} cents  "
           f"grand total {sum(r['total_cents'] for r in sold)} cents")
     ext = [r for r in lot_rows if r["extension_count"] > 0]

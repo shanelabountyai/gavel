@@ -85,6 +85,9 @@ class Lot:
     soft_close_window_ms: int
     max_extension_ms: int
     buyer_premium_bps: int
+    # R-04 (D-73): the instant staff withdrew the lot, or None. CLOSED from it; a second input to the
+    # outcome beside the ledger. Read under the same row lock as a bid; never changes once set.
+    withdrawn_at_ms: Optional[int] = None
 
     @property
     def hard_close_ms(self) -> int:
@@ -148,6 +151,8 @@ def apply_bid(lot: Lot, state: LotState, bidder: str, max_cents: int, now_ms: in
         return BidResult(code, False, s, before.price_cents, before.price_cents, before.leader, before.leader,
                          before.closes_at_ms, before.closes_at_ms, False, min_next)
 
+    if lot.withdrawn_at_ms is not None and now_ms >= lot.withdrawn_at_ms:  # half-open, as the close; checked first
+        return rejected("REJECTED_LOT_WITHDRAWN")
     if now_ms < lot.opens_at_ms:
         return rejected("REJECTED_LOT_NOT_OPEN")
     if now_ms >= state.closes_at_ms:  # half-open [opens_at, closes_at)
@@ -290,6 +295,8 @@ class Settlement:
 
 
 def lot_status(lot: Lot, state: LotState, now_ms: int) -> str:
+    if lot.withdrawn_at_ms is not None and now_ms >= lot.withdrawn_at_ms:
+        return "CLOSED"
     if now_ms < lot.opens_at_ms:
         return "SCHEDULED"
     if now_ms < state.closes_at_ms:
@@ -301,6 +308,8 @@ def settle(lot: Lot, state: LotState, now_ms: int) -> Optional[Settlement]:
     """None while the lot is open. Otherwise the outcome, recomputable from the ledger at any later time."""
     if lot_status(lot, state, now_ms) != "CLOSED":
         return None
+    if lot.withdrawn_at_ms is not None:  # withdrawn: no sale whatever the ledger says; closed at the withdrawal
+        return Settlement("UNSOLD_WITHDRAWN", None, None, 0, 0, 0, lot.withdrawn_at_ms)
     if state.leader is None:
         return Settlement("UNSOLD_NO_BIDS", None, None, 0, 0, 0, state.closes_at_ms)
     if not state.reserve_met(lot):
