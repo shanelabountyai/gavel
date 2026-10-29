@@ -11,9 +11,10 @@ export const metadata = { title: 'Catalog' };
 // Any member of the house. Shows the catalog only: no reserve, no max (brief §4).
 export default async function Catalog({ params }: { params: Promise<{ org: string }> }) {
   const ctx = await requireOrg((await params).org);
-  const lots = await db.lot.findMany({ where: inOrg(ctx), orderBy: [{ auction: { opensAt: 'asc' } }, { number: 'asc' }], select: { id: true, number: true, title: true, startCents: true, scheduledEnd: true, auction: { select: { name: true } }, state: { select: { priceCents: true, acceptedCount: true, closesAt: true } } } });
+  const lots = await db.lot.findMany({ where: inOrg(ctx), orderBy: [{ auction: { opensAt: 'asc' } }, { number: 'asc' }], select: { id: true, number: true, title: true, startCents: true, scheduledEnd: true, auction: { select: { name: true } }, state: { select: { priceCents: true, acceptedCount: true, closesAt: true } }, withdrawal: { select: { withdrawnAt: true } } } });
   const t = now().getTime();
-  const isClosed = (l: (typeof lots)[number]) => !l.state || l.state.closesAt.getTime() <= t;
+  const isWithdrawn = (l: (typeof lots)[number]) => !!l.withdrawal && l.withdrawal.withdrawnAt.getTime() <= t; // D-73
+  const isClosed = (l: (typeof lots)[number]) => !l.state || l.state.closesAt.getTime() <= t || isWithdrawn(l);
   lots.sort((a, b) => Number(isClosed(a)) - Number(isClosed(b))); // open lots first; stable, so sale and lot order hold within each
   const me = ctx.role === 'member' ? await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } } }) : null;
   return (
@@ -34,7 +35,7 @@ export default async function Catalog({ params }: { params: Promise<{ org: strin
                   <td className="num cat-start">{formatCents(l.startCents)}</td>
                   {/* AX-01: accepted bids only; a refused attempt is a ledger row, not a bid on the lot */}
                   <td className="num cat-price">{l.state && l.state.acceptedCount > 0 ? formatCents(l.state.priceCents) : <span className="muted">No bids · opening {formatCents(l.startCents)}</span>}</td>
-                  <td className="cat-time">{closed ? <span className="badge">Closed</span> : (l.state?.closesAt ?? l.scheduledEnd).toISOString().slice(0, 16).replace('T', ' ')}</td>
+                  <td className="cat-time">{closed ? <span className="badge">{isWithdrawn(l) ? 'Withdrawn' : 'Closed'}</span> : (l.state?.closesAt ?? l.scheduledEnd).toISOString().slice(0, 16).replace('T', ' ')}</td>
                 </tr>
               );
             })}

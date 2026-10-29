@@ -7,6 +7,7 @@ import { placeBid } from '@/auction/place-bid';
 import { BidError } from '@/auction/errors';
 import { bidErrorText } from '@/auction/outcome-labels';
 import { acceptTerms } from '@/auction/terms';
+import { withdrawLot } from '@/auction/withdraw';
 import { orgAction, ref } from '@/core/authz/action';
 import { db } from '@/core/db';
 import { Refused } from '@/core/errors';
@@ -29,6 +30,19 @@ export const placeBidAction = orgAction(
       if (e instanceof BidError) return { error: bidErrorText(e.code), code: e.code, retryable: e.code === 'BID_TIMED_OUT' }; // UX-05: never e.message
       throw e;
     }
+  },
+);
+
+// D-73 (AX-04): staff withdraw the lot, with the reason on the record. withdrawLot judges it under the lot's one lock and
+// refuses with the sentence the form shows; the trigger under the insert is the guard.
+export const withdrawLotAction = orgAction(
+  'results.write',
+  z.object({ lotId: ref('lot'), reason: z.string().trim().min(1, 'Give a reason for the withdrawal.').max(500, 'Keep the reason under 500 characters.') }),
+  async (ctx, i) => {
+    if (!(await db.lot.findFirst({ where: { id: i.lotId, orgId: ctx.orgId }, select: { id: true } }))) notFound(); // INV-02
+    await withdrawLot({ orgId: ctx.orgId, lotId: i.lotId, reason: i.reason, userId: ctx.userId });
+    revalidatePath(`/o/${ctx.slug}`, 'layout'); // the lot page, the catalog and the history all change
+    return { notice: 'Lot withdrawn.' };
   },
 );
 

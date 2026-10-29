@@ -21,9 +21,10 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   if (!UUID.test(id)) notFound();
   const lot = await db.lot.findFirst({ where: { id, ...inOrg(ctx) }, select: { id: true, number: true, title: true, auctionId: true } });
   if (!lot) notFound();
-  const [bids, loaded] = await Promise.all([
+  const [bids, loaded, withdrawal] = await Promise.all([
     db.bid.findMany({ where: { lotId: id, ...inOrg(ctx) }, orderBy: { seq: 'asc' } }),
     loadLot(prismaTx(db as unknown as Prisma.TransactionClient), id),
+    db.lotWithdrawal.findUnique({ where: { lotId: id } }), // D-73
   ]);
   const ids = [...new Set([...bids.flatMap((b) => [b.bidderId, b.leaderBeforeId, b.leaderAfterId]), ...[loaded.settlement, ...loaded.corrections].map((s) => s?.winner)].filter((x): x is string => !!x))];
   const bidders = await db.bidder.findMany({ where: { id: { in: ids }, ...inOrg(ctx) }, select: { id: true, paddle: true } });
@@ -74,6 +75,10 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
           </table>
         </>
       )}
+      <h2>Withdrawal</h2>
+      {withdrawal ? (
+        <p data-testid="withdrawal">Withdrawn {iso(withdrawal.withdrawnAt)} by user <code>{withdrawal.byUserId}</code>: {withdrawal.reason}. Every attempt from that instant is a <code>REJECTED_LOT_WITHDRAWN</code> row above; the lot settles <code>UNSOLD_WITHDRAWN</code>.</p>
+      ) : <p className="muted">Not withdrawn.</p>}
       <h2>Settlement</h2>
       {chain.length === 0 ? <p>Not settled.</p> : (
         <table>

@@ -7,7 +7,7 @@ import { now } from '@/core/clock';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
 import { registerBidderAction } from '../../catalog/actions';
-import { acceptTermsAction } from './actions';
+import { acceptTermsAction, withdrawLotAction } from './actions';
 import { LotLive, type Viewer } from './lot-live';
 
 export const metadata = { title: 'Lot' };
@@ -26,7 +26,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   const terms = bidder && (await unacceptedTermsSha(lot.auctionId, bidder.id)) ? await currentTerms(lot.auctionId) : null;
   // Only the member role gets a paddle (D-49); everyone else is staff here, with the history link where audit.read allows.
   const viewer: Viewer = terms ? { kind: 'terms' } : bidder ? { kind: 'bidder', paddle: bidder.paddle } : ctx.role === 'member' ? { kind: 'register' }
-    : { kind: 'staff', historyHref: can(ctx.role, 'audit.read') ? `/o/${ctx.slug}/lots/${id}/history` : null };
+    : { kind: 'staff', historyHref: can(ctx.role, 'audit.read') ? `/o/${ctx.slug}/lots/${id}/history` : null, canWithdraw: can(ctx.role, 'results.write') && v.status !== 'CLOSED' }; // D-73
   return (
     <main>
       <header className="lot-head">
@@ -41,6 +41,13 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
             <p>Accept the terms of sale for {lot.auction.name} (version {terms.version}) to bid on its lots.</p>
             <p className="terms-text" data-testid="terms-text">{terms.text}</p>
             <button type="submit">I accept the terms of sale</button>
+          </ActionForm>
+        ) : viewer.kind === 'staff' ? (
+          <ActionForm action={withdrawLotAction.bind(null, ctx.slug)}>
+            <input type="hidden" name="lotId" value={id} />
+            <p className="muted">Withdrawing closes the lot now, voids every bid on it and tells the high bidder. The reason goes on the record.</p>
+            <label>Reason <input name="reason" required maxLength={500} placeholder="e.g. title problem, damage, consignor pulled it" /></label>
+            <button type="submit">Withdraw lot</button>
           </ActionForm>
         ) : (
           <ActionForm action={registerBidderAction.bind(null, ctx.slug)}><p>Register once to get a paddle number, then bid on this lot.</p><button type="submit">Register to bid</button></ActionForm>

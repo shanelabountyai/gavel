@@ -7,7 +7,7 @@ import { BidForm } from './bid-form';
 type View = Omit<LotView, 'etag'>;
 /** Who is looking (UX-03, UX-04): a bidder gets the form, a member without a paddle the register button, a bidder who has
  * not accepted the sale's terms the terms (D-72), staff none of these. */
-export type Viewer = { kind: 'bidder'; paddle: number } | { kind: 'register' } | { kind: 'terms' } | { kind: 'staff'; historyHref: string | null };
+export type Viewer = { kind: 'bidder'; paddle: number } | { kind: 'register' } | { kind: 'terms' } | { kind: 'staff'; historyHref: string | null; canWithdraw: boolean };
 const NEAR_CLOSE_MS = 60_000; // D-47: poll every 1 s near the close, 2 s otherwise
 
 // Polls /api/lots/[id]/state with the ETag. The countdown is closesAt minus the server's clock: the offset between the
@@ -53,6 +53,7 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
 
   const closed = view.status === 'CLOSED';
   const scheduled = view.status === 'SCHEDULED';
+  const withdrawn = view.withdrawnAt !== null; // D-73: closed from the withdrawal, never sold
   // A scheduled lot counts to its open, not its close (UX-02).
   const left = Math.max(0, Math.ceil((Date.parse(scheduled ? view.opensAt : view.closesAt) - serverNow) / 1000));
   const noBids = view.bidCount === 0;
@@ -76,7 +77,7 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
       {stale && <p role="alert" className="callout" data-tone="warn"><span className="badge" data-tone="warn">Connection problem</span> Retrying; the numbers below may be out of date.</p>}
       {closed && view.result && (
         <p className="board-you" data-result={view.result} data-testid="result" aria-live="polite">
-          {view.result === 'WON' ? `You won this lot at ${formatCents(view.priceCents)}.` : view.result === 'NOT_WON' ? 'You did not win. This lot sold to another bidder.' : view.reserveMet ? 'You did not win. This lot closed unsold.' : 'You did not win: the reserve was not met.'}
+          {view.result === 'WON' ? `You won this lot at ${formatCents(view.priceCents)}.` : view.result === 'NOT_WON' ? 'You did not win. This lot sold to another bidder.' : withdrawn ? 'This lot was withdrawn from the sale by the auction house. Your bids on it are void and nothing is owed.' : view.reserveMet ? 'You did not win. This lot closed unsold.' : 'You did not win: the reserve was not met.'}
           {!view.final && <span className="board-you-note">Final once the sale is settled.</span>}
         </p>
       )}
@@ -98,7 +99,7 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
         </p>
         <p className="board-clock">
           <span className="board-label">{closed ? 'Status' : scheduled ? 'Opens in' : left < 60 ? 'Final minute' : 'Time left'}</span>
-          {closed ? <b data-testid="status">Closed</b> : <b data-testid="countdown" data-seconds={left}>{formatLeft(left)}</b>}
+          {closed ? <b data-testid="status">{withdrawn ? 'Withdrawn' : 'Closed'}</b> : <b data-testid="countdown" data-seconds={left}>{formatLeft(left)}</b>}
           {extended && <span key={extended.at} className="board-extended">Extended by a late bid, +{formatLeft(Math.round(extended.ms / 1000))}</span>}
         </p>
       </div>
@@ -109,13 +110,15 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
           Staff view: staff accounts do not bid.{viewer.historyHref && <> <a href={viewer.historyHref}>Bid history</a></>}
         </p>
       )}
-      {closed && viewer.kind !== 'staff' && <p className="board-panel">Bidding has closed on this lot.</p>}
+      {!closed && viewer.kind === 'staff' && viewer.canWithdraw && <div className="board-panel" data-testid="withdraw-panel">{children}</div>}
+      {closed && viewer.kind !== 'staff' && <p className="board-panel">{withdrawn ? 'This lot was withdrawn from the sale.' : 'Bidding has closed on this lot.'}</p>}
       <dl className="board-facts">
         {!closed && <div><dt>Status</dt><dd data-testid="status">{scheduled ? 'Scheduled' : 'Open'}</dd></div>}
         <div><dt>Bids</dt><dd data-testid="bid-count">{view.bidCount}</dd></div>
         <div><dt>Reserve</dt><dd>{view.reserveMet ? 'Met' : 'Not met'}</dd></div>
         {scheduled && <div><dt>Opens</dt><dd><time dateTime={view.opensAt}>{utc(view.opensAt)}</time></dd></div>}
         <div><dt>{closed ? 'Closed' : 'Closes'}</dt><dd><time dateTime={view.closesAt} data-testid="closes-at">{utc(view.closesAt)}</time></dd></div>
+        {withdrawn && <div><dt>Withdrawn</dt><dd><time dateTime={view.withdrawnAt!} data-testid="withdrawn-at">{utc(view.withdrawnAt!)}</time></dd></div>}
       </dl>
     </section>
   );
