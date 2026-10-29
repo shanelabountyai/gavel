@@ -24,7 +24,7 @@ test.beforeAll(async () => {
 test('consignor, contract, statement', async ({ page }) => {
   const code = `E2E-${T}`;
   await signIn(page, 'owner@acme.demo.test');
-  await page.getByRole('link', { name: 'Consignors' }).click();
+  await page.goto('/o/acme/consignors'); // not via the menu: a staff user in two orgs (e.g. after a vitest replay left gavel-fixtures) lands on the org list
   await page.getByLabel('Code').fill(code);
   await page.getByLabel('Name').fill(`Estate ${T}`);
   await page.getByRole('button', { name: 'Add consignor' }).click();

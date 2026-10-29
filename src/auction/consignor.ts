@@ -56,15 +56,15 @@ export type ConsignorStatementView = {
   readonly code: string;
   readonly contract: (Contract & { readonly id: string; readonly createdAt: Date }) | null;
   readonly statement: ConsignorStatement | null; // null without a contract: the lots are listed, the money is not
-  readonly lots: readonly ConsignedLot[]; // the settled lots the statement is drawn from
+  readonly lots: readonly (ConsignedLot & { readonly winner: string | null })[]; // the settled lots the statement is drawn from; the buyer, for R-08's paid / awaiting split
   readonly unsettled: number; // consigned lots with no settlement yet; they join the statement when they settle
 };
 
 /** Staff: one statement per consignor with lots in a sale, from current settlements and current contracts. */
 export async function statementsForAuction(q: Tx, orgId: string, auctionId: string): Promise<ConsignorStatementView[]> {
   const [settled, pending, contracts] = await Promise.all([
-    q.query<ConsignedLot & { consignorId: string }>(
-      `SELECT l."consignorId"::text AS "consignorId", l."id"::text AS "lotId", l."number" AS "lotNumber", s."outcome", s."hammerCents"
+    q.query<ConsignedLot & { consignorId: string; winner: string | null }>(
+      `SELECT l."consignorId"::text AS "consignorId", l."id"::text AS "lotId", l."number" AS "lotNumber", s."outcome", s."hammerCents", s."winnerBidderId"::text AS "winner"
          FROM "Settlement" s JOIN "Lot" l ON l."id" = s."lotId"
         WHERE l."auctionId" = $1::uuid AND l."orgId" = $2::uuid AND l."consignorId" IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM "Settlement" n WHERE n."supersedesId" = s."id")`,
@@ -79,7 +79,7 @@ export async function statementsForAuction(q: Tx, orgId: string, auctionId: stri
   const unsettled = new Map(pending.map((p) => [p.consignorId!, p._count._all]));
   return consignors.map((c) => {
     const k = contract.get(c.id);
-    const lots = settled.filter((l) => l.consignorId === c.id).map((l): ConsignedLot => ({ lotId: l.lotId, lotNumber: l.lotNumber, outcome: l.outcome, hammerCents: l.hammerCents }));
+    const lots = settled.filter((l) => l.consignorId === c.id).map((l) => ({ lotId: l.lotId, lotNumber: l.lotNumber, outcome: l.outcome, hammerCents: l.hammerCents, winner: l.winner }));
     const terms = k ? { id: k.id, createdAt: k.createdAt, commissionBps: k.commissionBps, lotFeeCents: k.lotFeeCents, unsoldFeeCents: k.unsoldFeeCents } : null;
     return { consignorId: c.id, name: c.name, code: c.code, contract: terms, statement: terms ? consignorStatement(lots, terms) : null, lots, unsettled: unsettled.get(c.id) ?? 0 };
   });

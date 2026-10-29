@@ -67,7 +67,7 @@ describe('consignors and statements (D-74)', () => {
     expect(views.map((v) => [v.code, v.name, v.unsettled, v.contract && v.contract.commissionBps])).toEqual([['DLR-2', 'Dealer Y', 0, null], ['EST-1', 'Estate of X', 1, 1250]]);
     const [dl, es] = views;
     expect(dl!.statement).toBeNull();
-    expect(dl!.lots).toEqual([{ lotId: l7!.id, lotNumber: 7, outcome: 'SOLD', hammerCents: 10000 }]); // one bid: the start price
+    expect(dl!.lots).toEqual([{ lotId: l7!.id, lotNumber: 7, outcome: 'SOLD', hammerCents: 10000, winner: a }]); // one bid: the start price; the buyer for D-75's paid split
     expect(es!.statement!.lines.map((l) => [l.lotNumber, l.outcome, l.hammerCents, l.commissionCents, l.feeCents, l.netCents])).toEqual([
       [1, 'SOLD', 10020, 1253, 500, 8267], [2, 'UNSOLD_NO_BIDS', 0, 0, 1500, -1500], [3, 'UNSOLD_RESERVE_NOT_MET', 0, 0, 1500, -1500], [4, 'UNSOLD_WITHDRAWN', 0, 0, 0, 0],
     ]);

@@ -19,6 +19,13 @@ const LABELS: Record<string, [label: string, tone: Tone]> = {
 };
 
 export const outcomeLabel = (key: string) => LABELS[key]?.[0] ?? key;
+
+// D-75: the derived payment status (engine `invoiceBalance`), display only.
+const PAYMENT: Record<string, [label: string, tone: Tone | 'warn']> = {
+  PAID: ['Paid', 'good'], PARTIAL: ['Part paid', 'warn'], UNPAID: ['Unpaid', 'plain'], OVERDUE: ['Overdue', 'bad'], DEFAULTED: ['In default', 'bad'], CREDIT: ['Credit due', 'warn'],
+};
+export const paymentLabel = (status: string) => PAYMENT[status]?.[0] ?? status;
+export const paymentTone = (status: string) => PAYMENT[status]?.[1] ?? 'plain';
 export const outcomeTone = (key: string): Tone => LABELS[key]?.[1] ?? 'plain';
 
 // What a bidder reads when the bid path refuses before judging (UX-05). The code stays the record, in `data-code`.

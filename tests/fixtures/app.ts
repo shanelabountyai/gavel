@@ -20,5 +20,8 @@ export async function seedApp(org: { orgId: string; userId: string }, key: 'a' |
   });
   // D-74: a consignor and its contract with the harness auction, for setContractAction's ref('consignor').
   const consignor = await db.consignor.create({ data: { id: `00000000-0000-4000-8000-${key === 'a' ? '000000009031' : '000000009032'}`, orgId: org.orgId, name: `harness consignor ${key}`, code: `H-${key}` } });
-  return { auction: auction.id, lot: lot.id, bidder: bidder.id, consignor: consignor.id };
+  // D-75: a default and an open offer on the harness lot, for answerOfferAction's ref('offer').
+  const dflt = await db.buyerDefault.create({ data: { id: `00000000-0000-4000-8000-${key === 'a' ? '000000009041' : '000000009042'}`, orgId: org.orgId, auctionId: auction.id, bidderId: bidder.id, reason: 'harness', byUserId: org.userId, declaredAt: new Date('2031-01-03T00:00:00Z') } });
+  const offer = await db.secondChanceOffer.create({ data: { id: `00000000-0000-4000-8000-${key === 'a' ? '000000009051' : '000000009052'}`, orgId: org.orgId, defaultId: dflt.id, lotId: lot.id, bidderId: bidder.id, priceCents: 10000, premiumBps: 1500, expiresAt: new Date('2031-02-01T00:00:00Z'), createdAt: new Date('2031-01-03T00:00:00Z') } });
+  return { auction: auction.id, lot: lot.id, bidder: bidder.id, consignor: consignor.id, offer: offer.id };
 }
