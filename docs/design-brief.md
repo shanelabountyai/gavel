@@ -74,11 +74,13 @@ These are computed by the system, never set by hand. Each needs a consistent bad
 | `REJECTED_LOT_CLOSED` | Closed | bidder, staff |
 | `REJECTED_BELOW_MINIMUM` | Below minimum | bidder, staff |
 | `REJECTED_NOT_ABOVE_OWN_MAX` | Not above your maximum | bidder, staff |
+| `REJECTED_LOT_WITHDRAWN` | Lot withdrawn | bidder, staff (D-73) |
 | `SOLD` | Sold | staff (bidders see "Won" / "Not won") |
 | `UNSOLD_NO_BIDS` | No bids | staff |
 | `UNSOLD_RESERVE_NOT_MET` | Reserve not met | staff |
+| `UNSOLD_WITHDRAWN` | Withdrawn | staff (bidders read "withdrawn from the sale"; D-73) |
 
-Lot status, also derived: Scheduled, Open, Closed, Settled.
+Lot status, also derived: Scheduled, Open, Closed, Settled; a withdrawn lot shows Withdrawn where Closed would be (D-73).
 
 ## Money and time display rules
 

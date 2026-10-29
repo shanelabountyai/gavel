@@ -15,7 +15,7 @@ sysctl -n kern.memorystatus_level   # want well above 30; a loaded Mac makes the
 uptime                         # 1-minute load average below 3 before any timing run
 
 # 1. Load the frozen fixtures into gavel_test and replay them through the engine and the database path
-npm run auction:eval           # ends: OK: expected_bids.csv (220 rows) and expected_lots.csv (36 rows) reproduced column for column
+npm run auction:eval           # ends: OK: expected_bids.csv (233 rows) and expected_lots.csv (39 rows) reproduced column for column
 
 # 2. Demo accounts (two orgs; owner, admin, member each)
 npm run seed:demo:test
@@ -24,7 +24,7 @@ npm run seed:demo:test
 psql gavel_test -c "INSERT INTO \"Membership\" (\"orgId\",\"userId\",role,\"updatedAt\") SELECT o.id, u.id, 'owner', now() FROM \"Org\" o, \"User\" u WHERE o.slug='gavel-fixtures' AND u.email='owner@acme.demo.test' ON CONFLICT DO NOTHING"
 
 # 4. Check the ledger before showing anything
-npm run auction:verify         # auction:verify: OK, 36 lots (36 settled), V1–V9
+npm run auction:verify         # auction:verify: OK, 39 lots (39 settled), V1–V9
 
 # 5. Serve the production build with the demo sign-in on (builds first; about a minute cold)
 DEMO_MODE=1 npm run e2e:server
@@ -42,7 +42,7 @@ When `curl -s localhost:6100/api/health` prints `{"ok":true}`, open <http://loca
 
 ## 1. The oracle (2 min)
 
-*Say:* "The rules are written down twice: a Python oracle and the TypeScript engine. They have to agree on every one of 220 submissions."
+*Say:* "The rules are written down twice: a Python oracle and the TypeScript engine. They have to agree on every one of 233 submissions."
 
 ```bash
 python3 tools/golden_answers.py          # ends with OK
@@ -51,7 +51,7 @@ npm run rules:lint                       # rules file hash matches D-23
 npm run auction:eval | tail -3           # engine half and database half, both OK
 ```
 
-Point at: 36 lots, 31 sold, 3 no bids, 2 reserve not met; hammer 10 730 200 cents, premium 1 248 403 cents. Integers throughout.
+Point at: 39 lots, 31 sold, 3 no bids, 2 reserve not met, 3 withdrawn by staff; hammer 10 730 200 cents, premium 1 248 403 cents. Integers throughout.
 
 ## 2. The staff view: a sold lot and its invoice (3 min)
 

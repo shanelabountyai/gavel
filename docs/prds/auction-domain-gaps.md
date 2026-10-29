@@ -122,13 +122,13 @@ Each requirement lists what it changes, using these labels:
 - *Changes:* schema (two tables, append-only triggers). Ledger unchanged, because the check happens before the lock. D (new boundary refusal; amends D-47 Q2). G/F: none. The engine is untouched.
 
 **R-04 Withdraw a lot before the close (AX-04).**
-- [ ] New insert-only table `LotWithdrawal` (`lotId` unique, `reason` not blank, `byUserId`, `withdrawnAt`).
-- [ ] The staff action takes `FOR UPDATE` on the lot's `LotState` row, the same single lock (non-negotiable 2), then reads `now()` under it (non-negotiable 4) and inserts the withdrawal. **It does not write `LotState`** (non-negotiable 5 holds).
-- [ ] The engine's `Lot` gains `withdrawnAtMs: number | null`, read from the join. `lotStatus` is CLOSED from that instant. `applyBid` returns a new `REJECTED_LOT_WITHDRAWN`, written as a row like every other rejection. `settle` returns a new `UNSOLD_WITHDRAWN` with `closedAt = withdrawnAt` and zero amounts.
-- [ ] Withdrawal is refused once the lot is CLOSED; that case is R-14 or D-44's correction.
-- [ ] The leader at the time of withdrawal gets an outbox notice.
-- [ ] V6 gains: accepted rows have `placedAt < withdrawnAt`. V8 recomputes `UNSOLD_WITHDRAWN`.
-- [ ] Test: a barrier test with N writers queued behind a holder that withdraws. Every one of the N is `REJECTED_LOT_WITHDRAWN`, there are N rows, and verify is clean.
+- [x] New insert-only table `LotWithdrawal` (`lotId` unique, `reason` not blank, `byUserId`, `withdrawnAt`).
+- [x] The staff action takes `FOR UPDATE` on the lot's `LotState` row, the same single lock (non-negotiable 2), then reads `now()` under it (non-negotiable 4) and inserts the withdrawal. **It does not write `LotState`** (non-negotiable 5 holds).
+- [x] The engine's `Lot` gains `withdrawnAtMs: number | null`, read from the join. `lotStatus` is CLOSED from that instant. `applyBid` returns a new `REJECTED_LOT_WITHDRAWN`, written as a row like every other rejection. `settle` returns a new `UNSOLD_WITHDRAWN` with `closedAt = withdrawnAt` and zero amounts.
+- [x] Withdrawal is refused once the lot is CLOSED; that case is R-14 or D-44's correction.
+- [x] The leader at the time of withdrawal gets an outbox notice.
+- [x] V6 gains: accepted rows have `placedAt < withdrawnAt`. V8 recomputes `UNSOLD_WITHDRAWN`.
+- [x] Test: a barrier test with N writers queued behind a holder that withdraws. Every one of the N is `REJECTED_LOT_WITHDRAWN`, there are N rows, and verify is clean.
 - *Changes:* rule data (two outcomes, so a new hash in D-23 and V9). Schema. Ledger invariant V6. Settlement. D, G (withdraw before, at, and after a bid), F (a new `WITHDRAWN` fixture kind). **Contradicts brief §2** ("nothing on [a lot] changes once it has a bid"). The `Lot` row is unchanged, but the lot's outcome now has a second input; record that in the D entry.
 
 **R-05 Suspend and reinstate a bidder (AX-05).**

@@ -435,3 +435,18 @@ Every throughput number Gavel quotes comes from `npm run load:bids` (D-19, D-24)
 - Per lot (bidCount / acceptedCount / price cents / extensions): 6992/400/1100000/171, 6942/390/1060000/166, 6960/397/1080100/169, 6960/400/1090000/167; settled 4.
 - Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 22086b9; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
 - auction:verify: OK, 160 lots (160 settled), V1–V9
+## 2026-10-29T16:54:30.766Z — `09818f4`
+
+`2026-10-29T16:54:30.766Z 09818f4: lock=row, 200 writers, 40 connections, 4 lots, 10 s + soft close: 49258 ledger rows in 15.9 s = 3106 bids/s; placeBid p50 9.9 / p95 21.8 / p99 85.7 ms; end to end p50 47.0 / p95 94.3 / p99 613.4 ms; max lock wait 941.6 ms; 0 timeouts; 1.000 judgements per row; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`
+
+- Command: `npm run load:bids -- ` → writers 200, lots 4, seconds 10, connections 40; soft-close window 2 s, cap 6 s, start 10000 cents, no reserve.
+- Ledger rows: 49258 (N attempts, N rows; timeouts resent with the same key: 0; writer failures: 0).
+- Lock strategy: row; clock: now() from @/core/clock under the lock; judgements 49258 for 49258 ledger rows (1.000 per row); conflicts 0.
+- Outcomes: ACCEPTED_LEAD 2635, ACCEPTED_OUTBID 254, ACCEPTED_RAISE 28, REJECTED_BELOW_MINIMUM 46132, REJECTED_LOT_CLOSED 200, REJECTED_NOT_ABOVE_OWN_MAX 9.
+- Bids per second: 3105.6 over 15.86 s from the first attempt's start to the last attempt's end.
+- Latency around `placeBid` with a connection in hand (same process as the server code; no HTTP): p50 9.9 ms, p95 21.8 ms, p99 85.7 ms, max 1066.5 ms, n = 49258.
+- Latency end to end including the wait for one of the 40 pooled connections: p50 47.0 ms, p95 94.3 ms, p99 613.4 ms.
+- Max lock wait seen: 941.6 ms (now() − query_start of a backend in wait_event_type = 'Lock', sampled every 100 ms; an upper bound).
+- Per lot (bidCount / acceptedCount / price cents / extensions): 12355/729/7375200/285, 12331/739/7575000/296, 12306/722/7510000/283, 12266/727/7350000/291; settled 4.
+- Hardware: Apple M4, 10 cores, 24 GB RAM; Node v26.3.1; PostgreSQL 17.11 (Homebrew); git 09818f4; Prisma pool for the boundary reads capped by the DATABASE_URL (connection_limit=10).
+- auction:verify: OK, 4 lots (4 settled), V1–V9
