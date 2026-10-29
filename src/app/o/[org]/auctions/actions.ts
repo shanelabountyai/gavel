@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { z } from 'zod';
 import { loadRules } from '@/auction/load-rules';
 import { openState } from '@/auction/engine/engine';
+import { createConsignor, setContract } from '@/auction/consignor';
 import { publishTerms } from '@/auction/terms';
 import { audit } from '@/core/audit';
 import { orgAction, ref } from '@/core/authz/action';
@@ -35,7 +36,7 @@ export const createAuction = orgAction(
 // The auction is looked up before the fields are read, so another org's id is a 404 whatever else is in the form (INV-02).
 const lotFields = z.object({
   title: z.string().trim().min(1, 'Give the lot a title.').max(200),
-  consignor: z.string().trim().max(200).default(''),
+  consignorId: z.union([z.literal('').transform(() => null), z.uuid()]).default(null),
   startCents: cents('Start price'),
   reserveCents: z.union([z.literal('').transform(() => null), cents('Reserve')]).default(null),
   scheduledEnd: utc,
@@ -43,7 +44,7 @@ const lotFields = z.object({
 
 export const createLot = orgAction(
   'results.write',
-  z.object({ auctionId: ref('auction'), title: z.string(), consignor: z.string().optional(), startCents: z.string(), reserveCents: z.string().optional(), scheduledEnd: z.string() }),
+  z.object({ auctionId: ref('auction'), title: z.string(), consignorId: z.union([z.literal(''), ref('consignor')]).optional(), startCents: z.string(), reserveCents: z.string().optional(), scheduledEnd: z.string() }),
   async (ctx, raw) => {
     const auction = await db.auction.findFirst({ where: { id: raw.auctionId, ...inOrg(ctx) } });
     if (!auction) notFound();
@@ -53,12 +54,13 @@ export const createLot = orgAction(
     if (i.startCents < 1) throw new Refused('Start price must be above zero.');
     if (i.reserveCents !== null && i.reserveCents < i.startCents) throw new Refused('Reserve must be at least the start price.');
     if (i.scheduledEnd <= auction.opensAt) throw new Refused('The lot must close after the auction opens.');
+    if (i.consignorId !== null && !(await db.consignor.findFirst({ where: { id: i.consignorId, ...inOrg(ctx) }, select: { id: true } }))) throw new Refused('No such consignor in this house.'); // D-74; INV-02
     const s = openState({ startCents: i.startCents, reserveCents: i.reserveCents, opensAtMs: auction.opensAt.getTime(), scheduledEndMs: i.scheduledEnd.getTime(), softCloseWindowMs: auction.softCloseWindowSeconds * 1000, maxExtensionMs: auction.maxExtensionSeconds * 1000, buyerPremiumBps: auction.buyerPremiumBps });
     await db.$transaction(async (tx) => {
       const top = await tx.lot.aggregate({ where: { auctionId: auction.id }, _max: { number: true } });
       const lot = await tx.lot.create({
         data: {
-          ...inOrg(ctx), auctionId: auction.id, number: (top._max.number ?? 0) + 1, title: i.title, consignor: i.consignor, startCents: i.startCents, reserveCents: i.reserveCents, scheduledEnd: i.scheduledEnd,
+          ...inOrg(ctx), auctionId: auction.id, number: (top._max.number ?? 0) + 1, title: i.title, consignorId: i.consignorId, startCents: i.startCents, reserveCents: i.reserveCents, scheduledEnd: i.scheduledEnd,
           state: { create: { ...inOrg(ctx), priceCents: s.priceCents, leaderBidderId: s.leader, leaderMaxCents: s.leaderMaxCents, leaderSeq: s.leaderSeq, bidCount: s.bidCount, acceptedCount: s.acceptedCount, closesAt: new Date(s.closesAtMs), extensionCount: s.extensionCount } },
         },
       });
@@ -102,5 +104,36 @@ export const publishTermsAction = orgAction(
     if (!(await db.auction.findFirst({ where: { id: i.auctionId, ...inOrg(ctx) }, select: { id: true } }))) notFound(); // INV-02
     await publishTerms(ctx, i.auctionId, i.text);
     redirect(`/o/${ctx.slug}/auctions/${i.auctionId}`);
+  },
+);
+
+// D-74 (AX-07): consignors are reference data; a contract is an insert-only row per (consignor, sale), superseded by
+// the next. Money fields are whole units (bps, cents) as every staff form here; the CHECKs are the guard.
+export const createConsignorAction = orgAction(
+  'results.write',
+  z.object({ name: z.string().max(200, 'Keep the name under 200 characters.'), code: z.string().max(40, 'Keep the code under 40 characters.') }),
+  async (ctx, i) => {
+    await createConsignor(ctx, i);
+    redirect(`/o/${ctx.slug}/consignors`);
+  },
+);
+
+const whole = (label: string) => z.string().regex(/^\d+$/, `${label} must be a whole number.`).transform(Number).pipe(z.number().int().safe());
+const contractFields = z.object({ commissionBps: whole('Commission (bps)'), lotFeeCents: whole('Lot fee (cents)'), unsoldFeeCents: whole('Unsold fee (cents)') });
+
+export const setContractAction = orgAction(
+  'results.write',
+  z.object({ auctionId: ref('auction'), consignorId: ref('consignor'), commissionBps: z.string(), lotFeeCents: z.string(), unsoldFeeCents: z.string() }),
+  async (ctx, raw) => {
+    // Both ids are looked up before the fields are read, so another org's sale or consignor is a 404 whatever else is in the form (INV-02, INV-03).
+    const [auction, consignor] = await Promise.all([
+      db.auction.findFirst({ where: { id: raw.auctionId, ...inOrg(ctx) }, select: { id: true } }),
+      db.consignor.findFirst({ where: { id: raw.consignorId, ...inOrg(ctx) }, select: { id: true } }),
+    ]);
+    if (!auction || !consignor) notFound();
+    const parsed = contractFields.safeParse(raw);
+    if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
+    await setContract(ctx, { auctionId: raw.auctionId, consignorId: raw.consignorId, ...parsed.data });
+    redirect(`/o/${ctx.slug}/auctions/${raw.auctionId}`);
   },
 );

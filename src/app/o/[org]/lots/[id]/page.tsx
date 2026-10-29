@@ -19,7 +19,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   const { id } = await params;
   const v = await lotView(ctx.userId, id);
   const { etag, ...view } = v ?? { etag: '' };
-  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, consignor: true, auctionId: true, auction: { select: { name: true } } } }));
+  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, consignor: true, consignorRef: { select: { name: true } }, auctionId: true, auction: { select: { name: true } } } }));
   if (!v || !lot) notFound();
   const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true, paddle: true } });
   // D-72: a bidder who has not accepted the sale's current terms sees them, with one button, where the bid form would be
@@ -32,7 +32,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
       <header className="lot-head">
         <p className="lot-number">Lot {lot.number} · {lot.auction.name}</p>
         <h1>{lot.title}</h1>
-        {lot.consignor && <p className="muted">Consigned by {lot.consignor}</p>}
+        {(lot.consignorRef?.name || lot.consignor) && <p className="muted">Consigned by {lot.consignorRef?.name ?? lot.consignor}</p>}
       </header>
       <LotLive slug={ctx.slug} lotId={id} initial={view as Omit<typeof v, 'etag'>} etag={etag} serverNowMs={now().getTime()} viewer={viewer}>
         {terms ? (

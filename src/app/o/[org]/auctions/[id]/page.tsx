@@ -4,8 +4,9 @@ import { formatCents } from '@/auction/engine/money';
 import { inOrg, requireOrg } from '@/core/authz/guards';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
+import { currentContracts } from '@/auction/consignor';
 import { acceptancesFor, currentTerms } from '@/auction/terms';
-import { createLot, publishTermsAction, updateSaleTerms } from '../actions';
+import { createLot, publishTermsAction, setContractAction, updateSaleTerms } from '../actions';
 
 export const metadata = { title: 'Auction' };
 
@@ -15,16 +16,17 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
   const ctx = await requireOrg((await params).org, 'results.write');
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, include: { lots: { orderBy: { number: 'asc' } } } });
+  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, include: { lots: { orderBy: { number: 'asc' }, include: { consignorRef: { select: { code: true } } } } } });
   if (!auction) notFound();
   const hasBids = (await db.bid.count({ where: { lot: { auctionId: id } }, take: 1 })) > 0;
   const due = auction.paymentDueAt?.toISOString().slice(0, 16);
-  const [terms, accepted] = await Promise.all([currentTerms(id), acceptancesFor(id)]);
+  const [terms, accepted, contracts, consignors] = await Promise.all([currentTerms(id), acceptancesFor(id), currentContracts(ctx.orgId, id), db.consignor.findMany({ where: inOrg(ctx), orderBy: { code: 'asc' }, select: { id: true, code: true, name: true } })]);
+  const pct = (bps: number) => `${formatCents(bps).slice(1)}%`;
   return (
     <main>
       <h1>{auction.name}</h1>
       <p className="muted">Opens {auction.opensAt.toISOString().slice(0, 16).replace('T', ' ')} UTC. Soft close: a bid in the last {auction.softCloseWindowSeconds / 60} min extends the lot, up to {auction.maxExtensionSeconds / 60} min in all. Buyer&apos;s premium {formatCents(auction.buyerPremiumBps).slice(1)}%.</p>
-      <p><Link href={`/o/${ctx.slug}/auctions/${id}/invoices`}>Invoices for this sale</Link></p>
+      <p><Link href={`/o/${ctx.slug}/auctions/${id}/invoices`}>Invoices for this sale</Link> · <Link href={`/o/${ctx.slug}/auctions/${id}/statements`}>Consignor statements</Link></p>
       <h2>Payment and pickup</h2>
       {hasBids ? (
         <p>Payment due {due ? `${due.replace('T', ' ')} UTC` : <span className="muted">not set</span>}. Pickup: {auction.pickupText || <span className="muted">not set</span>}{auction.pickupWindowText && `, ${auction.pickupWindowText}`}. <span className="muted">Fixed: the sale has bids.</span></p>
@@ -60,12 +62,32 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
           </tbody>
         </table>
       )}
+      <h2>Consignor contracts</h2>
+      {contracts.length === 0 ? <p className="muted">No contracts for this sale yet. A consignor&apos;s lots settle without a statement until one is set.</p> : (
+        <table data-testid="contracts">
+          <thead><tr><th scope="col">Consignor</th><th scope="col" className="num">Commission</th><th scope="col" className="num">Per sold lot</th><th scope="col" className="num">Per unsold lot</th><th scope="col">Since (UTC)</th></tr></thead>
+          <tbody>
+            {contracts.map((c) => <tr key={c.id}><td><code>{c.consignor.code}</code> {c.consignor.name}</td><td className="num">{pct(c.commissionBps)}</td><td className="num">{formatCents(c.lotFeeCents)}</td><td className="num">{formatCents(c.unsoldFeeCents)}</td><td>{c.createdAt.toISOString().slice(0, 16).replace('T', ' ')}</td></tr>)}
+          </tbody>
+        </table>
+      )}
+      {consignors.length === 0 ? <p className="muted"><Link href={`/o/${ctx.slug}/consignors`}>Add a consignor</Link> before setting a contract.</p> : (
+        <ActionForm action={setContractAction.bind(null, ctx.slug)}>
+          <p className="muted">Whole units: 1250 bps is 12.50%; fees in cents. Saving again supersedes the pair&apos;s current contract; the statement is always drawn from the latest.</p>
+          <input type="hidden" name="auctionId" value={id} />
+          <label>Consignor <select name="consignorId" required defaultValue="">{[<option key="" value="" disabled>Choose</option>, ...consignors.map((c) => <option key={c.id} value={c.id}>{c.code} {c.name}</option>)]}</select></label>
+          <label>Commission (bps) <input name="commissionBps" inputMode="numeric" required /></label>
+          <label>Fee per sold lot (cents) <input name="lotFeeCents" inputMode="numeric" required defaultValue="0" /></label>
+          <label>Fee per unsold lot (cents) <input name="unsoldFeeCents" inputMode="numeric" required defaultValue="0" /></label>
+          <button type="submit">Set contract</button>
+        </ActionForm>
+      )}
       <h2>Lots</h2>
       <table>
-        <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col" className="num">Start</th><th scope="col" className="num">Reserve</th><th scope="col">Closes (UTC)</th></tr></thead>
+        <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Consignor</th><th scope="col" className="num">Start</th><th scope="col" className="num">Reserve</th><th scope="col">Closes (UTC)</th></tr></thead>
         <tbody>
           {auction.lots.map((l) => (
-            <tr key={l.id}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link> · <Link href={`/o/${ctx.slug}/lots/${l.id}/history`} className="muted">History</Link></td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td>{l.scheduledEnd.toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
+            <tr key={l.id}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link> · <Link href={`/o/${ctx.slug}/lots/${l.id}/history`} className="muted">History</Link></td><td>{l.consignorRef ? <code>{l.consignorRef.code}</code> : l.consignor || <span className="muted">None</span>}</td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td>{l.scheduledEnd.toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
           ))}
         </tbody>
       </table>
@@ -73,7 +95,7 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
       <ActionForm action={createLot.bind(null, ctx.slug)}>
         <input type="hidden" name="auctionId" value={id} />
         <label>Title <input name="title" required maxLength={200} /></label>
-        <label>Consignor <input name="consignor" maxLength={200} /></label>
+        <label>Consignor (optional) <select name="consignorId" defaultValue=""><option value="">None</option>{consignors.map((c) => <option key={c.id} value={c.id}>{c.code} {c.name}</option>)}</select></label>
         <label>Start price (cents) <input name="startCents" inputMode="numeric" required /></label>
         <label>Reserve (cents, optional) <input name="reserveCents" inputMode="numeric" /></label>
         <label>Closes (UTC) <input name="scheduledEnd" type="datetime-local" required /></label>
