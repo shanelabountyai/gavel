@@ -317,3 +317,62 @@ def settle(lot: Lot, state: LotState, now_ms: int) -> Optional[Settlement]:
     hammer = state.price_cents
     premium = round_half_up(hammer * lot.buyer_premium_bps, 10000)
     return Settlement("SOLD", state.leader, state.leader_seq, hammer, premium, hammer + premium, state.closes_at_ms)
+
+
+# ---- Consignor statement (R-07 / AX-07, D-74): derived on read from a consignor's current settlements ----
+
+UNSOLD_FEE_OUTCOMES = ("UNSOLD_NO_BIDS", "UNSOLD_RESERVE_NOT_MET")  # a withdrawn or corrected-away lot carries no fee
+
+
+@dataclass(frozen=True)
+class Contract:
+    commission_bps: int
+    lot_fee_cents: int
+    unsold_fee_cents: int
+
+
+@dataclass(frozen=True)
+class ConsignedLot:
+    lot_id: str
+    lot_number: int
+    outcome: str
+    hammer_cents: int
+
+
+@dataclass(frozen=True)
+class StatementLine:
+    lot_id: str
+    lot_number: int
+    outcome: str
+    hammer_cents: int
+    commission_cents: int
+    fee_cents: int
+    net_cents: int
+
+
+@dataclass(frozen=True)
+class ConsignorStatement:
+    lines: tuple
+    hammer_cents: int
+    commission_cents: int
+    fee_cents: int
+    net_cents: int
+
+
+def consignor_statement(lots: list, contract: Contract) -> ConsignorStatement:
+    """Per SOLD lot: hammer, commission = round_half_up(hammer x bps, 10000) (the second rounding site, D-74),
+    the lot fee, net = hammer - commission - fee. Per unsold-at-the-block lot: the unsold fee, net = -fee.
+    Withdrawn or corrected-away: nothing. The buyer's premium never appears. Lines in lot-number order."""
+    if not (0 <= contract.commission_bps <= 10000) or contract.lot_fee_cents < 0 or contract.unsold_fee_cents < 0:
+        raise ValueError("consignor_statement: bps in 0..10000, fees >= 0")
+    lines = []
+    for lot in sorted(lots, key=lambda l: l.lot_number):
+        if lot.outcome == "SOLD":
+            commission = round_half_up(lot.hammer_cents * contract.commission_bps, 10000)
+            fee = contract.lot_fee_cents
+            lines.append(StatementLine(lot.lot_id, lot.lot_number, lot.outcome, lot.hammer_cents, commission, fee, lot.hammer_cents - commission - fee))
+        else:
+            fee = contract.unsold_fee_cents if lot.outcome in UNSOLD_FEE_OUTCOMES else 0
+            lines.append(StatementLine(lot.lot_id, lot.lot_number, lot.outcome, 0, 0, fee, -fee))
+    total = lambda k: sum(getattr(l, k) for l in lines)  # noqa: E731
+    return ConsignorStatement(tuple(lines), total("hammer_cents"), total("commission_cents"), total("fee_cents"), total("net_cents"))

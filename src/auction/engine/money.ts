@@ -3,7 +3,7 @@
 // left behind because Gavel's cents columns are integers and its CSVs print raw cents.
 // Cents and basis points are integer `number`s; nothing else under src/auction/engine divides or rounds.
 
-export type MoneyErrorCode = 'non_integer_amount' | 'non_integer_rate' | 'invalid_rounding_input';
+export type MoneyErrorCode = 'non_integer_amount' | 'non_integer_rate' | 'rate_out_of_range' | 'negative_amount' | 'invalid_rounding_input';
 
 export class MoneyError extends Error {
   constructor(readonly code: MoneyErrorCode) {

@@ -15,7 +15,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from auctionlib import (Lot, Rules, Submission, apply_bid, fold, increment_for, lot_status, min_next_bid,  # noqa: E402
-                        open_state, replay, round_half_up, settle, LedgerRow)
+                        open_state, replay, round_half_up, settle, LedgerRow,
+                        Contract, ConsignedLot, consignor_statement)
 
 FAILS = 0
 R = Rules.load()
@@ -176,6 +177,23 @@ def main() -> int:
     check("GB-24g fold re-derives the WITHDRAWN row from the lot's withdrawn_at", fold(Wd, rows, R), r.state)
     sched = Lot("WS", "A", 10000, None, 2_000_000, T, W, CAP, 1500, withdrawn_at_ms=WD)
     check("GB-24h withdrawn while SCHEDULED: WITHDRAWN before NOT_OPEN; CLOSED, never SCHEDULED, from then", (bid(sched, open_state(sched), "A", 15000, WD).outcome, lot_status(sched, open_state(sched), WD), lot_status(sched, open_state(sched), WD - 1)), ("REJECTED_LOT_WITHDRAWN", "CLOSED", "SCHEDULED"))
+
+    print("-- GB-25 consignor statement (R-07, D-74): commission is the second rounding site; the premium never appears")
+    C = Contract(1250, 500, 1500)
+    cl = [ConsignedLot("g", 7, "SOLD", 100), ConsignedLot("f", 6, "UNSOLD_BY_CORRECTION", 0), ConsignedLot("e", 5, "UNSOLD_WITHDRAWN", 0),
+          ConsignedLot("d", 4, "UNSOLD_RESERVE_NOT_MET", 0), ConsignedLot("c", 3, "UNSOLD_NO_BIDS", 0), ConsignedLot("b", 2, "SOLD", 33333), ConsignedLot("a", 1, "SOLD", 10020)]
+    cs = consignor_statement(cl, C)
+    check("GB-25a lines in lot order: (hammer, commission, fee, net)", [(l.lot_number, l.hammer_cents, l.commission_cents, l.fee_cents, l.net_cents) for l in cs.lines],
+          [(1, 10020, 1253, 500, 8267), (2, 33333, 4167, 500, 28666), (3, 0, 0, 1500, -1500), (4, 0, 0, 1500, -1500), (5, 0, 0, 0, 0), (6, 0, 0, 0, 0), (7, 100, 13, 500, -413)])
+    check("GB-25b totals", (cs.hammer_cents, cs.commission_cents, cs.fee_cents, cs.net_cents), (43453, 5433, 4500, 33520))
+    check("GB-25c net + commission + fees = hammer", cs.net_cents + cs.commission_cents + cs.fee_cents, cs.hammer_cents)
+    check("GB-25d 0 bps and 10000 bps, no fees", [consignor_statement([cl[0]], Contract(b, 0, 0)).lines[0].net_cents for b in (0, 10000)], [100, 0])
+    check("GB-25e no lots: zero statement", consignor_statement([], C).net_cents, 0)
+    try:
+        consignor_statement(cl, Contract(10001, 0, 0))
+        check("GB-25f bps above 10000 refused", "no error", "ValueError")
+    except ValueError:
+        check("GB-25f bps above 10000 refused", "ValueError", "ValueError")
 
     print("OK" if FAILS == 0 else f"FAIL: {FAILS}")
     return 0 if FAILS == 0 else 1

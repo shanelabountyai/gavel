@@ -1,7 +1,7 @@
 // The pure bid engine (CLAUDE.md non-negotiable 1): lot, state, bid and nowMs in; outcome and new state out.
 // Written from docs/domain-brief.md §5–§6 (D-8..D-12, D-21); tools/auctionlib.py is the oracle it must agree
 // with, not its source. Integers only: cents and epoch ms. No clock, no I/O, no float, no `/` (rules:lint).
-import { assertBps, assertCents, roundHalfUp } from './money';
+import { MoneyError, assertBps, assertCents, roundHalfUp } from './money';
 import type { BidOutcome, NotWrittenOutcome, Rules, SettlementOutcome } from './rules';
 
 /** Catalog data plus the auction's settings, flattened: nothing here changes once the lot has a bid, except that
@@ -329,4 +329,42 @@ export function invoice(settled: readonly SettledLot[]): Invoice[] {
       const sorted = [...lots].sort((a, b) => a.lotNumber - b.lotNumber);
       return { auctionId, bidderId, lots: sorted, hammerCents: sum(sorted, 'hammerCents'), premiumCents: sum(sorted, 'premiumCents'), totalCents: sum(sorted, 'totalCents') };
     });
+}
+
+// ---- Consignor statement (R-07 / AX-07, D-74): derived on read from a consignor's current settlements, never stored ----
+
+/** The current contract between a consignor and a sale: flat commission, a fee per sold lot, a fee per lot unsold at the block. */
+export type Contract = { readonly commissionBps: number; readonly lotFeeCents: number; readonly unsoldFeeCents: number };
+export type ConsignedLot = Pick<SettledLot, 'lotId' | 'lotNumber' | 'outcome' | 'hammerCents'>;
+export type StatementLine = ConsignedLot & { readonly commissionCents: number; readonly feeCents: number; readonly netCents: number };
+export type ConsignorStatement = {
+  readonly lines: readonly StatementLine[];
+  readonly hammerCents: number;
+  readonly commissionCents: number;
+  readonly feeCents: number;
+  readonly netCents: number;
+};
+
+/** An unsold lot owes the unsold fee only when it went to the block and failed; withdrawn or corrected away owes nothing. */
+const UNSOLD_FEE_OUTCOMES: ReadonlySet<string> = new Set(['UNSOLD_NO_BIDS', 'UNSOLD_RESERVE_NOT_MET']);
+
+/**
+ * Per SOLD lot: hammer, commission = roundHalfUp(hammer × bps, 10000) (the second rounding site, D-74: one rounding per
+ * derived amount, at a named site with its own golden, GB-25), the lot fee, net = hammer − commission − fee. Per unsold lot:
+ * the unsold fee, net = −fee. The buyer's premium is never in the consignor's numbers. Lines in lot-number order; sums in
+ * integer cents, so Σnet + Σcommission + Σfees = Σhammer exactly. A net can be negative (a fee above a small hammer).
+ */
+export function consignorStatement(lots: readonly ConsignedLot[], contract: Contract): ConsignorStatement {
+  if (assertBps(contract.commissionBps) < 0 || contract.commissionBps > 10000) throw new MoneyError('rate_out_of_range');
+  if (assertCents(contract.lotFeeCents) < 0 || assertCents(contract.unsoldFeeCents) < 0) throw new MoneyError('negative_amount');
+  const lines = [...lots].sort((a, b) => a.lotNumber - b.lotNumber).map((l): StatementLine => {
+    if (l.outcome === 'SOLD') {
+      const commissionCents = roundHalfUp(BigInt(assertCents(l.hammerCents)) * BigInt(contract.commissionBps), 10000n);
+      return { ...l, commissionCents, feeCents: contract.lotFeeCents, netCents: l.hammerCents - commissionCents - contract.lotFeeCents };
+    }
+    const feeCents = UNSOLD_FEE_OUTCOMES.has(l.outcome) ? contract.unsoldFeeCents : 0;
+    return { ...l, hammerCents: 0, commissionCents: 0, feeCents, netCents: 0 - feeCents }; // 0 - 0 is +0; -0 would fail a deep equal
+  });
+  const sum = (k: 'hammerCents' | 'commissionCents' | 'feeCents' | 'netCents') => lines.reduce((t, l) => t + l[k], 0);
+  return { lines, hammerCents: sum('hammerCents'), commissionCents: sum('commissionCents'), feeCents: sum('feeCents'), netCents: sum('netCents') };
 }
