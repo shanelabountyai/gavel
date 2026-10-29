@@ -156,23 +156,25 @@ Each requirement lists what it changes, using these labels:
   - Totals.
   - **The buyer's premium is never in the consignor's numbers.**
 - [x] Derived on read, never stored, like invoices. (D-74)
-- [ ] Lines are split into "buyer paid" and "awaiting buyer payment" using R-08.
+- [x] Lines are split into "buyer paid" and "awaiting buyer payment" using R-08. (D-75: a Buyer column per sold line and "n of m paid" in the footer)
 - [ ] Optional `commission_bands` in rules v2 for tiered commission.
 - *Changes:* schema, engine (pure), rule data if tiered. D, G (commission rounding cases like GB-16, plus tier boundaries), F (contracts added to `auctions.json`).
 - ~~Contradicts non-negotiable 6~~ **Resolved 2026-10-29 (D-74):** Shane chose the rewording: one rounding per derived money amount, each at a named site with its own golden. CLAUDE.md rule 6 and D-6 say so.
 
-**R-08 Payment marks, default, and the second-chance offer (AX-08).**
-- [ ] New insert-only table `PaymentMark` (`auctionId`, `bidderId`, `amountCents`, `method` as text, `byUserId`, `markedAt`).
-- [ ] Invoice status is derived:
+**R-08 Payment marks, default, and the second-chance offer (AX-08).** **Built 2026-10-29 (D-75).**
+- [x] New insert-only table `PaymentMark` (`auctionId`, `bidderId`, `amountCents`, `method` as text, `byUserId`, `markedAt`).
+- [x] Invoice status is derived (`invoiceBalance`, golden GB-26):
   - PAID when Σ marks = invoice total.
   - PARTIAL when Σ marks is above zero but below the total.
   - UNPAID when there are no marks and `now ≤ paymentDueAt`.
   - OVERDUE when there are no marks and `now > paymentDueAt`.
-- [ ] A later correction that changes the total shows "balance due" or "credit". The mark is never edited.
-- [ ] "Declare default" does two things: it suspends the bidder (R-05) and writes a `SecondChanceOffer` row (`lotId`, `bidderId`, `priceCents` from `resettle`, `expiresAt`) for the underbidder.
-- [ ] Acceptance writes the D-44 correction, with the offer id as its reason. Expiry and decline are rows too.
+  - DEFAULTED once a `BuyerDefault` row exists; CREDIT when Σ marks is above the total.
+- [x] A later correction that changes the total shows "balance due" or "credit". The mark is never edited.
+- [x] "Declare default" does two things: it suspends the bidder (R-05) and writes a `SecondChanceOffer` row (`lotId`, `bidderId`, `priceCents` from `resettle`, `expiresAt`) for the underbidder. Only after the due date (Shane's call).
+- [x] Acceptance writes the D-44 correction, with the offer id as its reason, in the same transaction. Decline is a row (`OfferResponse`); expiry is derived from the clock, not a row (deliberate: no clock in the database).
 - [ ] Late fees are out of scope. **Check with counsel.**
-- *Changes:* schema (three tables). Settlement through the existing `resettle` (no new money rule). D (closes O-9's P1 and supersedes "no underbidder offer"). G (offer price = `resettle` price for an OUTBID underbidder, which D-44 already covers). F: none.
+- Staff record the underbidder's reply (Shane's call); no bidder-facing offer page or notice.
+- *Changes:* schema (four tables). Settlement through the existing `resettle` (no new money rule). D (closes O-9's P1 and supersedes "no underbidder offer"). G (GB-26 for the status; the offer price = `resettle` price for an OUTBID underbidder, which D-44 already covers). F: none.
 
 **R-09 Sales tax and exemption (AX-09).**
 - [ ] The `Auction` row gains `taxBps` and `taxBase` (`HAMMER` or `HAMMER_PLUS_PREMIUM`). These are configuration, not advice. **Which one applies is a question for counsel.**
@@ -247,7 +249,7 @@ Each requirement lists what it changes, using these labels:
 
 1. Commission is it charged on hammer only? Does any of the buyer's premium ever go to the consignor in your contracts?
 2. When reserve is not met, do you offer the high bidder the sale at their reached price or at their maximum, and must they accept? (R-14)
-3. When a buyer defaults, is the second-chance offer at the underbidder's reached price or their own maximum, and how long do they have? (R-08; D-44 uses min(reached, max).)
+3. ~~When a buyer defaults, is the second-chance offer at the underbidder's reached price or their own maximum, and how long do they have?~~ Answered by D-75: D-44's min(reached, own max); the reply window is a staff input per default (1..90 days, default 7).
 4. When you suspend a bidder mid-sale, do you void their standing maximums or let them ride and deal with it after the close? (R-05, R-19)
 5. Is sales tax computed per line or per invoice, and on hammer or hammer plus premium where you sell? (R-09: **counsel**.)
 6. Do bidders see paddle numbers in bid history, or an alias? (R-11)
