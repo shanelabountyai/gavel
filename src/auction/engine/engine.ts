@@ -368,3 +368,46 @@ export function consignorStatement(lots: readonly ConsignedLot[], contract: Cont
   const sum = (k: 'hammerCents' | 'commissionCents' | 'feeCents' | 'netCents') => lines.reduce((t, l) => t + l[k], 0);
   return { lines, hammerCents: sum('hammerCents'), commissionCents: sum('commissionCents'), feeCents: sum('feeCents'), netCents: sum('netCents') };
 }
+
+// ---- Payment status and the second-chance offer (R-08 / AX-08, D-75): derived from marks and the ledger, never stored ----
+
+export type PaymentStatus = 'PAID' | 'PARTIAL' | 'UNPAID' | 'OVERDUE' | 'DEFAULTED' | 'CREDIT';
+export type InvoiceBalance = { readonly status: PaymentStatus; readonly paidCents: number; readonly balanceCents: number };
+
+/**
+ * Σ marks against the current invoice total (GB-26). DEFAULTED outranks everything; paid above the total is CREDIT (a
+ * correction lowered the total after a payment); equal is PAID; some is PARTIAL whatever the date; none is OVERDUE
+ * strictly after the due date, else UNPAID. A sale with no due date never goes overdue. Sums only, no rounding site.
+ */
+export function invoiceBalance(totalCents: number, paidCents: number, nowMs: number, dueAtMs: number | null, defaulted = false): InvoiceBalance {
+  if (assertCents(totalCents) < 0 || assertCents(paidCents) < 0) throw new MoneyError('negative_amount');
+  const balanceCents = totalCents - paidCents;
+  const status: PaymentStatus = defaulted ? 'DEFAULTED'
+    : paidCents > totalCents ? 'CREDIT'
+    : paidCents === totalCents ? 'PAID'
+    : paidCents > 0 ? 'PARTIAL'
+    : dueAtMs !== null && nowMs > dueAtMs ? 'OVERDUE'
+    : 'UNPAID';
+  return { status, paidCents, balanceCents };
+}
+
+export type SecondChance = { readonly bidderId: string; readonly settlement: CorrectedSettlement };
+
+/**
+ * The underbidder a defaulted lot is offered to: of the bidders with an accepted row other than the defaulter (and any
+ * already excluded, e.g. one who declined), the one `resettle` would sell to at the highest price, D-44's
+ * min(price their last accepted row reached, their own max); a tie goes to the earlier last row. Null when nobody is
+ * left or every candidate is under the reserve. The ledger is closed, so the answer is the same on every read.
+ */
+export function secondChance(lot: Lot, rows: readonly FoldRow[], rules: Rules, defaulter: string, premiumBps: number, exclude: readonly string[] = []): SecondChance | null {
+  const out = new Set([defaulter, ...exclude]);
+  const lastSeq = new Map<string, number>();
+  for (const r of rows) if (!out.has(r.bidderId) && !r.outcome.startsWith('REJECTED_')) lastSeq.set(r.bidderId, r.seq);
+  let best: (SecondChance & { seq: number }) | null = null;
+  for (const [bidderId, seq] of lastSeq) {
+    const s = resettle(lot, rows, rules, { winner: bidderId, premiumBps });
+    if ('refused' in s) continue;
+    if (!best || s.hammerCents > best.settlement.hammerCents || (s.hammerCents === best.settlement.hammerCents && seq < best.seq)) best = { bidderId, settlement: s, seq };
+  }
+  return best && { bidderId: best.bidderId, settlement: best.settlement };
+}

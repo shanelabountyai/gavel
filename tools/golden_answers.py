@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from auctionlib import (Lot, Rules, Submission, apply_bid, fold, increment_for, lot_status, min_next_bid,  # noqa: E402
                         open_state, replay, round_half_up, settle, LedgerRow,
-                        Contract, ConsignedLot, consignor_statement)
+                        Contract, ConsignedLot, consignor_statement, invoice_balance)
 
 FAILS = 0
 R = Rules.load()
@@ -194,6 +194,22 @@ def main() -> int:
         check("GB-25f bps above 10000 refused", "no error", "ValueError")
     except ValueError:
         check("GB-25f bps above 10000 refused", "ValueError", "ValueError")
+
+    print("-- GB-26 payment status (R-08, D-75): marks against the current total; no rounding, sums only")
+    TOT, DUE = 11523, 1_000_000  # GB-16's 10,020 hammer + 1,503 premium at 1500 bps; due at 1,000,000 ms
+    ib = lambda total, paid, now, due=DUE, d=False: (lambda b: (b.status, b.paid_cents, b.balance_cents))(invoice_balance(total, paid, now, due, d))  # noqa: E731
+    check("GB-26a no marks before the due date: UNPAID", ib(TOT, 0, DUE - 1), ("UNPAID", 0, 11523))
+    check("GB-26b no marks at the due instant: still UNPAID; one ms later: OVERDUE", (ib(TOT, 0, DUE)[0], ib(TOT, 0, DUE + 1)[0]), ("UNPAID", "OVERDUE"))
+    check("GB-26c no due date: never OVERDUE", ib(TOT, 0, DUE * 1000, None)[0], "UNPAID")
+    check("GB-26d 5,000 marked, past due: PARTIAL, balance 6,523", ib(TOT, 5000, DUE + 1), ("PARTIAL", 5000, 6523))
+    check("GB-26e 5,000 + 6,523 marked: PAID, balance 0", ib(TOT, 11523, DUE + 1), ("PAID", 11523, 0))
+    check("GB-26f paid 11,523, then a correction to 8,000 and to 0: CREDIT", (ib(8000, 11523, DUE + 1), ib(0, 11523, DUE + 1)), (("CREDIT", 11523, -3523), ("CREDIT", 11523, -11523)))
+    check("GB-26g defaulted outranks a partial payment", ib(TOT, 5000, DUE + 1, DUE, True), ("DEFAULTED", 5000, 6523))
+    try:
+        invoice_balance(TOT, -1, DUE, DUE)
+        check("GB-26h a negative sum refused", "no error", "ValueError")
+    except ValueError:
+        check("GB-26h a negative sum refused", "ValueError", "ValueError")
 
     print("OK" if FAILS == 0 else f"FAIL: {FAILS}")
     return 0 if FAILS == 0 else 1

@@ -376,3 +376,38 @@ def consignor_statement(lots: list, contract: Contract) -> ConsignorStatement:
             lines.append(StatementLine(lot.lot_id, lot.lot_number, lot.outcome, 0, 0, fee, -fee))
     total = lambda k: sum(getattr(l, k) for l in lines)  # noqa: E731
     return ConsignorStatement(tuple(lines), total("hammer_cents"), total("commission_cents"), total("fee_cents"), total("net_cents"))
+
+
+# ---- Payment status (R-08 / AX-08, D-75): derived from the marks against the current total, never stored ----
+
+PAYMENT_STATUSES = ("PAID", "PARTIAL", "UNPAID", "OVERDUE", "DEFAULTED", "CREDIT")
+
+
+@dataclass(frozen=True)
+class InvoiceBalance:
+    status: str
+    paid_cents: int
+    balance_cents: int  # total - paid; negative is a credit the house owes the buyer
+
+
+def invoice_balance(total_cents: int, paid_cents: int, now_ms: int, due_at_ms: Optional[int], defaulted: bool = False) -> InvoiceBalance:
+    """Sum of marks against the current invoice total. DEFAULTED outranks everything; paid above total is CREDIT (a
+    correction lowered the total after a payment); equal is PAID; some is PARTIAL (whatever the date); none is OVERDUE
+    strictly after the due date, else UNPAID. A sale with no due date never goes overdue. No rounding: sums only."""
+    for v in (total_cents, paid_cents):
+        if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+            raise ValueError("invoice_balance: cents are non-negative integers")
+    balance = total_cents - paid_cents
+    if defaulted:
+        status = "DEFAULTED"
+    elif paid_cents > total_cents:
+        status = "CREDIT"
+    elif paid_cents == total_cents:
+        status = "PAID"
+    elif paid_cents > 0:
+        status = "PARTIAL"
+    elif due_at_ms is not None and now_ms > due_at_ms:
+        status = "OVERDUE"
+    else:
+        status = "UNPAID"
+    return InvoiceBalance(status, paid_cents, balance)
