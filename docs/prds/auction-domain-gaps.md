@@ -148,18 +148,18 @@ Each requirement lists what it changes, using these labels:
 ### P1
 
 **R-07 Consignors, contracts and the consignor statement (AX-07).**
-- [ ] New `Consignor` table (`orgId`, `name`, `code`). `Lot.consignorId` is a foreign key, and the text field is kept for older rows.
-- [ ] New `ConsignmentContract` table (`consignorId`, `auctionId`, `commissionBps`, `lotFeeCents`, `unsoldFeeCents`), insert-only, with a superseding row for changes.
-- [ ] Pure `consignorStatement(currentSettlements, contract)` in `engine.ts`:
+- [x] New `Consignor` table (`orgId`, `name`, `code`). `Lot.consignorId` is a foreign key, and the text field is kept for older rows. (D-74)
+- [x] New `ConsignmentContract` table (`consignorId`, `auctionId`, `commissionBps`, `lotFeeCents`, `unsoldFeeCents`), insert-only, with a superseding row for changes. (D-74)
+- [x] Pure `consignorStatement(currentSettlements, contract)` in `engine.ts` (D-74, GB-25; the unsold fee applies to NO_BIDS and RESERVE_NOT_MET only):
   - Per SOLD lot: hammer, then `commission = roundHalfUp(hammer × bps, 10000)`, then fee, giving net.
   - Per unsold lot: unsold fee and status (collect / relisted, from R-17).
   - Totals.
   - **The buyer's premium is never in the consignor's numbers.**
-- [ ] Derived on read, never stored, like invoices.
+- [x] Derived on read, never stored, like invoices. (D-74)
 - [ ] Lines are split into "buyer paid" and "awaiting buyer payment" using R-08.
 - [ ] Optional `commission_bands` in rules v2 for tiered commission.
 - *Changes:* schema, engine (pure), rule data if tiered. D, G (commission rounding cases like GB-16, plus tier boundaries), F (contracts added to `auctions.json`).
-- **Contradicts non-negotiable 6** ("one `roundHalfUp`, used once, in `settle`"). Proposed rewording: one rounding per derived money amount, each at a named site with its own golden. Shane decides.
+- ~~Contradicts non-negotiable 6~~ **Resolved 2026-10-29 (D-74):** Shane chose the rewording: one rounding per derived money amount, each at a named site with its own golden. CLAUDE.md rule 6 and D-6 say so.
 
 **R-08 Payment marks, default, and the second-chance offer (AX-08).**
 - [ ] New insert-only table `PaymentMark` (`auctionId`, `bidderId`, `amountCents`, `method` as text, `byUserId`, `markedAt`).

@@ -62,6 +62,8 @@ Sign in at `/demo` as `owner@acme.demo.test`, then:
 3. Back, click **Oak roll-top desk**, the lot 1 link: that is the history page, every ledger row in sequence order, accepted or rejected, with price and leader before and after.
 4. Open **Box lot of hand tools** (lot 6, L006 in the eval table: 7 bids, 3 extensions, 269 s). *Say:* "Three late bids each pushed the close out. The history shows `placedAt` to the millisecond; the verifier checks they are in order."
 
+5. Optional, if the audience sells rather than buys: **Consignors** in the menu → add one (code `EST-1`, any name) → back on **Live demo sale** (or any sale) set its contract (1250 bps, 500, 1500) → **Consignor statements**. The seeded sales carry no consignor, so the statement is empty until a lot made with that consignor settles; *say:* "same ledger, same settlements as the invoice, drawn on read; the commission is the only other rounding in the project, golden GB-25."
+
 ## 3. A live lot (4 min)
 
 In a second browser profile (or private window) sign in as `member@acme.demo.test`. In the first window, as the owner:
