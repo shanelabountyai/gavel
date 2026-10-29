@@ -6,23 +6,24 @@
 
 /// A sale. Its three rule settings are copied from rules/auction.v1.json defaults at creation (D-7).
 model Auction {
-  id                     String            @id @default(uuid()) @db.Uuid
-  orgId                  String            @db.Uuid
-  org                    Org               @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  id                     String                @id @default(uuid()) @db.Uuid
+  orgId                  String                @db.Uuid
+  org                    Org                   @relation(fields: [orgId], references: [id], onDelete: Cascade)
   name                   String
   softCloseWindowSeconds Int
   maxExtensionSeconds    Int
   buyerPremiumBps        Int
-  opensAt                DateTime          @db.Timestamptz(6)
+  opensAt                DateTime              @db.Timestamptz(6)
   // D-71 (AX-06): shown on the buyer's invoice and the won notice; trigger: unchanged once the sale has a bid
-  paymentDueAt           DateTime?         @db.Timestamptz(6)
-  pickupText             String            @default("")
-  pickupWindowText       String            @default("")
-  createdAt              DateTime          @default(now()) @db.Timestamptz(6)
-  updatedAt              DateTime          @updatedAt @db.Timestamptz(6)
+  paymentDueAt           DateTime?             @db.Timestamptz(6)
+  pickupText             String                @default("")
+  pickupWindowText       String                @default("")
+  createdAt              DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime              @updatedAt @db.Timestamptz(6)
   lots                   Lot[]
   terms                  AuctionTerms[]
   termsAcceptances       TermsAcceptance[]
+  contracts              ConsignmentContract[]
 
   @@index([orgId])
 }
@@ -71,7 +72,9 @@ model Lot {
   title        String
   description  String         @default("")
   imageUrl     String?
-  consignor    String         @default("") // a text field; no consignor model (PRD non-goals)
+  consignor    String         @default("") // free text, kept for rows older than D-74; new lots use consignorId
+  consignorId  String?        @db.Uuid // D-74 (AX-07): the consignor the statement is drawn for
+  consignorRef Consignor?     @relation(fields: [consignorId], references: [id], onDelete: Restrict)
   startCents   Int // CHECK > 0
   reserveCents Int? // CHECK null or >= startCents
   scheduledEnd DateTime       @db.Timestamptz(6) // trigger: > auction.opensAt
@@ -82,6 +85,46 @@ model Lot {
   settlements  Settlement[]
 
   @@unique([auctionId, number])
+  @@index([orgId])
+  @@index([consignorId])
+}
+
+/// D-74 (AX-07): a consignor of the house. Reference data (name, code); the money terms are on the contract.
+model Consignor {
+  id        String                @id @default(uuid()) @db.Uuid
+  orgId     String                @db.Uuid
+  org       Org                   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name      String
+  code      String // CHECK not blank; unique per house
+  createdAt DateTime              @default(now()) @db.Timestamptz(6)
+  lots      Lot[]
+  contracts ConsignmentContract[]
+
+  @@unique([orgId, code])
+  @@index([orgId])
+}
+
+/// D-74 (AX-07): the terms between one consignor and one sale, insert-only by trigger; a change is a superseding row
+/// (`supersedesId` unique, so a chain cannot fork). The current contract is the row no other row supersedes. Flat
+/// commission in bps (CHECK 0..10000), a fee per sold lot and a fee per lot unsold at the block (CHECK >= 0).
+model ConsignmentContract {
+  id             String               @id @default(uuid()) @db.Uuid
+  orgId          String               @db.Uuid
+  consignorId    String               @db.Uuid
+  consignor      Consignor            @relation(fields: [consignorId], references: [id], onDelete: Cascade)
+  auctionId      String               @db.Uuid
+  auction        Auction              @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  supersedesId   String?              @unique @db.Uuid
+  supersedes     ConsignmentContract? @relation("ContractChain", fields: [supersedesId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersededBy   ConsignmentContract? @relation("ContractChain")
+  commissionBps  Int
+  lotFeeCents    Int
+  unsoldFeeCents Int
+  byUserId       String               @db.Uuid // no FK, as AuditEvent.actorUserId
+  createdAt      DateTime             @db.Timestamptz(6) // from @/core/clock, never a default
+
+  @@index([consignorId, auctionId])
+  @@index([auctionId])
   @@index([orgId])
 }
 

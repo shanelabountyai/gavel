@@ -88,6 +88,7 @@ model Org {
   outbox         Outbox[] // notifications
   auctions       Auction[] // app
   bidders        Bidder[] // app
+  consignors     Consignor[] // app
 }
 
 model Membership {

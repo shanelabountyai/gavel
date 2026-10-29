@@ -18,5 +18,7 @@ export async function seedApp(org: { orgId: string; userId: string }, key: 'a' |
   const bidder = await db.bidder.create({
     data: { id: `00000000-0000-4000-8000-${key === 'a' ? '000000009021' : '000000009022'}`, orgId: org.orgId, userId: org.userId, paddle: 1 },
   });
-  return { auction: auction.id, lot: lot.id, bidder: bidder.id };
+  // D-74: a consignor and its contract with the harness auction, for setContractAction's ref('consignor').
+  const consignor = await db.consignor.create({ data: { id: `00000000-0000-4000-8000-${key === 'a' ? '000000009031' : '000000009032'}`, orgId: org.orgId, name: `harness consignor ${key}`, code: `H-${key}` } });
+  return { auction: auction.id, lot: lot.id, bidder: bidder.id, consignor: consignor.id };
 }
