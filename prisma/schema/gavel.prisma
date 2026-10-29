@@ -24,6 +24,8 @@ model Auction {
   terms                  AuctionTerms[]
   termsAcceptances       TermsAcceptance[]
   contracts              ConsignmentContract[]
+  paymentMarks           PaymentMark[]
+  buyerDefaults          BuyerDefault[]
 
   @@index([orgId])
 }
@@ -83,6 +85,7 @@ model Lot {
   withdrawal   LotWithdrawal?
   bids         Bid[]
   settlements  Settlement[]
+  offers       SecondChanceOffer[]
 
   @@unique([auctionId, number])
   @@index([orgId])
@@ -179,6 +182,9 @@ model Bidder {
   bids          Bid[]
   statusChanges BidderStatusChange[]
   termsAccepted TermsAcceptance[]
+  paymentMarks  PaymentMark[]
+  defaults      BuyerDefault[]
+  offers        SecondChanceOffer[]
 
   @@unique([orgId, userId])
   @@unique([orgId, paddle])
@@ -254,4 +260,79 @@ model Settlement {
 
   @@index([orgId])
   @@index([lotId])
+}
+
+/// D-75 (AX-08, R-08): a payment staff recorded against a buyer's invoice (one sale, one bidder). Insert-only by trigger;
+/// a wrong mark is a dispute, not an edit. Payments themselves are a non-goal: this is a mark, never a charge. The invoice
+/// status (PAID / PARTIAL / UNPAID / OVERDUE / CREDIT / DEFAULTED) is derived by `invoiceBalance`, never stored.
+model PaymentMark {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  auctionId   String   @db.Uuid
+  auction     Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderId    String   @db.Uuid
+  bidder      Bidder   @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  amountCents Int // CHECK > 0
+  method      String // CHECK not blank; free text: cash, check, wire, card terminal
+  byUserId    String   @db.Uuid // no FK, as AuditEvent's actor
+  markedAt    DateTime @db.Timestamptz(6) // now() from @/core/clock
+
+  @@index([auctionId, bidderId])
+  @@index([orgId])
+}
+
+/// D-75: a buyer declared in default on one sale's invoice, after the due date, by staff with a reason. Insert-only, one
+/// per (sale, bidder). Declaring it suspends the bidder (D-70) and writes one SecondChanceOffer per won lot that has an
+/// underbidder. There is no un-default: a wrong one is reinstated on the bidders page and the dispute is in the audit log.
+model BuyerDefault {
+  id         String              @id @default(uuid()) @db.Uuid
+  orgId      String              @db.Uuid
+  auctionId  String              @db.Uuid
+  auction    Auction             @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderId   String              @db.Uuid
+  bidder     Bidder              @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  reason     String // CHECK not blank
+  byUserId   String              @db.Uuid
+  declaredAt DateTime            @db.Timestamptz(6)
+  offers     SecondChanceOffer[]
+
+  @@unique([auctionId, bidderId])
+  @@index([orgId])
+}
+
+/// D-75: the lot offered to the underbidder after a default, at D-44's price (`secondChance`), to be answered by `expiresAt`.
+/// Insert-only. Open until an OfferResponse row names it; expired is derived from the clock, never written.
+model SecondChanceOffer {
+  id         String         @id @default(uuid()) @db.Uuid
+  orgId      String         @db.Uuid
+  defaultId  String         @db.Uuid
+  default    BuyerDefault   @relation(fields: [defaultId], references: [id], onDelete: Restrict)
+  lotId      String         @db.Uuid
+  lot        Lot            @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  bidderId   String         @db.Uuid // the underbidder
+  bidder     Bidder         @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  priceCents Int // CHECK > 0: the hammer the acceptance will settle at
+  premiumBps Int // the rate the acceptance keeps
+  expiresAt  DateTime       @db.Timestamptz(6)
+  createdAt  DateTime       @db.Timestamptz(6) // now() from @/core/clock
+  response   OfferResponse?
+
+  @@unique([defaultId, lotId])
+  @@index([lotId])
+  @@index([bidderId])
+  @@index([orgId])
+}
+
+/// D-75: the one answer to an offer, recorded by staff; `offerId` unique, so a second answer is refused by the database.
+/// ACCEPTED is written in the same transaction as the D-44 settlement correction it causes. Insert-only.
+model OfferResponse {
+  id          String            @id @default(uuid()) @db.Uuid
+  orgId       String            @db.Uuid
+  offerId     String            @unique @db.Uuid
+  offer       SecondChanceOffer @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  response    String // CHECK ACCEPTED | DECLINED
+  byUserId    String            @db.Uuid
+  respondedAt DateTime          @db.Timestamptz(6)
+
+  @@index([orgId])
 }

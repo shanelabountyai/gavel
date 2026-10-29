@@ -89,7 +89,7 @@ export async function runDb(asOfArg?: number): Promise<{ ok: boolean; report: st
   const { data, lots, fileOrder, subs, asOf } = loadFixtures(asOfArg);
   const q = prismaTx(db as unknown as Parameters<typeof prismaTx>[0]);
 
-  await db.$executeRawUnsafe('TRUNCATE "ConsignmentContract", "Consignor", "Settlement", "Bid", "LotWithdrawal", "LotState", "Lot", "Auction", "BidderStatusChange", "TermsAcceptance", "AuctionTerms", "Bidder"');
+  await db.$executeRawUnsafe('TRUNCATE "OfferResponse", "SecondChanceOffer", "BuyerDefault", "PaymentMark", "ConsignmentContract", "Consignor", "Settlement", "Bid", "LotWithdrawal", "LotState", "Lot", "Auction", "BidderStatusChange", "TermsAcceptance", "AuctionTerms", "Bidder"');
   const org = await db.org.upsert({ where: { slug: 'gavel-fixtures' }, update: {}, create: { slug: 'gavel-fixtures', name: 'Gavel fixtures (synthetic)' } });
   const bidderUuid = new Map<string, string>();
   const fid = new Map<string, string>(); // uuid → fixture bidder id
