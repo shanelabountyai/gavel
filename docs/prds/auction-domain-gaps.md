@@ -186,16 +186,16 @@ Each requirement lists what it changes, using these labels:
 
 **R-10 Generated staggered closes (AX-10).** The auction form takes `firstCloseAt` and `staggerSeconds`. `createLot` sets `scheduledEnd = firstCloseAt + (number − 1) × stagger` when no end is given. An explicit end still wins. *Changes:* schema (two `Auction` columns), catalog only. D. G/F: none.
 
-**R-11 Public bid history (AX-11).**
-- [ ] The bidder lot page lists accepted rows in seq order with: time, price after the bid, whether it extended the close, and a per-lot alias ("Bidder 3", assigned by first appearance).
-- [ ] The caller's own rows say "you".
-- [ ] It never shows a maximum, a rejected row or a paddle.
-- [ ] The list is read from the ledger and needs no lock.
+**R-11 Public bid history (AX-11).** **Built 2026-10-30 (D-83).**
+- [x] The bidder lot page lists accepted rows in seq order with: time, price after the bid, whether it extended the close, and a per-lot alias ("Bidder 3", assigned by first appearance).
+- [x] The caller's own rows say "you".
+- [x] It never shows a maximum, a rejected row or a paddle.
+- [x] The list is read from the ledger and needs no lock.
 - *Changes:* read only. D (amends brief §4's "never another bidder's identity"). G: an alias-assignment golden on a PROXY_WAR fixture lot. F: none.
 
 **R-12 Local time display (AX-12).** The `Auction` row gains `timeZone` (IANA). Every printed time renders in that zone with the zone named. Storage, the engine and the countdown stay UTC/epoch ms. *Changes:* schema (one column), display. D (amends D-48 c). G/F: none.
 
-**R-13 "No reserve" label (AX-13).** The lot view adds `hasReserve`. The page shows "No reserve", "Reserve not met" or "Reserve met". The amount is never shown. *Changes:* read only. D (changes O-5's default and D-50 d). G/F: none.
+**R-13 "No reserve" label (AX-13).** **Built 2026-10-30 (D-83).** The lot view adds `hasReserve`. The page shows "No reserve", "Reserve not met" or "Reserve met". The amount is never shown. *Changes:* read only. D (changes O-5's default and D-50 d). G/F: none.
 
 **R-14 Subject-to-approval sale below reserve (AX-14).**
 - [ ] On an `UNSOLD_RESERVE_NOT_MET` lot, staff may record a correction to SOLD to the high bidder at their reached price, which is still capped at their own maximum as in D-44.
