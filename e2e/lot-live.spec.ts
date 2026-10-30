@@ -69,3 +69,14 @@ test('coming back to the page polls at once; a failing route says Reconnecting a
   await expect(page.getByRole('button', { name: 'Bid', exact: true })).toBeEnabled();
   await expect(page.getByTestId('countdown')).toBeVisible();
 });
+
+test('a closed lot stops polling: at most one state request in the 10 s after the close shows', async ({ page }) => {
+  const lot = await makeLot(new Date(Date.now() + 3_000));
+  await demoSignIn(page, 'member@acme.demo.test');
+  await page.goto(`/o/acme/lots/${lot.id}`);
+  await expect(page.getByTestId('status').first()).toHaveText('Closed', { timeout: 10_000 });
+  let n = 0;
+  page.on('request', (r) => { if (r.url().includes(`/api/lots/${lot.id}/state`)) n++; });
+  await page.waitForTimeout(10_000);
+  expect(n).toBeLessThanOrEqual(1); // R20: unsettled, so one slow poll at most; none once the settlement is final
+});

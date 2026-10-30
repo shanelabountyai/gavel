@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatCents } from '@/auction/engine/money';
 import type { LotView } from '@/auction/lot-view';
+import { formatLeft } from '@/auction/time-left';
 import { BidForm, type BidOk } from './bid-form';
 
 type View = Omit<LotView, 'etag'>;
@@ -9,6 +10,7 @@ type View = Omit<LotView, 'etag'>;
  * not accepted the sale's terms the terms (D-72), staff none of these. */
 export type Viewer = { kind: 'bidder'; paddle: number } | { kind: 'register' } | { kind: 'terms' } | { kind: 'staff'; historyHref: string | null; canWithdraw: boolean };
 const NEAR_CLOSE_MS = 60_000; // D-47: poll every 1 s near the close, 2 s otherwise
+const UNSETTLED_MS = 30_000; // R20: a closed lot polls every 30 s until its settlement is final, then not at all
 
 // Polls /api/lots/[id]/state with the ETag. The countdown is closesAt minus the server's clock: the offset between the
 // two clocks is measured from X-Server-Time on every response, so the client's own clock only ticks, it never decides.
@@ -22,6 +24,7 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
     let etag = firstEtag;
     let timer: ReturnType<typeof setTimeout>;
     let closesAt = Date.parse(initial.closesAt);
+    let last = initial; // what the server last said; the schedule reads status and final from it (R20)
     let stop = false;
     let inFlight = false;
     const poll = async () => {
@@ -35,6 +38,7 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
           const v: View = await r.json();
           etag = r.headers.get('etag') ?? etag;
           closesAt = Date.parse(v.closesAt);
+          last = v;
           setView(v);
         }
         setStale(r.status !== 200 && r.status !== 304);
@@ -43,7 +47,9 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
       }
       inFlight = false;
       clearTimeout(timer);
-      if (!stop) timer = setTimeout(poll, closesAt - (Date.now() + offset.current) < NEAR_CLOSE_MS ? 1000 : 2000);
+      // R20: once the server says CLOSED there is nothing to race for; poll slowly for the result, and stop once it is final
+      const delay = last.status === 'CLOSED' ? (last.final ? null : UNSETTLED_MS) : closesAt - (Date.now() + offset.current) < NEAR_CLOSE_MS ? 1000 : 2000;
+      if (!stop && delay !== null) timer = setTimeout(poll, delay);
     };
     // UX-13: a phone back from the lock screen asks now, not when its throttled timer gets around to it
     const onVisible = () => { if (document.visibilityState === 'visible') { clearTimeout(timer); void poll(); } };
@@ -157,9 +163,3 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
   );
 }
 
-/** 0:42 under an hour, then 1 h 12 m, then 3 d 4 h. */
-function formatLeft(s: number) {
-  if (s >= 86_400) return `${Math.floor(s / 86_400)} d ${Math.floor((s % 86_400) / 3600)} h`;
-  if (s >= 3600) return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} m`;
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
