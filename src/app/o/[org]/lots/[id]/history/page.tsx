@@ -44,7 +44,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   return (
     <main>
       {/* R19: back to the sale, and the page a bidder sees */}
-      <p className="back-links"><Link href={`/o/${ctx.slug}/auctions/${lot.auctionId}`}>← {lot.auction.name}</Link> · <Link href={`/o/${ctx.slug}/lots/${lot.id}`}>Bidder view</Link></p>
+      <p className="back-links"><Link href={`/o/${ctx.slug}/auctions/${lot.auctionId}`}>← {lot.auction.name}</Link> · <Link href={`/o/${ctx.slug}/lots/${lot.id}`}>Bidder view</Link> · <a href={`/o/${ctx.slug}/auctions/${lot.auctionId}/ledger.csv?lot=${lot.id}`} data-testid="csv-lot">This ledger as CSV</a></p>
       <h1>Lot {lot.number} history: {lot.title}</h1>
       <p className="muted">{bids.length} {bids.length === 1 ? 'attempt' : 'attempts'}, in the order they were judged, accepted or refused. Rows marked Extended pushed the close out. What a bidder saw is the price and leader after the row before theirs.</p>
       <div className="table-scroll history">

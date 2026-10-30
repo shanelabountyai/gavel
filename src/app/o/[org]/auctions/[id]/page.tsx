@@ -47,7 +47,7 @@ export default async function Auction({ params, searchParams }: { params: Promis
       <h1>{auction.name}</h1>
       <p className="muted" data-testid="house-time">Times are shown in {tz}.{auction.firstCloseAt && ` Lots close from ${inZone(auction.firstCloseAt, tz)}, ${auction.staggerSeconds} s apart, unless a lot sets its own close.`}</p>
       <p className="muted">Opens {inZone(auction.opensAt, tz)}. Soft close: a bid in the last {auction.softCloseWindowSeconds / 60} min extends the lot, up to {auction.maxExtensionSeconds / 60} min in all. Buyer&apos;s premium {formatCents(auction.buyerPremiumBps).slice(1)}%.</p>
-      <p><Link href={`/o/${ctx.slug}/auctions/${id}/invoices`}>Invoices for this sale</Link> · <Link href={`/o/${ctx.slug}/auctions/${id}/statements`}>Consignor statements</Link></p>
+      <p><Link href={`/o/${ctx.slug}/auctions/${id}/invoices`}>Invoices for this sale</Link> · <Link href={`/o/${ctx.slug}/auctions/${id}/statements`}>Consignor statements</Link> · <Link href={`/o/${ctx.slug}/auctions/${id}/recap`}>Sale recap</Link></p>
       <h2>Payment and pickup</h2>
       {hasBids ? (
         <p>Payment due {auction.paymentDueAt ? inZone(auction.paymentDueAt, tz) : <span className="muted">not set</span>}. Pickup: {auction.pickupText || <span className="muted">not set</span>}{auction.pickupWindowText && `, ${auction.pickupWindowText}`}. <span data-testid="tax-fixed">{taxText}</span> <span className="muted">Fixed: the sale has bids.</span></p>
