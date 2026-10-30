@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
+import { formatLeft } from '@/auction/time-left';
 import { outcomeLabel, outcomeTone } from '@/auction/outcome-labels';
 import { prismaTx } from '@/auction/place-bid';
 import { acceptancesFor, currentTerms } from '@/auction/terms';
@@ -34,12 +35,16 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   const [terms, accepted] = await Promise.all([currentTerms(lot.auctionId), acceptancesFor(lot.auctionId, bidderIds)]);
   const who = (x: string | null | undefined) => (x ? (pad.get(x) ?? '?') : '—');
   const chain = [loaded.settlement, ...loaded.corrections].filter((s) => s !== null);
+  // R18: staff who acted are named, not printed as ids. The id stays in the title for the record.
+  const actorIds = [...chain.map((s) => ('correctedByUserId' in s ? s.correctedByUserId : null)), withdrawal?.byUserId].filter((x): x is string => !!x);
+  const actors = new Map((await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
+  const actor = (id: string | null | undefined) => (id ? <span title={id}>{actors.get(id) ?? id}</span> : '—');
 
   return (
     <main>
       <h1>Lot {lot.number} history: {lot.title}</h1>
-      <p className="muted">{bids.length} {bids.length === 1 ? 'attempt' : 'attempts'}, in the order they were judged, accepted or refused. Highlighted rows extended the close. What a bidder saw is the price and leader after the row before theirs.</p>
-      <div className="table-scroll">
+      <p className="muted">{bids.length} {bids.length === 1 ? 'attempt' : 'attempts'}, in the order they were judged, accepted or refused. Rows marked Extended pushed the close out. What a bidder saw is the price and leader after the row before theirs.</p>
+      <div className="table-scroll history">
       <table>
         <thead>
           <tr>
@@ -53,7 +58,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
             <tr key={b.id} data-seq={b.seq} className={b.closesAtAfter > b.closesAtBefore ? 'extended' : undefined}>
               <td className="num">{b.seq}</td><td>{who(b.bidderId)}</td><td className="num">{formatCents(b.maxCents)}</td><td><Outcome k={b.outcome} /></td>
               <td className="num">{formatCents(b.priceBeforeCents)}</td><td className="num">{formatCents(b.priceAfterCents)}</td><td>{who(b.leaderBeforeId)}</td><td>{who(b.leaderAfterId)}</td>
-              <td>{iso(b.closesAtBefore)}</td><td>{iso(b.closesAtAfter)}</td><td>{iso(b.placedAt)}</td>
+              <td>{iso(b.closesAtBefore)}</td><td>{iso(b.closesAtAfter)}{b.closesAtAfter > b.closesAtBefore && <> <span className="badge" data-tone="info">Extended +{formatLeft(Math.round((b.closesAtAfter.getTime() - b.closesAtBefore.getTime()) / 1000))}</span></>}</td><td>{iso(b.placedAt)}</td>
             </tr>
           ))}
         </tbody>
@@ -77,7 +82,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
       )}
       <h2>Withdrawal</h2>
       {withdrawal ? (
-        <p data-testid="withdrawal">Withdrawn {iso(withdrawal.withdrawnAt)} by user <code>{withdrawal.byUserId}</code>: {withdrawal.reason}. Every attempt from that instant is a <code>REJECTED_LOT_WITHDRAWN</code> row above; the lot settles <code>UNSOLD_WITHDRAWN</code>.</p>
+        <p data-testid="withdrawal">Withdrawn {iso(withdrawal.withdrawnAt)} by {actor(withdrawal.byUserId)}: {withdrawal.reason}. Every attempt from that instant is a <code>REJECTED_LOT_WITHDRAWN</code> row above; the lot settles <code>UNSOLD_WITHDRAWN</code>.</p>
       ) : <p className="muted">Not withdrawn.</p>}
       <h2>Settlement</h2>
       {chain.length === 0 ? <p>Not settled.</p> : (
@@ -90,7 +95,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
               <tr key={s.id}>
                 <td>{i === 0 ? 'Settled' : `Correction ${i}`}</td><td><Outcome k={s.outcome} /></td><td>{who(s.winner)}</td>
                 <td className="num">{formatCents(s.hammerCents)}</td><td className="num">{formatCents(s.premiumCents)}</td><td className="num">{formatCents(s.totalCents)}</td>
-                <td>{'reason' in s ? s.reason : '—'}</td><td>{'correctedByUserId' in s ? s.correctedByUserId : '—'}</td>
+                <td>{'reason' in s ? s.reason : '—'}</td><td>{actor('correctedByUserId' in s ? s.correctedByUserId : null)}</td>
               </tr>
             ))}
           </tbody>

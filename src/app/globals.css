@@ -120,8 +120,12 @@ li { margin: 0.35rem 0; }
 .badge[data-tone='refused'] { border-style: dashed; }
 .badge[data-tone='warn'] { background: var(--warn-soft); color: var(--warn); }
 .badge[data-tone='info'] { background: var(--info-soft); color: var(--info); }
-tr.extended td { background: var(--info-soft); } /* an extension is neutral: info, not the "good" green */
+tr.extended td { background: var(--info-soft); } /* an extension is neutral: info, not the "good" green; the row also carries an Extended badge (R18) */
 tr.extended td:first-child { box-shadow: inset 4px 0 0 var(--info); }
+/* R18: Seq stays put when the history table scrolls sideways */
+.history th:first-child, .history td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
+.history th:first-child { background: var(--paper); }
+.history tr.extended td:first-child { background: var(--info-soft); }
 
 /* Callouts (DS-05): a badge word, a tone, a 4 px edge. Refused is dashed so it differs from outbid without colour. */
 .callout { display: block; margin: 0; padding: 0.6rem 0.85rem; border-left: 4px solid var(--muted); border-radius: 0 var(--radius) var(--radius) 0; background: var(--paper); color: var(--ink); font-weight: 600; }

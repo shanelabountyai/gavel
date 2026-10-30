@@ -40,9 +40,12 @@ test('history lists every ledger row of a SNIPE lot, first and last as in expect
     await expect(rows.nth(i).locator('td')).toHaveText([
       w.seq!, paddle(w.bidder_id!), cents(w.max_cents!), new RegExp(`${w.outcome!}$`), cents(w.price_before_cents!), cents(w.price_after_cents!),
       w.leader_before ? paddle(w.leader_before) : '—', w.leader_after ? paddle(w.leader_after) : '—',
-      iso(w.closes_before_ms!), iso(w.closes_after_ms!), iso(w.placed_at_ms!),
+      iso(w.closes_before_ms!), Number(w.closes_after_ms) > Number(w.closes_before_ms) ? new RegExp(`^${iso(w.closes_after_ms!)} Extended \\+\\d+:\\d\\d$`) : iso(w.closes_after_ms!), iso(w.placed_at_ms!),
     ]);
   }
+  // R18: an extension is marked in words, not only by tint
+  await expect(rows.locator('.badge', { hasText: 'Extended' })).toHaveCount(want.filter((w) => Number(w.closes_after_ms) > Number(w.closes_before_ms)).length);
+  expect(want.filter((w) => Number(w.closes_after_ms) > Number(w.closes_before_ms)).length).toBe(3);
   await expect(page.getByRole('heading', { name: 'Settlement' })).toBeVisible();
   await expect(page.locator('form, button, input')).toHaveCount(0); // read-only: no edit control
 });
