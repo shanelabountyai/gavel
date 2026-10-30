@@ -1,6 +1,6 @@
 // Task 2.1 (D-42 Q1): invoices derived on read from each lot's current settlement.
 // Nothing is stored, so auction:verify has no invoice check; V8 already proves every settlement it sums.
-import { type Invoice, type SettledLot, invoice } from '@/auction/engine/engine';
+import { type Invoice, type SettledLot, type TaxBase, invoice } from '@/auction/engine/engine';
 import type { Tx } from '@/auction/place-bid';
 import { db } from '@/core/db';
 
@@ -21,7 +21,14 @@ async function current(q: Tx, orgId: string, by: string, id: string): Promise<In
         AND NOT EXISTS (SELECT 1 FROM "Settlement" n WHERE n."supersedesId" = s."id")`,
     [id, orgId],
   );
-  return invoice(rows);
+  // D-78: the sale's tax configuration and the exemption certificates of the bidders these rows name.
+  const saleIds = [...new Set(rows.map((r) => r.auctionId))];
+  const bidderIds = [...new Set(rows.map((r) => r.winner).filter((w): w is string => w !== null))];
+  const [sales, exempt] = await Promise.all([
+    q.query<{ id: string; taxBps: number; taxBase: TaxBase }>(`SELECT "id"::text AS "id", "taxBps", "taxBase" FROM "Auction" WHERE "orgId" = $1::uuid AND "id" = ANY($2::uuid[])`, [orgId, saleIds]),
+    q.query<{ id: string; ref: string }>(`SELECT "id"::text AS "id", "taxExemptRef" AS "ref" FROM "Bidder" WHERE "orgId" = $1::uuid AND "taxExemptRef" IS NOT NULL AND "id" = ANY($2::uuid[])`, [orgId, bidderIds]),
+  ]);
+  return invoice(rows, { bySale: new Map(sales.map((s) => [s.id, { taxBps: s.taxBps, taxBase: s.taxBase }])), exempt: new Map(exempt.map((e) => [e.id, e.ref])) });
 }
 
 /** Staff: every buyer's invoice for one sale. */

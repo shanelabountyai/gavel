@@ -39,8 +39,10 @@ test('terms set by staff reach the winner\'s invoice, and only the winner\'s', a
   await page.getByLabel('Payment due').fill('2030-03-15T17:00');
   await page.getByLabel('Pickup instructions').fill('Barn 2, 14 Mill Road');
   await page.getByLabel('Pickup window').fill('Sat 9:00–12:00');
+  await page.getByLabel('Sales tax (bps, 0 = none)').fill('825'); // D-78: 8.25% of hammer, once per invoice
   await page.getByRole('button', { name: 'Save payment and pickup' }).click();
   await expect(page.getByLabel('Pickup instructions')).toHaveValue('Barn 2, 14 Mill Road');
+  await expect(page.getByLabel('Sales tax (bps, 0 = none)')).toHaveValue('825');
 
   const [win, lose] = await Promise.all([`inv-win-${T}@acme.demo.test`, `inv-lose-${T}@acme.demo.test`].map(user));
   const [a, b] = [await registerBidder(org.id, win!.id, 'member'), await registerBidder(org.id, lose!.id, 'member')];
@@ -51,6 +53,7 @@ test('terms set by staff reach the winner\'s invoice, and only the winner\'s', a
 
   await page.goto(`/o/acme/auctions/${auction.id}`);
   await expect(page.getByText('Fixed: the sale has bids.')).toBeVisible();
+  await expect(page.getByTestId('tax-fixed')).toHaveText('Sales tax 8.25% of hammer, once per invoice.');
   await expect(page.getByLabel('Pickup instructions')).toHaveCount(0);
 
   await signIn(page, win!.email);
@@ -60,6 +63,22 @@ test('terms set by staff reach the winner\'s invoice, and only the winner\'s', a
   await expect(inv).toContainText('Pickup: Barn 2, 14 Mill Road, Sat 9:00–12:00');
   await expect(inv).toContainText(lot.title);
   await expect(inv.locator('tfoot')).toContainText('$280.50'); // hammer 255.00 + 10% premium
+  await expect(inv.getByTestId('tax-row')).toContainText('Sales tax 8.25% of hammer'); // GB-27 site: 25,500 × 825 / 10,000 = 2,103.75 → 2,104
+  await expect(inv.getByTestId('tax-row')).toContainText('$21.04');
+  await expect(inv.getByTestId('total-due')).toHaveText('$301.54');
+
+  // D-78: an exemption certificate on file zeroes the tax and is printed on the invoice; staff see the same on the sale's page.
+  await signIn(page, 'owner@acme.demo.test');
+  await page.goto('/o/acme/bidders');
+  const row = page.getByTestId(`bidder-${a.paddle}`);
+  await row.getByLabel(/Exemption certificate/).fill('RESALE-0042');
+  await row.getByRole('button', { name: 'Save' }).click();
+  await expect(row).toContainText('Exempt, certificate');
+  await page.goto(`/o/acme/auctions/${auction.id}/invoices`);
+  const staffInv = page.getByTestId(`invoice-${a.paddle}`);
+  await expect(staffInv.getByTestId('tax-row')).toContainText('Sales tax: exempt, certificate RESALE-0042');
+  await expect(staffInv.getByTestId('tax-row')).toContainText('$0.00');
+  await expect(staffInv.getByTestId('total-due')).toHaveText('$280.50');
 
   await signIn(page, lose!.email);
   await page.goto('/o/acme/invoices');

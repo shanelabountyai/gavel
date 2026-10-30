@@ -18,6 +18,9 @@ model Auction {
   paymentDueAt           DateTime?             @db.Timestamptz(6)
   pickupText             String                @default("")
   pickupWindowText       String                @default("")
+  // D-78 (AX-09): sales tax as configuration, fixed with the terms above once the sale has a bid. 0 = no tax line.
+  taxBps                 Int                   @default(0) // CHECK 0..10000
+  taxBase                String                @default("HAMMER") // HAMMER | HAMMER_PLUS_PREMIUM (CHECK)
   createdAt              DateTime              @default(now()) @db.Timestamptz(6)
   updatedAt              DateTime              @updatedAt @db.Timestamptz(6)
   lots                   Lot[]
@@ -178,6 +181,7 @@ model Bidder {
   user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   paddle        Int
   status        BidderStatus         @default(ACTIVE)
+  taxExemptRef  String? // D-78: resale/exemption certificate reference on file; null = taxable (CHECK not blank)
   createdAt     DateTime             @default(now()) @db.Timestamptz(6)
   bids          Bid[]
   statusChanges BidderStatusChange[]

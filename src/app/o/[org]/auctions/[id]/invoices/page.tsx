@@ -69,7 +69,9 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
                 ))}
               </tbody>
               <tfoot>
-                <tr><th scope="row" colSpan={2}>Due</th><td className="num">{formatCents(i.hammerCents)}</td><td className="num">{formatCents(i.premiumCents)}</td><td className="num">{formatCents(i.totalCents)}</td></tr>
+                <tr><th scope="row" colSpan={2}>Lots</th><td className="num">{formatCents(i.hammerCents)}</td><td className="num">{formatCents(i.premiumCents)}</td><td className="num">{formatCents(i.hammerCents + i.premiumCents)}</td></tr>
+                {(i.taxBps > 0 || i.exemptRef) && <tr data-testid="tax-row"><th scope="row" colSpan={4}>{i.exemptRef ? `Sales tax: exempt, certificate ${i.exemptRef}` : `Sales tax ${formatCents(i.taxBps).slice(1)}% of ${i.taxBase === 'HAMMER' ? 'hammer' : 'hammer + premium'}`}</th><td className="num">{formatCents(i.taxCents)}</td></tr>}
+                <tr><th scope="row" colSpan={4}>Total due</th><td className="num" data-testid="total-due">{formatCents(i.totalCents)}</td></tr>
                 <tr><th scope="row" colSpan={4}>Paid</th><td className="num">{formatCents(i.balance.paidCents)}</td></tr>
                 <tr><th scope="row" colSpan={4}>{i.balance.balanceCents < 0 ? 'Credit due to buyer' : 'Balance'}</th><td className="num"><strong>{formatCents(Math.abs(i.balance.balanceCents))}</strong></td></tr>
               </tfoot>

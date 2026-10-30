@@ -76,17 +76,20 @@ const termsFields = z.object({
   paymentDueAt: z.union([z.literal('').transform(() => null), utc]),
   pickupText: z.string().trim().max(500),
   pickupWindowText: z.string().trim().max(200),
+  // D-78 (AX-09): configuration, not advice; which base applies where the sale happens is a question for counsel.
+  taxBps: z.string().regex(/^\d+$/, 'Sales tax must be whole basis points (825 = 8.25%).').transform(Number).pipe(z.number().int().max(10000, 'Sales tax cannot exceed 10,000 bps.')),
+  taxBase: z.enum(['HAMMER', 'HAMMER_PLUS_PREMIUM']),
 });
 
 export const updateSaleTerms = orgAction(
   'results.write',
-  z.object({ auctionId: ref('auction'), paymentDueAt: z.string(), pickupText: z.string(), pickupWindowText: z.string() }),
+  z.object({ auctionId: ref('auction'), paymentDueAt: z.string(), pickupText: z.string(), pickupWindowText: z.string(), taxBps: z.string(), taxBase: z.string() }),
   async (ctx, raw) => {
     const auction = await db.auction.findFirst({ where: { id: raw.auctionId, ...inOrg(ctx) } });
     if (!auction) notFound();
     const parsed = termsFields.safeParse(raw);
     if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
-    if (await db.bid.count({ where: { lot: { auctionId: auction.id } }, take: 1 })) throw new Refused('This sale has bids; payment and pickup terms are fixed.');
+    if (await db.bid.count({ where: { lot: { auctionId: auction.id } }, take: 1 })) throw new Refused('This sale has bids; payment, pickup and tax terms are fixed.');
     await db.$transaction(async (tx) => {
       await tx.auction.update({ where: { id: auction.id }, data: parsed.data });
       await audit(ctx, 'auction.terms_updated', { targetType: 'auction', targetId: auction.id }, tx);

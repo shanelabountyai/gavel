@@ -36,6 +36,7 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
   const due = auction.paymentDueAt?.toISOString().slice(0, 16);
   const [terms, accepted, contracts, consignors] = await Promise.all([currentTerms(id), acceptancesFor(id), currentContracts(ctx.orgId, id), db.consignor.findMany({ where: inOrg(ctx), orderBy: { code: 'asc' }, select: { id: true, code: true, name: true } })]);
   const pct = (bps: number) => `${formatCents(bps).slice(1)}%`;
+  const taxText = auction.taxBps === 0 ? 'No sales tax.' : `Sales tax ${pct(auction.taxBps)} of ${auction.taxBase === 'HAMMER' ? 'hammer' : 'hammer + premium'}, once per invoice.`;
   return (
     <main>
       <h1>{auction.name}</h1>
@@ -43,7 +44,7 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
       <p><Link href={`/o/${ctx.slug}/auctions/${id}/invoices`}>Invoices for this sale</Link> · <Link href={`/o/${ctx.slug}/auctions/${id}/statements`}>Consignor statements</Link></p>
       <h2>Payment and pickup</h2>
       {hasBids ? (
-        <p>Payment due {due ? `${due.replace('T', ' ')} UTC` : <span className="muted">not set</span>}. Pickup: {auction.pickupText || <span className="muted">not set</span>}{auction.pickupWindowText && `, ${auction.pickupWindowText}`}. <span className="muted">Fixed: the sale has bids.</span></p>
+        <p>Payment due {due ? `${due.replace('T', ' ')} UTC` : <span className="muted">not set</span>}. Pickup: {auction.pickupText || <span className="muted">not set</span>}{auction.pickupWindowText && `, ${auction.pickupWindowText}`}. <span data-testid="tax-fixed">{taxText}</span> <span className="muted">Fixed: the sale has bids.</span></p>
       ) : (
         <ActionForm action={updateSaleTerms.bind(null, ctx.slug)}>
           <p className="muted">Shown on each buyer&apos;s invoice and in the won notice. Fixed once the sale has a bid.</p>
@@ -51,6 +52,9 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
           <label>Payment due (UTC, optional) <input name="paymentDueAt" type="datetime-local" defaultValue={due} /></label>
           <label>Pickup instructions <input name="pickupText" maxLength={500} defaultValue={auction.pickupText} /></label>
           <label>Pickup window <input name="pickupWindowText" maxLength={200} defaultValue={auction.pickupWindowText} placeholder="e.g. Sat 9:00–12:00" /></label>
+          <label>Sales tax (bps, 0 = none) <input name="taxBps" inputMode="numeric" defaultValue={auction.taxBps} required /></label>
+          <label>Taxed on <select name="taxBase" defaultValue={auction.taxBase}><option value="HAMMER">Hammer only</option><option value="HAMMER_PLUS_PREMIUM">Hammer + premium</option></select></label>
+          <p className="muted form-explain">Tax is configuration, not advice: the rate and the base depend on where the sale happens. Exempt bidders (certificate on file, Bidders page) owe no tax.</p>
           <button type="submit">Save payment and pickup</button>
         </ActionForm>
       )}

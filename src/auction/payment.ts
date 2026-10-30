@@ -39,7 +39,7 @@ export async function paidInvoices(orgId: string, by: { auctionId: string } | { 
   const byKey = new Map(invoices.map((i) => [key(i.auctionId, i.bidderId), i]));
   for (const m of [...marks, ...defaults]) {
     const k = key(m.auctionId, m.bidderId);
-    if (!byKey.has(k)) byKey.set(k, { auctionId: m.auctionId, bidderId: m.bidderId, lots: [], hammerCents: 0, premiumCents: 0, totalCents: 0 });
+    if (!byKey.has(k)) byKey.set(k, { auctionId: m.auctionId, bidderId: m.bidderId, lots: [], hammerCents: 0, premiumCents: 0, taxBps: 0, taxBase: 'HAMMER', taxCents: 0, exemptRef: null, totalCents: 0 });
   }
   const due = new Map((await db.auction.findMany({ where: { orgId, id: { in: [...new Set([...byKey.values()].map((i) => i.auctionId))] } }, select: { id: true, paymentDueAt: true } })).map((a) => [a.id, a.paymentDueAt]));
   return [...byKey.values()]

@@ -36,6 +36,17 @@ export async function setBidderStatus(
   return db.$transaction((tx) => setBidderStatusInTx(tx, actor, bidderId, status, reason));
 }
 
+/** D-78 (AX-09): the exemption certificate on file, or none. Reference data on the Bidder row, audited; the invoice reads it. */
+export async function setTaxExemption(actor: { orgId: string; userId: string }, bidderId: string, certificateRef: string | null) {
+  const ref = certificateRef?.trim() || null;
+  await db.$transaction(async (tx) => {
+    const { count } = await tx.bidder.updateMany({ where: { id: bidderId, orgId: actor.orgId }, data: { taxExemptRef: ref } });
+    if (count === 0) throw new Refused('No such bidder in this house.');
+    await audit(actor, ref ? 'bidder.tax_exempt' : 'bidder.tax_exempt_cleared', { targetType: 'bidder', targetId: bidderId, data: { certificateRef: ref } }, tx);
+  });
+  return ref;
+}
+
 /** The transaction body (D-75: a default suspends inside its own transaction). The caller owns BEGIN/COMMIT. */
 export async function setBidderStatusInTx(tx: Prisma.TransactionClient, actor: { orgId: string; userId: string }, bidderId: string, status: 'ACTIVE' | 'SUSPENDED', reason: string) {
   const why = reason.trim();
