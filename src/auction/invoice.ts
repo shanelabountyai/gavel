@@ -6,7 +6,7 @@ import { db } from '@/core/db';
 
 /** UX-16/17: the current settlement (the row no other supersedes, D-44) of every settled lot in a sale, by lotId. */
 export async function currentSettlements(orgId: string, auctionId: string) {
-  const rows = await db.settlement.findMany({ where: { orgId, lot: { auctionId } }, select: { id: true, lotId: true, supersedesId: true, outcome: true, hammerCents: true } });
+  const rows = await db.settlement.findMany({ where: { orgId, lot: { auctionId } }, select: { id: true, lotId: true, supersedesId: true, outcome: true, hammerCents: true, premiumCents: true, totalCents: true } });
   const superseded = new Set(rows.map((r) => r.supersedesId));
   return new Map(rows.filter((r) => !superseded.has(r.id)).map((r) => [r.lotId, r]));
 }
