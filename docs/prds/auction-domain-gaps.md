@@ -184,7 +184,7 @@ Each requirement lists what it changes, using these labels:
 - *Changes:* schema, engine. D, G (rounding at invoice level, exempt case, both bases), F (invented rates in `auctions.json`).
 - **Contradicts the PRD Non-Goal "tax"** and non-negotiable 6 (a second rounding site; see R-07).
 
-**R-10 Generated staggered closes (AX-10).** The auction form takes `firstCloseAt` and `staggerSeconds`. `createLot` sets `scheduledEnd = firstCloseAt + (number − 1) × stagger` when no end is given. An explicit end still wins. *Changes:* schema (two `Auction` columns), catalog only. D. G/F: none.
+**R-10 Generated staggered closes (AX-10).** **Built 2026-10-30 (D-84).** The auction form takes `firstCloseAt` and `staggerSeconds`. `createLot` sets `scheduledEnd = firstCloseAt + (number − 1) × stagger` when no end is given. An explicit end still wins. *Changes:* schema (two `Auction` columns), catalog only. D. G/F: none.
 
 **R-11 Public bid history (AX-11).** **Built 2026-10-30 (D-83).**
 - [x] The bidder lot page lists accepted rows in seq order with: time, price after the bid, whether it extended the close, and a per-lot alias ("Bidder 3", assigned by first appearance).
@@ -193,7 +193,7 @@ Each requirement lists what it changes, using these labels:
 - [x] The list is read from the ledger and needs no lock.
 - *Changes:* read only. D (amends brief §4's "never another bidder's identity"). G: an alias-assignment golden on a PROXY_WAR fixture lot. F: none.
 
-**R-12 Local time display (AX-12).** The `Auction` row gains `timeZone` (IANA). Every printed time renders in that zone with the zone named. Storage, the engine and the countdown stay UTC/epoch ms. *Changes:* schema (one column), display. D (amends D-48 c). G/F: none.
+**R-12 Local time display (AX-12).** **Built 2026-10-30 (D-84).** The `Auction` row gains `timeZone` (IANA). Every printed time renders in that zone with the zone named. Storage, the engine and the countdown stay UTC/epoch ms. *Changes:* schema (one column), display. D (amends D-48 c). G/F: none.
 
 **R-13 "No reserve" label (AX-13).** **Built 2026-10-30 (D-83).** The lot view adds `hasReserve`. The page shows "No reserve", "Reserve not met" or "Reserve met". The amount is never shown. *Changes:* read only. D (changes O-5's default and D-50 d). G/F: none.
 
