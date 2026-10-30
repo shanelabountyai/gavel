@@ -26,6 +26,9 @@ export type CorrectionInput = {
   readonly premiumBps?: number; // undefined keeps the predecessor's
   readonly reason: string;
   readonly userId: string;
+  // D-87 (AX-14): the consignor's acceptance of the high bid below the reserve. Undefined keeps the predecessor's while the
+  // winner is unchanged (a later rate correction of an approved sale), so the reserve stays waived only for that sale.
+  readonly consignorApprovalRef?: string | null;
 };
 
 type Deps = { rules?: Rules; hash?: string };
@@ -44,22 +47,25 @@ export async function correctInTx(ptx: Prisma.TransactionClient, input: Correcti
   const prev = supersedesId === undefined ? chain[chain.length - 1] : chain.find((s) => s?.id === supersedesId);
   if (!prev) throw new CorrectionError('SETTLEMENT_NOT_FOUND', 'no such settlement on this lot');
 
-  const next = resettle(l.lot, l.rows, rules, { winner: winner === undefined ? prev.winner : winner, premiumBps: premiumBps ?? prev.premiumBps });
+  const to = winner === undefined ? prev.winner : winner;
+  const approval = input.consignorApprovalRef !== undefined ? input.consignorApprovalRef?.trim() || null
+    : to !== null && to === prev.winner && 'consignorApprovalRef' in prev ? (prev.consignorApprovalRef as string | null) : null;
+  const next = resettle(l.lot, l.rows, rules, { winner: to, premiumBps: premiumBps ?? prev.premiumBps, consignorApprovalRef: approval });
   if ('refused' in next) throw new CorrectionError(next.refused, `the correction is refused: ${next.refused}`);
   if ((['outcome', 'winner', 'hammerCents', 'premiumCents', 'premiumBps'] as const).every((k) => next[k] === prev[k])) {
     throw new CorrectionError('NO_CHANGE', 'the correction changes nothing');
   }
 
   const [row] = await tx.query<{ id: string }>(
-    `INSERT INTO "Settlement" ("id", "orgId", "lotId", "supersedesId", "reason", "correctedByUserId", "outcome", "winnerBidderId", "winningSeq",
+    `INSERT INTO "Settlement" ("id", "orgId", "lotId", "supersedesId", "reason", "correctedByUserId", "consignorApprovalRef", "outcome", "winnerBidderId", "winningSeq",
                                "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash", "premiumBps")
-     VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, $6, $7::uuid, $8, $9, $10, $11, $12::timestamptz, $13, $14)
+     VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, $15, $6, $7::uuid, $8, $9, $10, $11, $12::timestamptz, $13, $14)
      RETURNING "id"::text`,
     [orgId, lotId, prev.id, reason.trim(), userId, next.outcome, next.winner, next.winningSeq, next.hammerCents, next.premiumCents, next.totalCents,
-      new Date(next.closedAtMs).toISOString(), hash, next.premiumBps],
+      new Date(next.closedAtMs).toISOString(), hash, next.premiumBps, approval],
   );
   const pick = (s: CorrectedSettlement) => ({ outcome: s.outcome, winner: s.winner, hammerCents: s.hammerCents, premiumCents: s.premiumCents, premiumBps: s.premiumBps });
-  await audit({ orgId, userId }, 'settlement.corrected', { targetType: 'Settlement', targetId: row!.id, data: { lotId, supersedesId: prev.id, reason: reason.trim(), from: pick(prev), to: pick(next) } }, ptx);
+  await audit({ orgId, userId }, 'settlement.corrected', { targetType: 'Settlement', targetId: row!.id, data: { lotId, supersedesId: prev.id, reason: reason.trim(), consignorApprovalRef: approval, from: pick(prev), to: pick(next) } }, ptx);
   return { id: row!.id, settlement: next };
 }
 
@@ -80,6 +86,9 @@ export async function correctSettlement(input: CorrectionInput, deps: Deps = {})
   if (winner !== undefined && winner !== null && !UUID.test(winner)) throw new CorrectionError('INVALID_INPUT', 'winner must be a bidder id or null');
   if (premiumBps !== undefined && !(Number.isInteger(premiumBps) && premiumBps >= 0 && premiumBps <= INT4_MAX)) throw new CorrectionError('INVALID_INPUT', 'premiumBps must be a non-negative integer');
   if (typeof reason !== 'string' || reason.trim() === '') throw new CorrectionError('INVALID_INPUT', 'a correction needs a reason');
+  if (input.consignorApprovalRef !== undefined && input.consignorApprovalRef !== null && (typeof input.consignorApprovalRef !== 'string' || input.consignorApprovalRef.trim() === '')) {
+    throw new CorrectionError('INVALID_INPUT', 'a consignor approval needs a reference');
+  }
   const resolved = resolve(deps);
   try {
     return await db.$transaction((ptx) => correctInTx(ptx, input, resolved), { timeout: TRANSACTION_TIMEOUT_MS });

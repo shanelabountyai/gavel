@@ -18,7 +18,7 @@ export type LoadedLot = {
   readonly strays: string[]; // ids of rows the chain from the first row never reaches; verify fails on any
 };
 
-export type StoredCorrection = CorrectedSettlement & { id: string; rulesHash: string; reason: string; correctedByUserId: string };
+export type StoredCorrection = CorrectedSettlement & { id: string; rulesHash: string; reason: string; correctedByUserId: string; consignorApprovalRef: string | null };
 
 type LotRow = {
   id: string; orgId: string; number: number; startCents: number; reserveCents: number | null; scheduledEnd: Date;
@@ -28,7 +28,7 @@ type LotRow = {
   withdrawnAt: Date | null; // D-73: the LotWithdrawal row, if any
 };
 type SettlementRow = {
-  id: string; supersedesId: string | null; reason: string | null; correctedByUserId: string | null; premiumBps: number;
+  id: string; supersedesId: string | null; reason: string | null; correctedByUserId: string | null; consignorApprovalRef: string | null; premiumBps: number;
   outcome: string; winnerBidderId: string | null; winningSeq: number | null; hammerCents: number; premiumCents: number; totalCents: number; closedAt: Date; rulesHash: string;
 };
 
@@ -49,7 +49,7 @@ export async function loadLot(q: Tx, lotId: string): Promise<LoadedLot> {
     [lotId],
   );
   const sts = await q.query<SettlementRow>(
-    `SELECT "id"::text, "supersedesId"::text, "reason", "correctedByUserId"::text, "premiumBps", "outcome", "winnerBidderId"::text, "winningSeq",
+    `SELECT "id"::text, "supersedesId"::text, "reason", "correctedByUserId"::text, "consignorApprovalRef", "premiumBps", "outcome", "winnerBidderId"::text, "winningSeq",
             "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash"
        FROM "Settlement" WHERE "lotId" = $1::uuid`,
     [lotId],
@@ -62,7 +62,7 @@ export async function loadLot(q: Tx, lotId: string): Promise<LoadedLot> {
   const next = new Map(sts.filter((r) => r.supersedesId !== null).map((r) => [r.supersedesId!, r]));
   const corrections: StoredCorrection[] = [];
   for (let r = st && next.get(st.id); r; r = next.get(r.id)) {
-    corrections.push({ ...asSettlement(r), id: r.id, reason: r.reason!, correctedByUserId: r.correctedByUserId! });
+    corrections.push({ ...asSettlement(r), id: r.id, reason: r.reason!, correctedByUserId: r.correctedByUserId!, consignorApprovalRef: r.consignorApprovalRef });
   }
   return {
     id: l.id,
@@ -183,7 +183,7 @@ export async function verifyLot(q: Tx, lotId: string, rules: Rules): Promise<Fai
     // D-44: every correction is recomputable from the ledger and its own winner and rate. The schema already
     // refuses a fork (unique supersedesId), a predecessor in another lot (composite FK) and a missing reason (CHECK).
     for (const r of l.corrections) {
-      const want = resettle(l.lot, l.rows, rules, { winner: r.winner, premiumBps: r.premiumBps });
+      const want = resettle(l.lot, l.rows, rules, { winner: r.winner, premiumBps: r.premiumBps, consignorApprovalRef: r.consignorApprovalRef });
       if ('refused' in want) return fail('V8', `correction ${r.id}: resettle refuses it (${want.refused})`);
       const k = ([...SETTLEMENT_COLS, 'premiumBps'] as const).find((x) => r[x] !== want[x]);
       if (k) return fail('V8', `correction ${r.id}: ${k} is ${r[k]}, resettle(ledger) says ${want[k]}`);

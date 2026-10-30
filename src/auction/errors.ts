@@ -61,6 +61,7 @@ export type CorrectionErrorCode =
   | 'INVALID_INPUT' // boundary: nothing written
   | 'SETTLEMENT_NOT_FOUND' // no such settlement on this lot in this house
   | 'NOT_AN_ACCEPTED_BIDDER' // D-42 Q2: the new winner has no accepted row in the lot's ledger
+  | 'APPROVAL_NOT_APPLICABLE' // D-87: a consignor approval applies only to the high bidder on a lot closed below its reserve
   | 'RESERVE_NOT_MET' // the new winner's price is below the reserve
   | 'LOT_WITHDRAWN' // D-73: the lot was withdrawn; it is never sold, by correction either
   | 'NO_CHANGE' // the correction would write the row it supersedes again

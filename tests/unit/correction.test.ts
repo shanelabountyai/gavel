@@ -61,3 +61,37 @@ describe('resettle (task 2.2)', () => {
     expect(() => resettle(lot, rows, rules, { winner: 'A', premiumBps: 1500.5 })).toThrow(MoneyError);
   });
 });
+
+// AX-14 (R-14, D-87): the consignor accepts the high bid below the reserve. The high bidder only, at the price the
+// ledger reached (settle()'s, the reserve not applied), and only on a lot that closed UNSOLD_RESERVE_NOT_MET.
+describe('resettle with a consignor approval (AX-14)', () => {
+  const high = { ...lot, reserveCents: 9000 };
+  // Reserve 9000. A max 5000 leads at 1000; B max 3000 is outbid at min(5000, 3000 + 100) = 3100; A stays the leader from seq 1.
+  const below = rowsOf(high, [sub(1, 'A', 5000), sub(2, 'B', 3000)]);
+
+  it('the lot closed below the reserve', () => {
+    expect(settle(high, fold(high, below, rules), 100_000)!.outcome).toBe('UNSOLD_RESERVE_NOT_MET');
+  });
+
+  it('sells to the high bidder at the reached 3100: premium 3100 × 1500 / 10000 = 465, total 3565', () => {
+    expect(resettle(high, below, rules, { winner: 'A', premiumBps: 1500, consignorApprovalRef: 'CA-1' })).toEqual({
+      outcome: 'SOLD', winner: 'A', winningSeq: 1, hammerCents: 3100, premiumCents: 465, totalCents: 3565, closedAtMs: 100_000, premiumBps: 1500,
+    });
+  });
+
+  it('a lone bidder below the reserve sells at the start price they reached, 1000: premium 150', () => {
+    expect(resettle(high, rowsOf(high, [sub(1, 'A', 5000)]), rules, { winner: 'A', premiumBps: 1500, consignorApprovalRef: 'CA-2' }))
+      .toMatchObject({ outcome: 'SOLD', winner: 'A', winningSeq: 1, hammerCents: 1000, premiumCents: 150, totalCents: 1150 });
+  });
+
+  it('is refused for anyone but the high bidder, on a lot that met its reserve, and on a sale withdrawn by correction', () => {
+    const ca = { premiumBps: 1500, consignorApprovalRef: 'CA-3' };
+    expect(resettle(high, below, rules, { winner: 'B', ...ca })).toEqual({ refused: 'APPROVAL_NOT_APPLICABLE' });
+    expect(resettle(high, below, rules, { winner: null, ...ca })).toEqual({ refused: 'APPROVAL_NOT_APPLICABLE' });
+    expect(resettle(lot, rows, rules, { winner: 'A', ...ca })).toEqual({ refused: 'APPROVAL_NOT_APPLICABLE' });
+  });
+
+  it('without the approval the reserve still refuses it (D-44 c stands)', () => {
+    expect(resettle(high, below, rules, { winner: 'A', premiumBps: 1500 })).toEqual({ refused: 'RESERVE_NOT_MET' });
+  });
+});

@@ -274,8 +274,9 @@ export type CorrectedSettlement = Omit<Settlement, 'outcome'> & {
   readonly premiumBps: number; // stored on every row, the first one too, so each row is recomputable from itself
 };
 /** What a correction may set, and nothing else (D-42 Q2): the winner (null = unsold) and the premium rate. */
-export type CorrectionTarget = { readonly winner: string | null; readonly premiumBps: number };
-export type CorrectionRefusal = 'NOT_AN_ACCEPTED_BIDDER' | 'RESERVE_NOT_MET' | 'LOT_WITHDRAWN';
+/** `consignorApprovalRef` (AX-14, D-87): the consignor accepted the high bid below the reserve; only then is the reserve not applied. */
+export type CorrectionTarget = { readonly winner: string | null; readonly premiumBps: number; readonly consignorApprovalRef?: string | null };
+export type CorrectionRefusal = 'NOT_AN_ACCEPTED_BIDDER' | 'RESERVE_NOT_MET' | 'LOT_WITHDRAWN' | 'APPROVAL_NOT_APPLICABLE';
 
 /**
  * The settlement a correction to `target` writes. The fold's own leader gets settle()'s hammer back; any other
@@ -287,6 +288,11 @@ export function resettle(lot: Lot, rows: readonly FoldRow[], rules: Rules, targe
   const original = settle(lot, folded, folded.closesAtMs)!; // at its own closesAt a lot is CLOSED
   assertBps(target.premiumBps);
   if (lot.withdrawnAtMs !== null && target.winner !== null) return { refused: 'LOT_WITHDRAWN' }; // D-73: a withdrawn lot is never sold, by correction either
+  if (target.consignorApprovalRef) {
+    // D-87: the high bidder only, on a lot that closed below its reserve, at the price the ledger reached.
+    if (target.winner === null || target.winner !== folded.leader || original.outcome !== 'UNSOLD_RESERVE_NOT_MET') return { refused: 'APPROVAL_NOT_APPLICABLE' };
+    return { ...sold(target.winner, folded.leaderSeq!, folded.priceCents, target.premiumBps, original.closedAtMs), premiumBps: target.premiumBps };
+  }
   if (target.winner === null) {
     return { outcome: UNSOLD_BY_CORRECTION, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: original.closedAtMs, premiumBps: target.premiumBps };
   }

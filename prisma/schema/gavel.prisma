@@ -255,6 +255,7 @@ model Settlement {
   supersedesId      String?  @unique @db.Uuid // null on the first row; unique, so a chain cannot fork
   reason            String? // required on a correction (CHECK)
   correctedByUserId String?  @db.Uuid // no FK, as AuditEvent.actorUserId; required on a correction (CHECK)
+  consignorApprovalRef String? // D-87 (AX-14): set only on a correction selling to the high bidder below the reserve (CHECK; V8 recomputes it)
   premiumBps        Int // the rate premiumCents was taken at; the auction's on the first row
   lot               Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
   outcome           String // SOLD | UNSOLD_NO_BIDS | UNSOLD_RESERVE_NOT_MET, or UNSOLD_BY_CORRECTION on a correction (CHECK)
