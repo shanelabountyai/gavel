@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatCents } from '@/auction/engine/money';
 import type { LotView } from '@/auction/lot-view';
 import { outcomeLabel } from '@/auction/outcome-labels';
@@ -24,6 +24,11 @@ export function BidForm({ slug, lotId, view, paddle, disabledReason, onResult }:
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<number | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
+  // R22: the confirm is a real dialog for the keyboard: focus lands on Yes when it opens, returns to the input on cancel
+  const input = useRef<HTMLInputElement>(null);
+  const yes = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (confirm !== null) yes.current?.focus(); }, [confirm]);
+  const cancel = () => { setConfirm(null); input.current?.focus(); };
 
   const send = async (maxCents: number) => {
     if (busy || disabledReason) return;
@@ -68,18 +73,18 @@ export function BidForm({ slug, lotId, view, paddle, disabledReason, onResult }:
   return (
     <form onSubmit={submit} aria-label="Place a bid">
       <p className="form-hint">Minimum next bid <b data-testid="min-next">{min}</b> · paddle {paddle}</p>
-      <label>Your maximum ($) <input name="max" inputMode="decimal" autoComplete="off" value={text} placeholder={min.slice(1)} aria-invalid={invalid || undefined} disabled={!!disabledReason} onChange={(e) => { setText(e.target.value); setConfirm(null); key.current = crypto.randomUUID(); }} /></label>
+      <label>Your maximum ($) <input ref={input} name="max" inputMode="decimal" autoComplete="off" value={text} placeholder={min.slice(1)} aria-invalid={invalid || undefined} disabled={!!disabledReason} onChange={(e) => { setText(e.target.value); setConfirm(null); key.current = crypto.randomUUID(); }} /></label>
       <button type="submit" disabled={busy || !!disabledReason}>{busy ? 'Sending…' : 'Bid'}</button>
       {/* UX-08: one tap bids the minimum; the same key guards a double tap, as for the typed form (D-52 b) */}
       <button type="button" data-testid="bid-min" disabled={busy || !!disabledReason} onClick={() => void send(view.minNextCents)}>Bid {min}</button>
       <p className="form-hint form-explain">Enter the most you will pay. We bid for you, one step at a time, only as high as needed.</p>
       {disabledReason && <p className="form-hint" data-testid="bid-disabled">{disabledReason}</p>}
       {confirm !== null && (
-        <p role="alertdialog" data-testid="confirm">
-          {formatCents(confirm)} is more than {FAT_FINGER}× the current price. Bid it?{' '}
-          <button type="button" onClick={() => void send(confirm)} disabled={busy}>Yes, bid {formatCents(confirm)}</button>{' '}
-          <button type="button" onClick={() => setConfirm(null)}>Cancel</button>
-        </p>
+        <div role="alertdialog" aria-labelledby="confirm-text" data-testid="confirm" onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); cancel(); } }}>
+          <p id="confirm-text">{formatCents(confirm)} is more than {FAT_FINGER}× the current price. Bid it?</p>
+          <button ref={yes} type="button" onClick={() => void send(confirm)} disabled={busy}>Yes, bid {formatCents(confirm)}</button>{' '}
+          <button type="button" onClick={cancel}>Cancel</button>
+        </div>
       )}
       {/* A lead the poll has since overturned is stale; the board's outbid banner says what is true now. */}
       {msg && !(msg.tone === 'lead' && view.you === 'OUTBID') && (

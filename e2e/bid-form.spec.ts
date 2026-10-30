@@ -7,17 +7,21 @@ import { seedDemo } from '../scripts/seed-demo';
 
 // Task 3.5: double click writes one ledger row (one key per submission); a max above 10× the price asks first, and a
 // cancelled one writes nothing. D-68: the board shows the caller's own maximum, and a refused raise quotes it.
-test('double click writes one row; a 50× max confirms, and cancel writes nothing; a refused raise names the max', async ({ page }) => {
+async function openLot() {
   await seedDemo();
   const org = await db.org.findUniqueOrThrow({ where: { slug: 'acme' } });
   const me = await db.user.findUniqueOrThrow({ where: { email: 'member@acme.demo.test' } });
   await registerBidder(org.id, me.id, 'member');
   const end = new Date(Date.now() + 3_600_000);
   const auction = await db.auction.create({ data: { orgId: org.id, name: `E2E bid form ${Date.now()}`, softCloseWindowSeconds: 120, maxExtensionSeconds: 1800, buyerPremiumBps: 1000, opensAt: new Date('2020-01-01T00:00:00Z') } });
-  const lot = await db.lot.create({
+  return db.lot.create({
     data: { orgId: org.id, auctionId: auction.id, number: 1, title: 'Bid form lot', startCents: 10000, scheduledEnd: end,
       state: { create: { orgId: org.id, priceCents: 0, leaderMaxCents: 0, bidCount: 0, acceptedCount: 0, closesAt: end, extensionCount: 0 } } },
   });
+}
+
+test('double click writes one row; a 50× max confirms, and cancel writes nothing; a refused raise names the max', async ({ page }) => {
+  const lot = await openLot();
   const rows = () => db.bid.count({ where: { lotId: lot.id } });
 
   await demoSignIn(page, 'member@acme.demo.test');
@@ -88,4 +92,24 @@ test('one tap bids the minimum, a double tap writes one row, and the board takes
   expect(await page.getByTestId('price').textContent()).toBe('$155.00'); // one price on the screen
   expect(await page.getByTestId('you').textContent()).toBe('You have been outbid.');
   expect(await page.getByTestId('your-max').textContent()).toContain('$150.00');
+});
+
+test('the fat-finger confirm works from the keyboard alone: focus lands on Yes, Escape cancels back to the input', async ({ page }) => {
+  const lot = await openLot();
+  await demoSignIn(page, 'member@acme.demo.test');
+  await page.goto(`/o/acme/lots/${lot.id}`);
+  const input = page.getByLabel('Your maximum ($)');
+  await input.focus();
+  await page.keyboard.type('5000');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: /Yes, bid/ })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('confirm')).toHaveCount(0);
+  await expect(input).toBeFocused();
+  expect(await db.bid.count({ where: { lotId: lot.id } })).toBe(0);
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: /Yes, bid/ })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('bid-msg')).toContainText('Bid accepted');
+  expect(await db.bid.count({ where: { lotId: lot.id } })).toBe(1);
 });
