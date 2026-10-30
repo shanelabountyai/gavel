@@ -4,6 +4,7 @@ import { now } from '@/core/clock';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
 import { createAuction } from './actions';
+import { DateTimeUtc } from './datetime-utc';
 
 export const metadata = { title: 'Auctions' };
 
@@ -25,7 +26,7 @@ export default async function Auctions({ params }: { params: Promise<{ org: stri
       <h2>New auction</h2>
       <ActionForm action={createAuction.bind(null, ctx.slug)}>
         <label>Name <input name="name" required maxLength={120} /></label>
-        <label>Opens (UTC) <input name="opensAt" type="datetime-local" required /></label>
+        <DateTimeUtc name="opensAt" label="Opens (UTC)" serverNowMs={t} required future="opens in" past="opened" />
         <button type="submit">Create auction</button>
       </ActionForm>
     </main>

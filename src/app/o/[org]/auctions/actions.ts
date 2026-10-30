@@ -1,6 +1,7 @@
 'use server';
 import { notFound, redirect } from 'next/navigation';
 import { z } from 'zod';
+import { dollars } from '@/auction/dollars';
 import { loadRules } from '@/auction/load-rules';
 import { openState } from '@/auction/engine/engine';
 import { createConsignor, setContract } from '@/auction/consignor';
@@ -11,9 +12,9 @@ import { inOrg } from '@/core/authz/guards';
 import { db } from '@/core/db';
 import { Refused } from '@/core/errors';
 
-// Task 3.1 (D-48). Staff only (owner/admin, results.write). Money is whole cents; times are UTC.
+// Task 3.1 (D-48). Staff only (owner/admin, results.write). Money is typed in dollars and parsed as text into whole
+// cents (UX-15, D-79); times are UTC.
 const utc = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Give a date and time.').transform((v) => new Date(`${v}:00Z`));
-const cents = (label: string) => z.string().regex(/^\d+$/, `${label} must be whole cents.`).transform(Number).pipe(z.number().int().safe());
 
 export const createAuction = orgAction(
   'results.write',
@@ -37,8 +38,8 @@ export const createAuction = orgAction(
 const lotFields = z.object({
   title: z.string().trim().min(1, 'Give the lot a title.').max(200),
   consignorId: z.union([z.literal('').transform(() => null), z.uuid()]).default(null),
-  startCents: cents('Start price'),
-  reserveCents: z.union([z.literal('').transform(() => null), cents('Reserve')]).default(null),
+  startCents: dollars('Start price'),
+  reserveCents: z.union([z.literal('').transform(() => null), dollars('Reserve')]).default(null),
   scheduledEnd: utc,
 });
 
@@ -56,7 +57,7 @@ export const createLot = orgAction(
     if (i.scheduledEnd <= auction.opensAt) throw new Refused('The lot must close after the auction opens.');
     if (i.consignorId !== null && !(await db.consignor.findFirst({ where: { id: i.consignorId, ...inOrg(ctx) }, select: { id: true } }))) throw new Refused('No such consignor in this house.'); // D-74; INV-02
     const s = openState({ startCents: i.startCents, reserveCents: i.reserveCents, opensAtMs: auction.opensAt.getTime(), scheduledEndMs: i.scheduledEnd.getTime(), softCloseWindowMs: auction.softCloseWindowSeconds * 1000, maxExtensionMs: auction.maxExtensionSeconds * 1000, buyerPremiumBps: auction.buyerPremiumBps });
-    await db.$transaction(async (tx) => {
+    const created = await db.$transaction(async (tx) => {
       const top = await tx.lot.aggregate({ where: { auctionId: auction.id }, _max: { number: true } });
       const lot = await tx.lot.create({
         data: {
@@ -65,8 +66,9 @@ export const createLot = orgAction(
         },
       });
       await audit(ctx, 'lot.created', { targetType: 'lot', targetId: lot.id }, tx);
+      return lot;
     });
-    redirect(`/o/${ctx.slug}/auctions/${auction.id}`);
+    redirect(`/o/${ctx.slug}/auctions/${auction.id}?new=${created.id}`); // UX-15: the page says "Lot N published" and marks the row
   },
 );
 

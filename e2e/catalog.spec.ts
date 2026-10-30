@@ -4,6 +4,8 @@ import { runDb } from '../scripts/auction-eval';
 import { seedDemo } from '../scripts/seed-demo';
 
 // Task 3.1: staff create an auction and a lot, and it appears in the catalog; a bad reserve is refused and writes nothing.
+// UX-15 (D-79): prices are typed in dollars and stored as whole cents by string parsing; the date field previews the UTC
+// instant; the page says "Lot N published" and marks the row.
 test.beforeAll(async () => {
   expect((await runDb()).ok).toBe(true);
   await seedDemo();
@@ -19,24 +21,36 @@ test('create auction and lot, see it in the catalog; reserve below start is refu
   await page.goto('/o/gavel-fixtures/auctions');
   await page.getByLabel('Name').fill(name);
   await page.getByLabel('Opens (UTC)').fill('2031-01-01T10:00');
+  await expect(page.getByTestId('opensAt-utc')).toContainText('= 2031-01-01 10:00 UTC, opens in');
   await page.getByRole('button', { name: 'Create auction' }).click();
   await expect(page.getByRole('heading', { name })).toBeVisible();
 
   const fill = async (title: string, start: string, reserve: string) => {
     await page.getByLabel('Title').fill(title);
-    await page.getByLabel('Start price (cents)').fill(start);
-    await page.getByLabel('Reserve (cents, optional)').fill(reserve);
+    await page.getByLabel('Start price ($)').fill(start);
+    await page.getByLabel('Reserve ($, optional)').fill(reserve);
     await page.getByLabel('Closes (UTC)').fill('2031-01-01T12:00');
+    await expect(page.getByTestId('scheduledEnd-utc')).toContainText('= 2031-01-01 12:00 UTC, closes in');
     await page.getByRole('button', { name: 'Create and publish lot' }).click();
   };
-  await fill('Bad reserve lot', '10000', '5000');
+  await fill('Bad reserve lot', '100', '50');
   await expect(page.locator('form [role=alert]')).toHaveText('Reserve must be at least the start price.');
   expect(await db.lot.count({ where: { title: 'Bad reserve lot' } })).toBe(0);
 
-  await fill('Walnut desk', '10000', '15000');
-  await expect(page.getByRole('cell', { name: 'Walnut desk' })).toBeVisible();
+  await fill('Exponent lot', '1e2', '');
+  await expect(page.locator('form [role=alert]')).toContainText('Start price: give dollars and cents');
+  expect(await db.lot.count({ where: { title: 'Exponent lot' } })).toBe(0);
+
+  await fill('Walnut desk', '100', '150');
+  await expect(page.getByTestId('published')).toHaveText('Lot 1 published.');
+  await expect(page.locator('tr.row-new')).toContainText('Walnut desk');
   const lot = await db.lot.findFirstOrThrow({ where: { title: 'Walnut desk' }, include: { state: true } });
+  expect([lot.startCents, lot.reserveCents]).toEqual([10000, 15000]);
   expect(lot.state?.closesAt).toEqual(lot.scheduledEnd);
+
+  await fill('Half dollar lot', '100.5', '');
+  await expect(page.getByTestId('published')).toHaveText('Lot 2 published.');
+  expect((await db.lot.findFirstOrThrow({ where: { title: 'Half dollar lot' } })).startCents).toBe(10050);
 
   await page.goto('/o/gavel-fixtures/catalog');
   await expect(page.getByRole('row', { name: new RegExp(`Walnut desk.*${name}`) })).toBeVisible();

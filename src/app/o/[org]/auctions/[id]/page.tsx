@@ -10,19 +10,22 @@ import { ActionForm } from '@/core/ui/action-form';
 import { currentContracts } from '@/auction/consignor';
 import { acceptancesFor, currentTerms } from '@/auction/terms';
 import { createLot, publishTermsAction, setContractAction, updateSaleTerms } from '../actions';
+import { DateTimeUtc } from '../datetime-utc';
 
 export const metadata = { title: 'Auction' };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function Auction({ params }: { params: Promise<{ org: string; id: string }> }) {
+export default async function Auction({ params, searchParams }: { params: Promise<{ org: string; id: string }>; searchParams: Promise<{ new?: string }> }) {
   const ctx = await requireOrg((await params).org, 'results.write');
   const { id } = await params;
+  const newId = (await searchParams).new;
   if (!UUID.test(id)) notFound();
   const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, include: { lots: { orderBy: { number: 'asc' }, include: { consignorRef: { select: { code: true } }, state: { select: { priceCents: true, acceptedCount: true, closesAt: true } }, withdrawal: { select: { withdrawnAt: true } } } } } });
   if (!auction) notFound();
   const settled = await currentSettlements(ctx.orgId, id);
   const t = now().getTime();
+  const published = auction.lots.find((l) => l.id === newId);
   // UX-16: derived, as the catalog derives it (D-21): nothing stores a status.
   const status = (l: (typeof auction.lots)[number]) => {
     const s = settled.get(l.id);
@@ -49,7 +52,7 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
         <ActionForm action={updateSaleTerms.bind(null, ctx.slug)}>
           <p className="muted">Shown on each buyer&apos;s invoice and in the won notice. Fixed once the sale has a bid.</p>
           <input type="hidden" name="auctionId" value={id} />
-          <label>Payment due (UTC, optional) <input name="paymentDueAt" type="datetime-local" defaultValue={due} /></label>
+          <DateTimeUtc name="paymentDueAt" label="Payment due (UTC, optional)" serverNowMs={t} defaultValue={due} future="due in" past="was due" />
           <label>Pickup instructions <input name="pickupText" maxLength={500} defaultValue={auction.pickupText} /></label>
           <label>Pickup window <input name="pickupWindowText" maxLength={200} defaultValue={auction.pickupWindowText} placeholder="e.g. Sat 9:00–12:00" /></label>
           <label>Sales tax (bps, 0 = none) <input name="taxBps" inputMode="numeric" defaultValue={auction.taxBps} required /></label>
@@ -101,6 +104,7 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
         </ActionForm>
       )}
       <h2>Lots</h2>
+      {published && <p role="status" data-testid="published">Lot {published.number} published.</p>}
       <table>
         <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Consignor</th><th scope="col" className="num">Start</th><th scope="col" className="num">Reserve</th><th scope="col" className="num">Current</th><th scope="col" className="num">Bids</th><th scope="col">Closes (UTC)</th></tr></thead>
         <tbody>
@@ -108,7 +112,7 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
             const st = status(l);
             const s = settled.get(l.id);
             return (
-              <tr key={l.id} data-testid={`lot-row-${l.number}`}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link> · <Link href={`/o/${ctx.slug}/lots/${l.id}/history`} className="muted">History</Link></td><td><span className="badge" data-tone={st.tone} data-testid="lot-status">{st.text}</span></td><td>{l.consignorRef ? <code>{l.consignorRef.code}</code> : l.consignor || <span className="muted">None</span>}</td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td className="num">{s?.outcome === 'SOLD' ? formatCents(s.hammerCents) : l.state && l.state.acceptedCount > 0 ? formatCents(l.state.priceCents) : <span className="muted">—</span>}</td><td className="num">{l.state?.acceptedCount ?? 0}</td><td>{(l.state?.closesAt ?? l.scheduledEnd).toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
+              <tr key={l.id} data-testid={`lot-row-${l.number}`} className={l.id === newId ? 'row-new' : undefined}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link> · <Link href={`/o/${ctx.slug}/lots/${l.id}/history`} className="muted">History</Link></td><td><span className="badge" data-tone={st.tone} data-testid="lot-status">{st.text}</span></td><td>{l.consignorRef ? <code>{l.consignorRef.code}</code> : l.consignor || <span className="muted">None</span>}</td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td className="num">{s?.outcome === 'SOLD' ? formatCents(s.hammerCents) : l.state && l.state.acceptedCount > 0 ? formatCents(l.state.priceCents) : <span className="muted">—</span>}</td><td className="num">{l.state?.acceptedCount ?? 0}</td><td>{(l.state?.closesAt ?? l.scheduledEnd).toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
             );
           })}
         </tbody>
@@ -118,9 +122,9 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
         <input type="hidden" name="auctionId" value={id} />
         <label>Title <input name="title" required maxLength={200} /></label>
         <label>Consignor (optional) <select name="consignorId" defaultValue=""><option value="">None</option>{consignors.map((c) => <option key={c.id} value={c.id}>{c.code} {c.name}</option>)}</select></label>
-        <label>Start price (cents) <input name="startCents" inputMode="numeric" required /></label>
-        <label>Reserve (cents, optional) <input name="reserveCents" inputMode="numeric" /></label>
-        <label>Closes (UTC) <input name="scheduledEnd" type="datetime-local" required /></label>
+        <label>Start price ($) <input name="startCents" inputMode="decimal" required placeholder="150 or 150.50" /></label>
+        <label>Reserve ($, optional) <input name="reserveCents" inputMode="decimal" placeholder="blank = no reserve" /></label>
+        <DateTimeUtc name="scheduledEnd" label="Closes (UTC)" serverNowMs={t} required future="closes in" past="closed" />
         <button type="submit">Create and publish lot</button>
       </ActionForm>
     </main>

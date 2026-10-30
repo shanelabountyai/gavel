@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
+import { dollars } from '@/auction/dollars';
 import { answerOffer, declareDefault, recordPayment } from '@/auction/payment';
 import { orgAction, ref } from '@/core/authz/action';
 import { inOrg, type OrgCtx } from '@/core/authz/guards';
@@ -10,13 +11,9 @@ import { Refused } from '@/core/errors';
 
 // D-75 (AX-08). Staff only (results.write). Every id is looked up in the caller's house before the service runs, so another
 // house's id is a 404 whatever else is in the form (INV-02). Money is typed in dollars and cents and turned into whole cents
-// by string arithmetic: no float touches it.
-const dollars = z.string().trim().regex(/^\d{1,7}(\.\d{1,2})?$/, 'Give the amount in dollars and cents, like 125.00.').transform((v) => {
-  const [whole, frac = ''] = v.split('.');
-  return Number(whole) * 100 + Number((frac + '00').slice(0, 2));
-});
+// by string arithmetic (`@/auction/dollars`): no float touches it.
 const invoiceOf = z.object({ auctionId: ref('auction'), bidderId: ref('bidder') });
-const paymentFields = z.object({ amount: dollars, method: z.string().trim().min(1, 'Say how it was paid.').max(40) });
+const paymentFields = z.object({ amount: dollars('Amount received'), method: z.string().trim().min(1, 'Say how it was paid.').max(40) });
 const defaultFields = z.object({ reason: z.string().trim().min(1, 'Give a reason for the default.').max(500), replyDays: z.coerce.number().int().min(1).max(90) });
 const parse = <T,>(r: z.ZodSafeParseResult<T>): T => {
   if (!r.success) throw new Refused(r.error.issues[0]?.message ?? 'Check the form and try again.');

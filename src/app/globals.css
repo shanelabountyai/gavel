@@ -165,6 +165,8 @@ input[aria-invalid='true'] { border: 2px solid var(--oxblood); }
 .board-facts dd { margin: 0; font-weight: 700; }
 .board form { padding: 1.25rem 1.5rem 1.5rem; border-top: 1px solid var(--rule); background: var(--paper); }
 .form-explain { flex-basis: 100%; margin: 0; } /* UX-08: the one-line proxy explainer under the form */
+.field { display: grid; gap: 0.25rem; } /* UX-15: a date field with its UTC preview under it */
+.row-new td { background: var(--baize-soft); } /* UX-15: the lot just published */
 .board form input { font-size: 1.25rem; width: 11rem; min-width: 0; }
 .board form button[type='submit'] { font-size: 1.125rem; padding: 0.65rem 2rem; }
 .board form [role='status'], .board form .form-hint { flex-basis: 100%; }
