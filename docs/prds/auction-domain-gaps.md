@@ -177,10 +177,10 @@ Each requirement lists what it changes, using these labels:
 - *Changes:* schema (four tables). Settlement through the existing `resettle` (no new money rule). D (closes O-9's P1 and supersedes "no underbidder offer"). G (GB-26 for the status; the offer price = `resettle` price for an OUTBID underbidder, which D-44 already covers). F: none.
 
 **R-09 Sales tax and exemption (AX-09).**
-- [ ] The `Auction` row gains `taxBps` and `taxBase` (`HAMMER` or `HAMMER_PLUS_PREMIUM`). These are configuration, not advice. **Which one applies is a question for counsel.**
-- [ ] The `Bidder` row gains `taxExempt`, `exemptCertificateRef` (text) and `exemptUntil`.
-- [ ] Pure `invoice()` adds `taxCents = roundHalfUp(Σ base × bps, 10000)` once per invoice. The per-invoice versus per-line choice is an open question.
-- [ ] Exempt bidders get 0 tax, and the certificate reference is printed on the invoice.
+- [x] The `Auction` row gains `taxBps` and `taxBase` (`HAMMER` or `HAMMER_PLUS_PREMIUM`). These are configuration, not advice. **Which one applies is a question for counsel.**
+- [x] (as one nullable `taxExemptRef`, D-78) The `Bidder` row gains `taxExempt`, `exemptCertificateRef` (text) and `exemptUntil`.
+- [x] Pure `invoice()` adds `taxCents = roundHalfUp(Σ base × bps, 10000)` once per invoice. The per-invoice versus per-line choice is an open question.
+- [x] Exempt bidders get 0 tax, and the certificate reference is printed on the invoice.
 - *Changes:* schema, engine. D, G (rounding at invoice level, exempt case, both bases), F (invented rates in `auctions.json`).
 - **Contradicts the PRD Non-Goal "tax"** and non-negotiable 6 (a second rounding site; see R-07).
 
@@ -251,7 +251,7 @@ Each requirement lists what it changes, using these labels:
 2. When reserve is not met, do you offer the high bidder the sale at their reached price or at their maximum, and must they accept? (R-14)
 3. ~~When a buyer defaults, is the second-chance offer at the underbidder's reached price or their own maximum, and how long do they have?~~ Answered by D-75: D-44's min(reached, own max); the reply window is a staff input per default (1..90 days, default 7).
 4. When you suspend a bidder mid-sale, do you void their standing maximums or let them ride and deal with it after the close? (R-05, R-19)
-5. Is sales tax computed per line or per invoice, and on hammer or hammer plus premium where you sell? (R-09: **counsel**.)
+5. ~~Is sales tax computed per line or per invoice, and on hammer or hammer plus premium where you sell? (R-09: **counsel**.)~~ Default taken by D-78 (reversible): once per invoice, base per sale (`taxBase`), rate per sale; counsel's answer is a settings change plus a golden.
 6. Do bidders see paddle numbers in bid history, or an alias? (R-11)
 7. Do you advertise "No reserve" on absolute lots, or say nothing? (R-13)
 8. Stagger interval: one lot per minute, two, or more? Do you stagger by lot number or by group? (R-10)
