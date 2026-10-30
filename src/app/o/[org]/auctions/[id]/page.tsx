@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
+import { currentSettlements } from '@/auction/invoice';
+import { outcomeLabel } from '@/auction/outcome-labels';
 import { inOrg, requireOrg } from '@/core/authz/guards';
+import { now } from '@/core/clock';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
 import { currentContracts } from '@/auction/consignor';
@@ -16,8 +19,19 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
   const ctx = await requireOrg((await params).org, 'results.write');
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, include: { lots: { orderBy: { number: 'asc' }, include: { consignorRef: { select: { code: true } } } } } });
+  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, include: { lots: { orderBy: { number: 'asc' }, include: { consignorRef: { select: { code: true } }, state: { select: { priceCents: true, acceptedCount: true, closesAt: true } }, withdrawal: { select: { withdrawnAt: true } } } } } });
   if (!auction) notFound();
+  const settled = await currentSettlements(ctx.orgId, id);
+  const t = now().getTime();
+  // UX-16: derived, as the catalog derives it (D-21): nothing stores a status.
+  const status = (l: (typeof auction.lots)[number]) => {
+    const s = settled.get(l.id);
+    if (s) return { text: `Settled: ${outcomeLabel(s.outcome)}`, tone: s.outcome === 'SOLD' ? 'good' : 'plain' };
+    if (l.withdrawal && l.withdrawal.withdrawnAt.getTime() <= t) return { text: 'Withdrawn, awaiting settlement', tone: 'plain' };
+    if (auction.opensAt.getTime() > t) return { text: 'Scheduled', tone: 'info' };
+    if (!l.state || l.state.closesAt.getTime() <= t) return { text: 'Closed, awaiting settlement', tone: 'warn' };
+    return { text: 'Open', tone: 'lead' };
+  };
   const hasBids = (await db.bid.count({ where: { lot: { auctionId: id } }, take: 1 })) > 0;
   const due = auction.paymentDueAt?.toISOString().slice(0, 16);
   const [terms, accepted, contracts, consignors] = await Promise.all([currentTerms(id), acceptancesFor(id), currentContracts(ctx.orgId, id), db.consignor.findMany({ where: inOrg(ctx), orderBy: { code: 'asc' }, select: { id: true, code: true, name: true } })]);
@@ -84,11 +98,15 @@ export default async function Auction({ params }: { params: Promise<{ org: strin
       )}
       <h2>Lots</h2>
       <table>
-        <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Consignor</th><th scope="col" className="num">Start</th><th scope="col" className="num">Reserve</th><th scope="col">Closes (UTC)</th></tr></thead>
+        <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Consignor</th><th scope="col" className="num">Start</th><th scope="col" className="num">Reserve</th><th scope="col" className="num">Current</th><th scope="col" className="num">Bids</th><th scope="col">Closes (UTC)</th></tr></thead>
         <tbody>
-          {auction.lots.map((l) => (
-            <tr key={l.id}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link> · <Link href={`/o/${ctx.slug}/lots/${l.id}/history`} className="muted">History</Link></td><td>{l.consignorRef ? <code>{l.consignorRef.code}</code> : l.consignor || <span className="muted">None</span>}</td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td>{l.scheduledEnd.toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
-          ))}
+          {auction.lots.map((l) => {
+            const st = status(l);
+            const s = settled.get(l.id);
+            return (
+              <tr key={l.id} data-testid={`lot-row-${l.number}`}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link> · <Link href={`/o/${ctx.slug}/lots/${l.id}/history`} className="muted">History</Link></td><td><span className="badge" data-tone={st.tone} data-testid="lot-status">{st.text}</span></td><td>{l.consignorRef ? <code>{l.consignorRef.code}</code> : l.consignor || <span className="muted">None</span>}</td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td className="num">{s?.outcome === 'SOLD' ? formatCents(s.hammerCents) : l.state && l.state.acceptedCount > 0 ? formatCents(l.state.priceCents) : <span className="muted">—</span>}</td><td className="num">{l.state?.acceptedCount ?? 0}</td><td>{(l.state?.closesAt ?? l.scheduledEnd).toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
+            );
+          })}
         </tbody>
       </table>
       <h2>New lot</h2>

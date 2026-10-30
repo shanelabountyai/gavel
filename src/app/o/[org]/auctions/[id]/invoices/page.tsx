@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
-import { paymentLabel, paymentTone } from '@/auction/outcome-labels';
+import { currentSettlements } from '@/auction/invoice';
+import { outcomeLabel, paymentLabel, paymentTone } from '@/auction/outcome-labels';
 import { offersForAuction, paidInvoices } from '@/auction/payment';
 import { inOrg, requireOrg } from '@/core/authz/guards';
 import { can } from '@/core/authz/permissions';
@@ -23,14 +24,17 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
   if (!UUID.test(id)) notFound();
   const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, select: { name: true, buyerPremiumBps: true, paymentDueAt: true } });
   if (!auction) notFound();
-  const [invoices, offers] = await Promise.all([paidInvoices(ctx.orgId, { auctionId: id }), offersForAuction(ctx.orgId, id)]);
-  const ids = [...new Set([...invoices.map((i) => i.bidderId), ...offers.map((o) => o.bidderId), ...invoices.flatMap((i) => i.lots.map((l) => l.lotId))])];
+  const [invoices, offers, settled] = await Promise.all([paidInvoices(ctx.orgId, { auctionId: id }), offersForAuction(ctx.orgId, id), currentSettlements(ctx.orgId, id)]);
+  const unsold = [...settled.values()].filter((s) => s.outcome !== 'SOLD'); // UX-17: an unsold lot is an outcome, shown
+  const ids = [...new Set([...invoices.map((i) => i.bidderId), ...offers.map((o) => o.bidderId), ...invoices.flatMap((i) => i.lots.map((l) => l.lotId)), ...unsold.map((s) => s.lotId)])];
   const [bidders, lots] = await Promise.all([
     db.bidder.findMany({ where: { id: { in: ids }, ...inOrg(ctx) }, select: { id: true, paddle: true, user: { select: { name: true, email: true } } } }),
-    db.lot.findMany({ where: { id: { in: ids }, ...inOrg(ctx) }, select: { id: true, title: true } }),
+    db.lot.findMany({ where: { id: { in: ids }, ...inOrg(ctx) }, select: { id: true, number: true, title: true } }),
   ]);
   const bidder = new Map(bidders.map((b) => [b.id, b]));
-  const title = new Map(lots.map((l) => [l.id, l.title]));
+  const lot = new Map(lots.map((l) => [l.id, l]));
+  const title = (lotId: string) => lot.get(lotId)?.title;
+  unsold.sort((a, b) => (lot.get(a.lotId)?.number ?? 0) - (lot.get(b.lotId)?.number ?? 0));
   const canWrite = can(ctx.role, 'results.write');
   const pay = recordPaymentAction.bind(null, ctx.slug);
   const dflt = declareDefaultAction.bind(null, ctx.slug);
@@ -44,6 +48,7 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
         Payment due {auction.paymentDueAt ? utc(auction.paymentDueAt) : 'not set (no invoice can go overdue or into default until it is)'}.{' '}
         A recorded payment is a mark, never a charge. <Link href={`/o/${ctx.slug}/auctions/${id}`}>Back to the sale</Link>.
       </p>
+      {settled.size === 0 && <p data-testid="no-settlement">No lots settled yet. Lots settle after they close (daily at 06:00 UTC on the demo).</p>}
       {invoices.map((i) => {
         const b = bidder.get(i.bidderId);
         const { status } = i.balance;
@@ -60,7 +65,7 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
               </thead>
               <tbody>
                 {i.lots.map((l) => (
-                  <tr key={l.lotId}><td>{l.lotNumber}</td><td><Link href={`/o/${ctx.slug}/lots/${l.lotId}/history`}>{title.get(l.lotId)}</Link></td><td className="num">{formatCents(l.hammerCents)}</td><td className="num">{formatCents(l.premiumCents)}</td><td className="num">{formatCents(l.totalCents)}</td></tr>
+                  <tr key={l.lotId}><td>{l.lotNumber}</td><td><Link href={`/o/${ctx.slug}/lots/${l.lotId}/history`}>{title(l.lotId)}</Link></td><td className="num">{formatCents(l.hammerCents)}</td><td className="num">{formatCents(l.premiumCents)}</td><td className="num">{formatCents(l.totalCents)}</td></tr>
                 ))}
               </tbody>
               <tfoot>
@@ -93,6 +98,17 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
           </section>
         );
       })}
+      {unsold.length > 0 && (
+        <section data-testid="not-sold">
+          <h2>Not sold</h2>
+          <table>
+            <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Outcome</th></tr></thead>
+            <tbody>
+              {unsold.map((s) => <tr key={s.lotId}><td>{lot.get(s.lotId)?.number}</td><td><Link href={`/o/${ctx.slug}/lots/${s.lotId}/history`}>{title(s.lotId)}</Link></td><td><span className="badge">{outcomeLabel(s.outcome)}</span></td></tr>)}
+            </tbody>
+          </table>
+        </section>
+      )}
       {offers.length > 0 && (
         <section data-testid="offers">
           <h2>Second-chance offers</h2>

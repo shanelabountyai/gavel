@@ -2,6 +2,14 @@
 // Nothing is stored, so auction:verify has no invoice check; V8 already proves every settlement it sums.
 import { type Invoice, type SettledLot, invoice } from '@/auction/engine/engine';
 import type { Tx } from '@/auction/place-bid';
+import { db } from '@/core/db';
+
+/** UX-16/17: the current settlement (the row no other supersedes, D-44) of every settled lot in a sale, by lotId. */
+export async function currentSettlements(orgId: string, auctionId: string) {
+  const rows = await db.settlement.findMany({ where: { orgId, lot: { auctionId } }, select: { id: true, lotId: true, supersedesId: true, outcome: true, hammerCents: true } });
+  const superseded = new Set(rows.map((r) => r.supersedesId));
+  return new Map(rows.filter((r) => !superseded.has(r.id)).map((r) => [r.lotId, r]));
+}
 
 // A lot's current settlement is the row no other row supersedes (D-44); `by` filters that tip, never a superseded row.
 async function current(q: Tx, orgId: string, by: string, id: string): Promise<Invoice[]> {
