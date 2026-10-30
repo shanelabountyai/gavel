@@ -197,10 +197,10 @@ Each requirement lists what it changes, using these labels:
 
 **R-13 "No reserve" label (AX-13).** **Built 2026-10-30 (D-83).** The lot view adds `hasReserve`. The page shows "No reserve", "Reserve not met" or "Reserve met". The amount is never shown. *Changes:* read only. D (changes O-5's default and D-50 d). G/F: none.
 
-**R-14 Subject-to-approval sale below reserve (AX-14).**
-- [ ] On an `UNSOLD_RESERVE_NOT_MET` lot, staff may record a correction to SOLD to the high bidder at their reached price, which is still capped at their own maximum as in D-44.
-- [ ] A reason and a consignor approval reference are required.
-- [ ] Whether the high bidder must also accept is an open question. If yes, reuse R-08's offer rows.
+**R-14 Subject-to-approval sale below reserve (AX-14).** **Built 2026-10-30 (D-87).**
+- [x] On an `UNSOLD_RESERVE_NOT_MET` lot, staff may record a correction to SOLD to the high bidder at their reached price, which is still capped at their own maximum as in D-44.
+- [x] A reason and a consignor approval reference are required.
+- [x] Whether the high bidder must also accept is an open question. If yes, reuse R-08's offer rows. *Answered no (Shane, D-87): the consignor's approval alone makes the sale.*
 - *Changes:* settlement (`resettle` gains a below-reserve path, only with approval). D. G (the price equals `settle`'s reached price, and the reserve is not applied). **Contradicts D-44 c** ("the new price must meet the reserve").
 
 **R-15 Sale recap and ledger CSV (AX-15).** **Built 2026-10-30 (D-86).**
