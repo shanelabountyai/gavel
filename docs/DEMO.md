@@ -75,7 +75,7 @@ In a second browser profile (or private window) sign in as `member@acme.demo.tes
 As the member:
 
 3. `/o/acme/catalog` → **Register to bid** (paddle 1) → open **Demo mantel clock**. The lot page shows `Current price: No bids`, `Reserve: not met` (the amount is never shown to bidders).
-4. Your maximum `150` → **Bid** → `Bid accepted. You lead at $150.00.` *Say:* "Only one bidder, so why $150? The reserve is $150 and this max clears it, so the price is floored at the reserve. Proxy bidding with a hidden floor." Double-click does not write two rows (one idempotency key per submission).
+4. Your maximum `150` → **Bid** → `Bid accepted. You lead at $150.00.` (The **Bid $…** button beside it bids the shown minimum in one tap; the board updates from the answer, not the next poll.) *Say:* "Only one bidder, so why $150? The reserve is $150 and this max clears it, so the price is floored at the reserve. Proxy bidding with a hidden floor." Double-click does not write two rows (one idempotency key per submission).
 5. Check the ledger: `psql gavel_test -c "select seq, outcome, \"maxCents\", \"priceAfterCents\" from \"Bid\" b join \"Lot\" l on l.id=b.\"lotId\" where l.title='Demo mantel clock'"`: one row per attempt.
 
 ## 4. Settle and verify (1 min)
