@@ -70,7 +70,7 @@ Sign in at `/demo` as `owner@acme.demo.test`, then:
 In a second browser profile (or private window) sign in as `member@acme.demo.test`. In the first window, as the owner:
 
 1. `/o/acme/auctions` → Name `Live demo sale`, Opens (UTC) `2020-01-01T10:00` → **Create auction**.
-2. Title `Demo mantel clock`, Start price (cents) `10000`, Reserve (cents) `15000`, Closes (UTC) 20 minutes from now (the page shows UTC) → **Create and publish lot**.
+2. Title `Demo mantel clock`, Start price ($) `100`, Reserve ($) `150`, Closes (UTC) 20 minutes from now (the line under the field shows the UTC instant and "closes in 20 min") → **Create and publish lot**; the page says `Lot 1 published.` and marks the row.
 
 As the member:
 
