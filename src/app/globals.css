@@ -154,6 +154,10 @@ input[aria-invalid='true'] { border: 2px solid var(--oxblood); }
 .board-extended { display: inline-block; margin-top: 0.35rem; font-weight: 700; color: var(--info); animation: extended 1.6s ease-out; }
 @keyframes extended { from { background: var(--info-soft); } to { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .board-extended { animation: none; } }
+.board-ext-count { animation: none; font-weight: 600; font-size: 0.875rem; }
+.board-reconnect { display: block; margin-top: 0.35rem; font-size: 0.875rem; font-weight: 600; color: var(--warn); }
+/* UX-12: read by assistive tech, not shown. */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .board-label { display: block; font-size: 0.875rem; font-weight: 600; color: var(--muted); }
 .board-facts { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; margin: 0; padding: 1rem 1.5rem; border-top: 1px solid var(--rule); font-size: 0.9375rem; }
 .board-facts div { display: grid; }

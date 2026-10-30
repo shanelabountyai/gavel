@@ -23,7 +23,10 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
     let timer: ReturnType<typeof setTimeout>;
     let closesAt = Date.parse(initial.closesAt);
     let stop = false;
+    let inFlight = false;
     const poll = async () => {
+      if (inFlight) return; // UX-13: a visibilitychange during a poll lets that poll answer
+      inFlight = true;
       try {
         const r = await fetch(`/api/lots/${lotId}/state`, { headers: { 'If-None-Match': etag }, cache: 'no-store' });
         const server = Number(r.headers.get('x-server-time'));
@@ -38,10 +41,15 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
       } catch {
         setStale(true);
       }
+      inFlight = false;
+      clearTimeout(timer);
       if (!stop) timer = setTimeout(poll, closesAt - (Date.now() + offset.current) < NEAR_CLOSE_MS ? 1000 : 2000);
     };
+    // UX-13: a phone back from the lock screen asks now, not when its throttled timer gets around to it
+    const onVisible = () => { if (document.visibilityState === 'visible') { clearTimeout(timer); void poll(); } };
+    document.addEventListener('visibilitychange', onVisible);
     timer = setTimeout(poll, 1000);
-    return () => { stop = true; clearTimeout(timer); };
+    return () => { stop = true; clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the loop owns its state; it starts once
   }, [lotId]);
 
@@ -60,11 +68,23 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
   // A later closesAt than the last one seen means a late bid extended the lot; say so for a few seconds.
   const lastClose = useRef(Date.parse(initial.closesAt));
   const [extended, setExtended] = useState<{ ms: number; at: number } | null>(null);
+  const [extCount, setExtCount] = useState(0); // extensions seen since the page opened (the view carries no count, D-50)
+  // UX-12: one polite live region, one sentence per event, never a tick. The countdown itself is not live.
+  const [announce, setAnnounce] = useState('');
+  const said = useRef({ minute: false, closed: initial.status === 'CLOSED' }); // a lot opened closed is not an event
   useEffect(() => {
     const c = Date.parse(view.closesAt);
-    if (c > lastClose.current) setExtended({ ms: c - lastClose.current, at: c });
+    if (c > lastClose.current) {
+      setExtended({ ms: c - lastClose.current, at: c });
+      setExtCount((n) => n + 1);
+      setAnnounce(`Extended by a late bid; now closes in ${formatLeft(Math.max(0, Math.ceil((c - (Date.now() + offset.current)) / 1000)))}`);
+    }
     lastClose.current = c;
   }, [view.closesAt]);
+  useEffect(() => {
+    if (!closed && !scheduled && left < 60 && !said.current.minute) { said.current.minute = true; setAnnounce('Under one minute left'); }
+    if (closed && !said.current.closed) { said.current.closed = true; setAnnounce('Bidding has closed'); }
+  }, [left, closed, scheduled]);
   useEffect(() => {
     if (!extended) return;
     const t = setTimeout(() => setExtended(null), 8000);
@@ -84,7 +104,8 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
   const utc = (iso: string) => `${iso.slice(0, 19).replace('T', ' ')} UTC`;
   return (
     <section className="board" data-phase={!closed && !scheduled && left < 60 ? 'final' : undefined} data-stale={stale || undefined} aria-label="Live lot">
-      {stale && <p role="alert" className="callout" data-tone="warn"><span className="badge" data-tone="warn">Connection problem</span> Retrying; the numbers below may be out of date.</p>}
+      <p className="sr-only" role="status" aria-live="polite" data-testid="announce">{announce}</p>
+      {stale && <p role="alert" className="callout" data-tone="warn"><span className="badge" data-tone="warn">Connection problem</span> Retrying; the numbers below may be out of date. You can still bid: the server judges the time.</p>}
       {closed && view.result && (
         <p className="board-you" data-result={view.result} data-testid="result" aria-live="polite">
           {view.result === 'WON' ? `You won this lot at ${formatCents(view.priceCents)}.` : view.result === 'NOT_WON' ? 'You did not win. This lot sold to another bidder.' : withdrawn ? 'This lot was withdrawn from the sale by the auction house. Your bids on it are void and nothing is owed.' : view.reserveMet ? 'You did not win. This lot closed unsold.' : 'You did not win: the reserve was not met.'}
@@ -110,7 +131,9 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
         <p className="board-clock">
           <span className="board-label">{closed ? 'Status' : scheduled ? 'Opens in' : left < 60 ? 'Final minute' : 'Time left'}</span>
           {closed ? <b data-testid="status">{withdrawn ? 'Withdrawn' : 'Closed'}</b> : <b data-testid="countdown" data-seconds={left}>{formatLeft(left)}</b>}
+          {stale && !closed && <span className="board-reconnect" data-testid="reconnecting">Reconnecting…</span>}
           {extended && <span key={extended.at} className="board-extended">Extended by a late bid, +{formatLeft(Math.round(extended.ms / 1000))}</span>}
+          {!extended && extCount > 0 && <span className="board-extended board-ext-count" data-testid="ext-count">Extended {extCount === 1 ? 'once' : `${extCount} times`} since you opened this page</span>}
         </p>
       </div>
       {!closed && viewer.kind === 'bidder' && <BidForm slug={slug} lotId={lotId} view={view} paddle={viewer.paddle} disabledReason={scheduled ? `Bidding opens at ${utc(view.opensAt)}.` : undefined} onResult={applyResult} />}
