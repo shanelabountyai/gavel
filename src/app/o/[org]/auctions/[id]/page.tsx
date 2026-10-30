@@ -91,7 +91,7 @@ export default async function Auction({ params, searchParams }: { params: Promis
         <table data-testid="contracts">
           <thead><tr><th scope="col">Consignor</th><th scope="col" className="num">Commission</th><th scope="col" className="num">Per sold lot</th><th scope="col" className="num">Per unsold lot</th><th scope="col">Since (UTC)</th></tr></thead>
           <tbody>
-            {contracts.map((c) => <tr key={c.id}><td><code>{c.consignor.code}</code> {c.consignor.name}</td><td className="num">{pct(c.commissionBps)}</td><td className="num">{formatCents(c.lotFeeCents)}</td><td className="num">{formatCents(c.unsoldFeeCents)}</td><td>{c.createdAt.toISOString().slice(0, 16).replace('T', ' ')}</td></tr>)}
+            {contracts.map((c) => <tr key={c.id}><td><code>{c.consignor.code}</code> {c.consignor.name}</td><td className="num">{pct(c.commissionBps)}</td><td className="num">{formatCents(c.lotFeeCents)}</td><td className="num">{formatCents(c.unsoldFeeCents)}</td><td>{inZone(c.createdAt, tz)}</td></tr>)}
           </tbody>
         </table>
       )}

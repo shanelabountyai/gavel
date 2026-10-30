@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { statementsForAuction } from '@/auction/consignor';
 import { paidInvoices } from '@/auction/payment';
 import { formatCents } from '@/auction/engine/money';
+import { inZone } from '@/auction/house-time';
 import { outcomeLabel, paymentLabel } from '@/auction/outcome-labels';
 import { prismaTx } from '@/auction/place-bid';
 import { inOrg, requireOrg } from '@/core/authz/guards';
@@ -21,7 +22,7 @@ export default async function Statements({ params }: { params: Promise<{ org: st
   const ctx = await requireOrg((await params).org, 'audit.read');
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, select: { name: true } });
+  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, select: { name: true, timeZone: true } });
   if (!auction) notFound();
   const [views, paid] = await Promise.all([statementsForAuction(prismaTx(db as unknown as Prisma.TransactionClient), ctx.orgId, id), paidInvoices(ctx.orgId, { auctionId: id })]);
   const buyerStatus = new Map(paid.map((p) => [p.bidderId, p.balance.status]));
@@ -35,7 +36,7 @@ export default async function Statements({ params }: { params: Promise<{ org: st
         <section key={v.consignorId} className="invoice" data-testid={`statement-${v.code}`}>
           <h2><code>{v.code}</code> {v.name}</h2>
           {v.contract ? (
-            <p className="muted">Commission {pct(v.contract.commissionBps)} of hammer, {formatCents(v.contract.lotFeeCents)} per sold lot, {formatCents(v.contract.unsoldFeeCents)} per unsold lot (contract of {v.contract.createdAt.toISOString().slice(0, 16).replace('T', ' ')} UTC).</p>
+            <p className="muted">Commission {pct(v.contract.commissionBps)} of hammer, {formatCents(v.contract.lotFeeCents)} per sold lot, {formatCents(v.contract.unsoldFeeCents)} per unsold lot (contract of {inZone(v.contract.createdAt, auction.timeZone)}).</p>
           ) : <p><strong>No contract for this sale.</strong> {v.lots.length} settled {v.lots.length === 1 ? 'lot' : 'lots'} listed without money; set the terms on the sale page.</p>}
           {v.unsettled > 0 && <p className="muted">{v.unsettled} {v.unsettled === 1 ? 'lot has' : 'lots have'} not settled yet and will join the statement when {v.unsettled === 1 ? 'it does' : 'they do'}.</p>}
           {v.statement ? (
