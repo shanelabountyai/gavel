@@ -203,10 +203,10 @@ Each requirement lists what it changes, using these labels:
 - [ ] Whether the high bidder must also accept is an open question. If yes, reuse R-08's offer rows.
 - *Changes:* settlement (`resettle` gains a below-reserve path, only with approval). D. G (the price equals `settle`'s reached price, and the reserve is not applied). **Contradicts D-44 c** ("the new price must meet the reserve").
 
-**R-15 Sale recap and ledger CSV (AX-15).**
-- [ ] A staff page and a CSV, derived on read: lots offered, sold, and unsold by outcome; sell-through as integer bps; Σ hammer, Σ premium; extensions; per-consignor totals once R-07 exists.
-- [ ] The CSV of a lot's ledger has the D-45 columns.
-- [ ] Numbers on the fixtures equal brief §10. That comparison is the test.
+**R-15 Sale recap and ledger CSV (AX-15).** **Built 2026-10-30 (D-86).**
+- [x] A staff page and a CSV, derived on read: lots offered, sold, and unsold by outcome; sell-through as integer bps; Σ hammer, Σ premium; extensions; per-consignor totals once R-07 exists.
+- [x] The CSV of a lot's ledger has the D-45 columns.
+- [x] Numbers on the fixtures equal brief §10. That comparison is the test.
 - *Changes:* read only. D. G: brief §10 is the golden. F: none.
 
 **R-16 Per-sale registration approval (AX-16).**
