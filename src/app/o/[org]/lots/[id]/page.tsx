@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { lotView } from '@/auction/lot-view';
+import { formatCents } from '@/auction/engine/money';
+import { lotView, publicHistory } from '@/auction/lot-view';
 import { currentTerms, unacceptedTermsSha } from '@/auction/terms';
 import { requireOrg } from '@/core/authz/guards';
 import { can } from '@/core/authz/permissions';
@@ -28,6 +29,10 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   // Only the member role gets a paddle (D-49); everyone else is staff here, with the history link where audit.read allows.
   const viewer: Viewer = terms ? { kind: 'terms' } : bidder ? { kind: 'bidder', paddle: bidder.paddle } : ctx.role === 'member' ? { kind: 'register' }
     : { kind: 'staff', historyHref: can(ctx.role, 'audit.read') ? `/o/${ctx.slug}/lots/${id}/history` : null, canWithdraw: can(ctx.role, 'results.write') && v.status !== 'CLOSED' }; // D-73
+  // R-11 (D-83): rendered with the page, not polled. ponytail: a bidder watching a live lot reloads to see new rows; fold it
+  // into the state poll if anyone asks for it live.
+  const history = await publicHistory(id, bidder?.id ?? null);
+  const utc = (iso: string) => `${iso.slice(0, 19).replace('T', ' ')} UTC`;
   return (
     <main>
       <header className="lot-head">
@@ -55,6 +60,24 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
           <ActionForm action={registerBidderAction.bind(null, ctx.slug)}><p>Register once to get a paddle number, then bid on this lot.</p><button type="submit">Register to bid</button></ActionForm>
         )}
       </LotLive>
+      <section className="public-history" aria-labelledby="public-history-h">
+        <h2 id="public-history-h">Bids on this lot</h2>
+        {history.length === 0 ? <p className="muted" data-testid="public-history-empty">No bids yet.</p> : (
+          <table data-testid="public-history">
+            <thead><tr><th scope="col" className="num">#</th><th scope="col">Bidder</th><th scope="col" className="num">Price after</th><th scope="col">Placed at</th></tr></thead>
+            <tbody>
+              {history.map((h, i) => (
+                <tr key={h.seq} data-you={h.who === 'you' || undefined}>
+                  <td className="num">{i + 1}</td><td>{h.who === 'you' ? <b>You</b> : h.who}</td>
+                  <td className="num">{formatCents(h.priceAfterCents)}{h.extended && <> <span className="badge" data-tone="info">Extended</span></>}</td>
+                  <td><time dateTime={h.placedAt}>{utc(h.placedAt)}</time></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="muted">Accepted bids only, with the price each one set. Bidder numbers are for this lot alone. No maximum is ever shown.</p>
+      </section>
     </main>
   );
 }

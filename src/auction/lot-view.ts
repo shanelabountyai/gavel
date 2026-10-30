@@ -1,6 +1,6 @@
 import { db } from '@/core/db';
 import { now } from '@/core/clock';
-import { type Lot, type LotState, lotStatus, minNextBid, reserveMet, settle } from '@/auction/engine/engine';
+import { type Lot, type LotState, bidderAliases, lotStatus, minNextBid, reserveMet, settle } from '@/auction/engine/engine';
 import { loadRules } from '@/auction/load-rules';
 import { toLot, toState } from '@/auction/place-bid';
 
@@ -15,7 +15,9 @@ export type LotView = {
   readonly closesAt: string;
   /** Accepted bids (LotState.acceptedCount), not every ledger row (D-67). */
   readonly bidCount: number;
-  readonly reserveMet: boolean; // true when there is no reserve, so "no reserve" and "met" look the same
+  /** R-13 (D-83): whether the lot has a reserve at all; the amount is never shown. "No reserve" is a selling point. */
+  readonly hasReserve: boolean;
+  readonly reserveMet: boolean; // true when there is no reserve; with hasReserve the page tells "No reserve" from "Reserve met"
   /** Open or scheduled lots only; null once closed, where `result` takes over. */
   readonly you: 'LEADING' | 'OUTBID' | null;
   /** The caller's highest accepted maxCents on this lot, or null (no accepted bid, or staff with no Bidder row). D-68. */
@@ -92,6 +94,7 @@ export async function lotView(userId: string, lotId: string): Promise<LotView | 
     opensAt: new Date(lot.opensAtMs).toISOString(),
     closesAt: new Date(state.closesAtMs).toISOString(),
     bidCount: state.acceptedCount,
+    hasReserve: lot.reserveCents !== null,
     reserveMet: reserveMet(lot, state),
     you,
     yourMaxCents,
@@ -100,4 +103,14 @@ export async function lotView(userId: string, lotId: string): Promise<LotView | 
     withdrawnAt: row.withdrawal?.withdrawnAt.toISOString() ?? null,
     etag: `"${state.bidCount}-${status}-${tip?.id.slice(0, 8) ?? ''}"`,
   };
+}
+
+/** R-11 (D-83): what any member may see of a lot's ledger. Accepted rows only, in seq order, the price each one set, whether it
+ * extended the close, and a per-lot alias (GB-28); the caller's own rows say "you". Never a maximum, a refused row, a paddle or
+ * an id. Read-only, no lock. */
+export type PublicBid = { readonly seq: number; readonly placedAt: string; readonly priceAfterCents: number; readonly extended: boolean; readonly who: string };
+export async function publicHistory(lotId: string, callerBidderId: string | null): Promise<PublicBid[]> {
+  const rows = await db.bid.findMany({ where: { lotId, accepted: true }, orderBy: { seq: 'asc' }, select: { seq: true, bidderId: true, priceAfterCents: true, placedAt: true, extended: true } });
+  const alias = bidderAliases(rows.map((r) => ({ seq: r.seq, bidderId: r.bidderId, accepted: true })));
+  return rows.map((r) => ({ seq: r.seq, placedAt: r.placedAt.toISOString(), priceAfterCents: r.priceAfterCents, extended: r.extended, who: r.bidderId === callerBidderId ? 'you' : `Bidder ${alias.get(r.bidderId)}` }));
 }

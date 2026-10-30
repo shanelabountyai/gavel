@@ -13,7 +13,7 @@ import { addMember, makeOrg } from '../helpers/org';
 beforeEach(resetAuthTables);
 
 const T = () => new Date('2026-06-01T12:00:00Z');
-const KEYS = ['bidCount', 'closesAt', 'final', 'minNextCents', 'opensAt', 'priceCents', 'reserveMet', 'result', 'status', 'withdrawnAt', 'you', 'yourMaxCents']; // D-73 added withdrawnAt
+const KEYS = ['bidCount', 'closesAt', 'final', 'hasReserve', 'minNextCents', 'opensAt', 'priceCents', 'reserveMet', 'result', 'status', 'withdrawnAt', 'you', 'yourMaxCents']; // D-73 added withdrawnAt, D-83 hasReserve
 
 // end: the scheduled close. Bids are placed at T, the view reads the real clock, so an end just after T is a closed lot.
 async function setup(end = new Date('2099-01-01T00:00:00Z'), reserveCents: number | null = 100000) {
@@ -47,7 +47,7 @@ describe('GET /api/lots/[id]/state (task 3.3)', () => {
     expect(Object.keys(forA).sort()).toEqual(KEYS);
     expect(Object.keys(forB).sort()).toEqual(KEYS);
     expect({ a: forA.you, b: forB.you }).toEqual({ a: 'OUTBID', b: 'LEADING' });
-    expect(forA).toMatchObject({ status: 'OPEN', priceCents: 20500, minNextCents: 21000, bidCount: 2, reserveMet: false, result: null, final: false, opensAt: '2020-01-01T00:00:00.000Z' });
+    expect(forA).toMatchObject({ status: 'OPEN', priceCents: 20500, minNextCents: 21000, bidCount: 2, hasReserve: true, reserveMet: false, result: null, final: false, opensAt: '2020-01-01T00:00:00.000Z' });
     const text = JSON.stringify(forA) + JSON.stringify(forB);
     for (const secret of [a.bidder.id, b.bidder.id, a.user.id, b.user.id, a.user.email, '100000']) expect(text).not.toContain(secret);
     // D-68: each caller sees their own maximum and never the other's

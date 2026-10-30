@@ -154,7 +154,8 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
       <dl className="board-facts">
         {!closed && <div><dt>Status</dt><dd data-testid="status">{scheduled ? 'Scheduled' : 'Open'}</dd></div>}
         <div><dt>Bids</dt><dd data-testid="bid-count">{view.bidCount}</dd></div>
-        <div><dt>Reserve</dt><dd>{view.reserveMet ? 'Met' : 'Not met'}</dd></div>
+        {/* R-13: "No reserve" is advertised; with one, met or not; the amount never */}
+        <div><dt>Reserve</dt><dd data-testid="reserve">{!view.hasReserve ? 'No reserve' : view.reserveMet ? 'Met' : 'Not met'}</dd></div>
         {scheduled && <div><dt>Opens</dt><dd><time dateTime={view.opensAt}>{utc(view.opensAt)}</time></dd></div>}
         <div><dt>{closed ? 'Closed' : 'Closes'}</dt><dd><time dateTime={view.closesAt} data-testid="closes-at">{utc(view.closesAt)}</time></dd></div>
         {withdrawn && <div><dt>Withdrawn</dt><dd><time dateTime={view.withdrawnAt!} data-testid="withdrawn-at">{utc(view.withdrawnAt!)}</time></dd></div>}
