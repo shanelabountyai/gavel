@@ -21,6 +21,11 @@ model Auction {
   // D-78 (AX-09): sales tax as configuration, fixed with the terms above once the sale has a bid. 0 = no tax line.
   taxBps                 Int                   @default(0) // CHECK 0..10000
   taxBase                String                @default("HAMMER") // HAMMER | HAMMER_PLUS_PREMIUM (CHECK)
+  // D-84 (AX-12): IANA zone for printing times and reading typed ones; storage stays UTC. CHECK not blank.
+  timeZone               String                @default("UTC")
+  // D-84 (AX-10): a new lot with no close of its own closes at firstCloseAt + (number - 1) * staggerSeconds. CHECK >= 0.
+  firstCloseAt           DateTime?             @db.Timestamptz(6)
+  staggerSeconds         Int                   @default(0)
   createdAt              DateTime              @default(now()) @db.Timestamptz(6)
   updatedAt              DateTime              @updatedAt @db.Timestamptz(6)
   lots                   Lot[]
