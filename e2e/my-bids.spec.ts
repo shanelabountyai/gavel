@@ -27,7 +27,7 @@ test.beforeAll(async () => {
 });
 
 test('your bids and the catalog badge show lead, outbid and won without opening the lot', async ({ page }) => {
-  const [ada, ben] = await Promise.all(['ada-mb@acme.demo.test', 'ben-mb@acme.demo.test'].map(user));
+  const [ada, ben] = await Promise.all([`ada-mb-${T}@acme.demo.test`, `ben-mb-${T}@acme.demo.test`].map(user));
   const [a, b] = [await registerBidder(org.id, ada.id, 'member'), await registerBidder(org.id, ben.id, 'member')];
   const open = new Date(T + 3_600_000);
   const lead = await makeLot(1, `Lead lot ${T}`, open);
@@ -45,13 +45,16 @@ test('your bids and the catalog badge show lead, outbid and won without opening 
   await expect(page.getByRole('row', { name: new RegExp(`Lead lot ${T}`) })).toContainText('Leading');
   await expect(page.getByRole('row', { name: new RegExp(`Outbid lot ${T}`) })).toContainText('Outbid');
   await expect(page.getByRole('row', { name: new RegExp(`Won lot ${T}`) })).toContainText(/Won.*Closed/);
-  expect(await page.getByRole('row').count()).toBe(4); // header + the three lots Ada bid on, none of the seed's
+  expect(await page.getByRole('row').count()).toBe(4); // header + the three lots this run's Ada bid on (fresh accounts per run, so a rerun on the same database holds)
 
   await page.getByRole('link', { name: `Outbid lot ${T}` }).click(); // to the lot, then R19's back link to the catalog
   await page.getByRole('link', { name: /^← .* catalog$/ }).click();
   await expect(page).toHaveURL(/\/o\/acme\/catalog$/);
   await expect(page.getByRole('row', { name: new RegExp(`Outbid lot ${T}`) }).locator('.badge')).toHaveText('Outbid');
   await expect(page.getByRole('row', { name: new RegExp(`Lead lot ${T}`) }).locator('.badge')).toHaveText('Leading');
+  await expect(page.getByRole('row', { name: new RegExp(`Lead lot ${T}`) }).locator('time')).toHaveText(/^Closes in (1 h 0 m|5\d min)$/); // R21: seeded to close in an hour
+  await expect(page.getByRole('row', { name: new RegExp(`Won lot ${T}`) })).toContainText('$100.00 final'); // R21: closed, so the price is final, and the badge says Won
+  await expect(page.getByRole('row', { name: new RegExp(`Won lot ${T}`) }).locator('.badge')).toHaveText(['Closed', 'Won']);
 
   await signIn(page, ben.email);
   await page.goto('/o/acme/my-bids');

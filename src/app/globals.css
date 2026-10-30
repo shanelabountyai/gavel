@@ -206,6 +206,7 @@ input[aria-invalid='true'] { border: 2px solid var(--oxblood); }
   .catalog .cat-auction { grid-column: 2 / 4; font-size: 0.875rem; }
   .catalog .cat-price { text-align: left; }
   .catalog .cat-time { text-align: right; white-space: nowrap; }
+  .catalog .cat-you { grid-column: 2 / 4; } /* D-80: the caller's standing, its own line on the card */
 }
 
 /* The scope-honesty line on every page. */

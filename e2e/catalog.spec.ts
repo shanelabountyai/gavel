@@ -53,7 +53,11 @@ test('create auction and lot, see it in the catalog; reserve below start is refu
   expect((await db.lot.findFirstOrThrow({ where: { title: 'Half dollar lot' } })).startCents).toBe(10050);
 
   await page.goto('/o/gavel-fixtures/catalog');
-  await expect(page.getByRole('row', { name: new RegExp(`Walnut desk.*${name}`) })).toBeVisible();
+  const desk = page.getByRole('row', { name: new RegExp(`Walnut desk.*${name}`) });
+  await expect(desk).toBeVisible();
+  // R21: relative on the page, the exact instant in the title
+  await expect(desk.locator('time')).toHaveText(/^Closes in \d+ d \d+ h$/);
+  await expect(desk.locator('time')).toHaveAttribute('title', '2031-01-01 12:00 UTC');
   // The $150.00 reserve is never shown. Scoped to this lot's row: the catalog now shows current prices, and other lots may stand at $150.00.
   await expect(page.getByRole('row', { name: /Walnut desk/ })).not.toContainText('150.00');
 });

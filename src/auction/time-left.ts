@@ -4,3 +4,10 @@ export function formatLeft(s: number) {
   if (s >= 3600) return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} m`;
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+/** R21: "Closes in 4 min" for a catalog row; the exact UTC instant goes in the <time title>. */
+export function closesIn(seconds: number) {
+  if (seconds < 60) return 'Closes in under a minute';
+  if (seconds < 3600) return `Closes in ${Math.floor(seconds / 60)} min`;
+  return `Closes in ${formatLeft(seconds)}`;
+}

@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { myBids } from '@/auction/lot-view';
 import { standingLabel, standingTone } from '@/auction/outcome-labels';
 import { requireOrg } from '@/core/authz/guards';
+import { now } from '@/core/clock';
 import { db } from '@/core/db';
+import { ClosesAt } from '../catalog/closes-at';
 
 export const metadata = { title: 'Your bids' };
 
@@ -13,6 +15,7 @@ export default async function YourBids({ params }: { params: Promise<{ org: stri
   const me = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true, paddle: true } });
   const bids = me ? await myBids(ctx.orgId, me.id) : [];
   bids.sort((a, b) => Number(a.closed) - Number(b.closed)); // open lots first; stable, so close order holds within each
+  const t = now().getTime();
   return (
     <main>
       <h1>Your bids</h1>
@@ -23,7 +26,7 @@ export default async function YourBids({ params }: { params: Promise<{ org: stri
       ) : (
         <div className="table-scroll catalog">
           <table>
-            <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Auction</th><th scope="col">You</th><th scope="col">Closes (UTC)</th></tr></thead>
+            <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Auction</th><th scope="col">You</th><th scope="col">Closes</th></tr></thead>
             <tbody>
               {bids.map((b) => (
                 <tr key={b.lotId}>
@@ -31,7 +34,7 @@ export default async function YourBids({ params }: { params: Promise<{ org: stri
                   <td className="cat-title"><Link href={`/o/${ctx.slug}/lots/${b.lotId}`}>{b.title}</Link></td>
                   <td className="muted cat-auction">{b.auction}</td>
                   <td className="cat-you"><span className="badge" data-tone={standingTone(b.standing)}>{standingLabel(b.standing)}</span></td>
-                  <td className="cat-time">{b.closed ? <span className="badge">Closed</span> : new Date(b.closesAtMs).toISOString().slice(0, 16).replace('T', ' ')}</td>
+                  <td className="cat-time">{b.closed ? <span className="badge">Closed</span> : <ClosesAt at={new Date(b.closesAtMs)} nowMs={t} />}</td>
                 </tr>
               ))}
             </tbody>
