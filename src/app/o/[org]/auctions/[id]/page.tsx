@@ -10,7 +10,8 @@ import { ActionForm } from '@/core/ui/action-form';
 import { currentContracts } from '@/auction/consignor';
 import { acceptancesFor, currentTerms } from '@/auction/terms';
 import { createLot, publishTermsAction, setContractAction, updateSaleTerms } from '../actions';
-import { DateTimeUtc } from '../datetime-utc';
+import { inZone, toLocalInput } from '@/auction/house-time';
+import { DateTimeField } from '../datetime-field';
 
 export const metadata = { title: 'Auction' };
 
@@ -36,23 +37,25 @@ export default async function Auction({ params, searchParams }: { params: Promis
     return { text: 'Open', tone: 'lead' };
   };
   const hasBids = (await db.bid.count({ where: { lot: { auctionId: id } }, take: 1 })) > 0;
-  const due = auction.paymentDueAt?.toISOString().slice(0, 16);
+  const tz = auction.timeZone;
+  const due = auction.paymentDueAt ? toLocalInput(auction.paymentDueAt, tz) : undefined;
   const [terms, accepted, contracts, consignors] = await Promise.all([currentTerms(id), acceptancesFor(id), currentContracts(ctx.orgId, id), db.consignor.findMany({ where: inOrg(ctx), orderBy: { code: 'asc' }, select: { id: true, code: true, name: true } })]);
   const pct = (bps: number) => `${formatCents(bps).slice(1)}%`;
   const taxText = auction.taxBps === 0 ? 'No sales tax.' : `Sales tax ${pct(auction.taxBps)} of ${auction.taxBase === 'HAMMER' ? 'hammer' : 'hammer + premium'}, once per invoice.`;
   return (
     <main>
       <h1>{auction.name}</h1>
-      <p className="muted">Opens {auction.opensAt.toISOString().slice(0, 16).replace('T', ' ')} UTC. Soft close: a bid in the last {auction.softCloseWindowSeconds / 60} min extends the lot, up to {auction.maxExtensionSeconds / 60} min in all. Buyer&apos;s premium {formatCents(auction.buyerPremiumBps).slice(1)}%.</p>
+      <p className="muted" data-testid="house-time">Times are shown in {tz}.{auction.firstCloseAt && ` Lots close from ${inZone(auction.firstCloseAt, tz)}, ${auction.staggerSeconds} s apart, unless a lot sets its own close.`}</p>
+      <p className="muted">Opens {inZone(auction.opensAt, tz)}. Soft close: a bid in the last {auction.softCloseWindowSeconds / 60} min extends the lot, up to {auction.maxExtensionSeconds / 60} min in all. Buyer&apos;s premium {formatCents(auction.buyerPremiumBps).slice(1)}%.</p>
       <p><Link href={`/o/${ctx.slug}/auctions/${id}/invoices`}>Invoices for this sale</Link> · <Link href={`/o/${ctx.slug}/auctions/${id}/statements`}>Consignor statements</Link></p>
       <h2>Payment and pickup</h2>
       {hasBids ? (
-        <p>Payment due {due ? `${due.replace('T', ' ')} UTC` : <span className="muted">not set</span>}. Pickup: {auction.pickupText || <span className="muted">not set</span>}{auction.pickupWindowText && `, ${auction.pickupWindowText}`}. <span data-testid="tax-fixed">{taxText}</span> <span className="muted">Fixed: the sale has bids.</span></p>
+        <p>Payment due {auction.paymentDueAt ? inZone(auction.paymentDueAt, tz) : <span className="muted">not set</span>}. Pickup: {auction.pickupText || <span className="muted">not set</span>}{auction.pickupWindowText && `, ${auction.pickupWindowText}`}. <span data-testid="tax-fixed">{taxText}</span> <span className="muted">Fixed: the sale has bids.</span></p>
       ) : (
         <ActionForm action={updateSaleTerms.bind(null, ctx.slug)}>
           <p className="muted">Shown on each buyer&apos;s invoice and in the won notice. Fixed once the sale has a bid.</p>
           <input type="hidden" name="auctionId" value={id} />
-          <DateTimeUtc name="paymentDueAt" label="Payment due (UTC, optional)" serverNowMs={t} defaultValue={due} future="due in" past="was due" />
+          <DateTimeField name="paymentDueAt" label="Payment due (optional)" tz={tz} serverNowMs={t} defaultValue={due} future="due in" past="was due" />
           <label>Pickup instructions <input name="pickupText" maxLength={500} defaultValue={auction.pickupText} /></label>
           <label>Pickup window <input name="pickupWindowText" maxLength={200} defaultValue={auction.pickupWindowText} placeholder="e.g. Sat 9:00–12:00" /></label>
           <label>Sales tax (bps, 0 = none) <input name="taxBps" inputMode="numeric" defaultValue={auction.taxBps} required /></label>
@@ -64,7 +67,7 @@ export default async function Auction({ params, searchParams }: { params: Promis
       <h2>Terms of sale</h2>
       {terms ? (
         <section data-testid="terms-current">
-          <p className="muted">Version {terms.version}, published {terms.publishedAt.toISOString().slice(0, 16).replace('T', ' ')} UTC. Hash <code>{terms.sha256.slice(0, 12)}</code>. Bidders accept this version before they bid.</p>
+          <p className="muted">Version {terms.version}, published {inZone(terms.publishedAt, tz)}. Hash <code>{terms.sha256.slice(0, 12)}</code>. Bidders accept this version before they bid.</p>
           <p className="terms-text">{terms.text}</p>
         </section>
       ) : <p className="muted">No terms of sale yet: bidders may bid without accepting any.</p>}
@@ -106,13 +109,13 @@ export default async function Auction({ params, searchParams }: { params: Promis
       <h2>Lots</h2>
       {published && <p role="status" data-testid="published">Lot {published.number} published.</p>}
       <table>
-        <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Consignor</th><th scope="col" className="num">Start</th><th scope="col" className="num">Reserve</th><th scope="col" className="num">Current</th><th scope="col" className="num">Bids</th><th scope="col">Closes (UTC)</th></tr></thead>
+        <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Consignor</th><th scope="col" className="num">Start</th><th scope="col" className="num">Reserve</th><th scope="col" className="num">Current</th><th scope="col" className="num">Bids</th><th scope="col">Closes</th></tr></thead>
         <tbody>
           {auction.lots.map((l) => {
             const st = status(l);
             const s = settled.get(l.id);
             return (
-              <tr key={l.id} data-testid={`lot-row-${l.number}`} className={l.id === newId ? 'row-new' : undefined}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link> · <Link href={`/o/${ctx.slug}/lots/${l.id}/history`} className="muted">History</Link></td><td><span className="badge" data-tone={st.tone} data-testid="lot-status">{st.text}</span></td><td>{l.consignorRef ? <code>{l.consignorRef.code}</code> : l.consignor || <span className="muted">None</span>}</td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td className="num">{s?.outcome === 'SOLD' ? formatCents(s.hammerCents) : l.state && l.state.acceptedCount > 0 ? formatCents(l.state.priceCents) : <span className="muted">—</span>}</td><td className="num">{l.state?.acceptedCount ?? 0}</td><td>{(l.state?.closesAt ?? l.scheduledEnd).toISOString().slice(0, 16).replace('T', ' ')}</td></tr>
+              <tr key={l.id} data-testid={`lot-row-${l.number}`} className={l.id === newId ? 'row-new' : undefined}><td>{l.number}</td><td><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link> · <Link href={`/o/${ctx.slug}/lots/${l.id}/history`} className="muted">History</Link></td><td><span className="badge" data-tone={st.tone} data-testid="lot-status">{st.text}</span></td><td>{l.consignorRef ? <code>{l.consignorRef.code}</code> : l.consignor || <span className="muted">None</span>}</td><td className="num">{formatCents(l.startCents)}</td><td className="num">{l.reserveCents === null ? <span className="muted">None</span> : formatCents(l.reserveCents)}</td><td className="num">{s?.outcome === 'SOLD' ? formatCents(s.hammerCents) : l.state && l.state.acceptedCount > 0 ? formatCents(l.state.priceCents) : <span className="muted">—</span>}</td><td className="num">{l.state?.acceptedCount ?? 0}</td><td>{inZone((l.state?.closesAt ?? l.scheduledEnd), tz)}</td></tr>
             );
           })}
         </tbody>
@@ -124,7 +127,7 @@ export default async function Auction({ params, searchParams }: { params: Promis
         <label>Consignor (optional) <select name="consignorId" defaultValue=""><option value="">None</option>{consignors.map((c) => <option key={c.id} value={c.id}>{c.code} {c.name}</option>)}</select></label>
         <label>Start price ($) <input name="startCents" inputMode="decimal" required placeholder="150 or 150.50" /></label>
         <label>Reserve ($, optional) <input name="reserveCents" inputMode="decimal" placeholder="blank = no reserve" /></label>
-        <DateTimeUtc name="scheduledEnd" label="Closes (UTC)" serverNowMs={t} required future="closes in" past="closed" />
+        <DateTimeField name="scheduledEnd" label={auction.firstCloseAt ? 'Closes (optional; blank = first close + stagger)' : 'Closes'} tz={tz} serverNowMs={t} required={!auction.firstCloseAt} future="closes in" past="closed" />
         <button type="submit">Create and publish lot</button>
       </ActionForm>
     </main>

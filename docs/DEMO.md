@@ -69,8 +69,8 @@ Sign in at `/demo` with **Run the sale as owner** (`owner@acme.demo.test`; it la
 
 In a second browser profile (or private window) sign in as `member@acme.demo.test` (under *Other seeded accounts* until it holds a paddle; after `seed:live`, **Bid as Ada** is the one-tap route). In the first window, as the owner:
 
-1. `/o/acme/auctions` → Name `Live demo sale`, Opens (UTC) `2020-01-01T10:00` → **Create auction**.
-2. Title `Demo mantel clock`, Start price ($) `100`, Reserve ($) `150`, Closes (UTC) 20 minutes from now (the line under the field shows the UTC instant and "closes in 20 min") → **Create and publish lot**; the page says `Lot 1 published.` and marks the row.
+1. `/o/acme/auctions` → Name `Live demo sale`, Time zone `UTC` (or the house's), Opens `2020-01-01T10:00` → **Create auction**.
+2. Title `Demo mantel clock`, Start price ($) `100`, Reserve ($) `150`, Closes 20 minutes from now (the line under the field shows the instant in the sale's zone and "closes in 20 min") → **Create and publish lot**; the page says `Lot 1 published.` and marks the row.
 
 As the member:
 

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
+import { inZone } from '@/auction/house-time';
 import { currentSettlements } from '@/auction/invoice';
 import { outcomeLabel, paymentLabel, paymentTone } from '@/auction/outcome-labels';
 import { offersForAuction, paidInvoices } from '@/auction/payment';
@@ -13,7 +14,6 @@ import { answerOfferAction, declareDefaultAction, recordPaymentAction } from './
 export const metadata = { title: 'Invoices' };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const utc = (d: Date) => `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 
 // Task 2.1 + D-75: staff only (owner/admin, the foundation's audit.read to read; results.write to record a payment, declare a
 // default or answer an offer). Derived on read from each lot's current settlement (D-42 Q1) and the payment marks; nothing
@@ -22,8 +22,9 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
   const ctx = await requireOrg((await params).org, 'audit.read');
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, select: { name: true, buyerPremiumBps: true, paymentDueAt: true } });
+  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, select: { name: true, buyerPremiumBps: true, paymentDueAt: true, timeZone: true } });
   if (!auction) notFound();
+  const utc = (d: Date) => inZone(d, auction.timeZone); // R-12: the sale's zone, named
   const [invoices, offers, settled] = await Promise.all([paidInvoices(ctx.orgId, { auctionId: id }), offersForAuction(ctx.orgId, id), currentSettlements(ctx.orgId, id)]);
   const unsold = [...settled.values()].filter((s) => s.outcome !== 'SOLD'); // UX-17: an unsold lot is an outcome, shown
   const ids = [...new Set([...invoices.map((i) => i.bidderId), ...offers.map((o) => o.bidderId), ...invoices.flatMap((i) => i.lots.map((l) => l.lotId)), ...unsold.map((s) => s.lotId)])];

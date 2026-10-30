@@ -2,6 +2,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { z } from 'zod';
 import { dollars } from '@/auction/dollars';
+import { fromLocalInput, isTimeZone } from '@/auction/house-time';
 import { loadRules } from '@/auction/load-rules';
 import { openState } from '@/auction/engine/engine';
 import { createConsignor, setContract } from '@/auction/consignor';
@@ -13,16 +14,26 @@ import { db } from '@/core/db';
 import { Refused } from '@/core/errors';
 
 // Task 3.1 (D-48). Staff only (owner/admin, results.write). Money is typed in dollars and parsed as text into whole
-// cents (UX-15, D-79); times are UTC.
-const utc = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Give a date and time.').transform((v) => new Date(`${v}:00Z`));
+// cents (UX-15, D-79); a typed time is read in the sale's zone (R-12, D-84) and stored as the UTC instant it names.
+const at = (tz: string, what = 'Give a date and time.') => z.string().transform((v, c) => {
+  const d = fromLocalInput(v, tz);
+  if (!d) c.addIssue({ code: 'custom', message: what });
+  return d as Date;
+});
+const optionalAt = (tz: string) => z.union([z.literal('').transform(() => null), at(tz)]);
+const wholeSeconds = z.string().regex(/^\d+$/, 'Stagger must be whole seconds.').transform(Number).pipe(z.number().int().max(86_400, 'Stagger cannot exceed a day.'));
 
 export const createAuction = orgAction(
   'results.write',
-  z.object({ name: z.string().trim().min(1, 'Give the auction a name.').max(120), opensAt: utc }),
-  async (ctx, i) => {
+  z.object({ name: z.string().trim().min(1, 'Give the auction a name.').max(120), timeZone: z.string().refine(isTimeZone, 'Pick a time zone the browser knows.'), opensAt: z.string(), firstCloseAt: z.string().default(''), staggerSeconds: z.string().default('0') }),
+  async (ctx, raw) => {
+    const parsed = z.object({ opensAt: at(raw.timeZone), firstCloseAt: optionalAt(raw.timeZone), staggerSeconds: wholeSeconds }).safeParse(raw);
+    if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
+    const i = { ...parsed.data, name: raw.name, timeZone: raw.timeZone };
+    if (i.firstCloseAt && i.firstCloseAt <= i.opensAt) throw new Refused('The first close must be after the auction opens.');
     const d = loadRules().rules.defaults; // D-7: copied onto the row at creation
     const a = await db.$transaction(async (tx) => {
-      const a = await tx.auction.create({ data: { ...inOrg(ctx), name: i.name, opensAt: i.opensAt, softCloseWindowSeconds: d.softCloseWindowSeconds, maxExtensionSeconds: d.maxExtensionSeconds, buyerPremiumBps: d.buyerPremiumBps } });
+      const a = await tx.auction.create({ data: { ...inOrg(ctx), name: i.name, opensAt: i.opensAt, timeZone: i.timeZone, firstCloseAt: i.firstCloseAt, staggerSeconds: i.staggerSeconds, softCloseWindowSeconds: d.softCloseWindowSeconds, maxExtensionSeconds: d.maxExtensionSeconds, buyerPremiumBps: d.buyerPremiumBps } });
       await audit(ctx, 'auction.created', { targetType: 'auction', targetId: a.id }, tx);
       return a;
     });
@@ -35,33 +46,37 @@ export const createAuction = orgAction(
 // Creating a lot publishes it: the Lot and its LotState row (D-16) are written together, so it is in the
 // catalog at once. Refusals mirror the DB's CHECKs and triggers (D-11) so the form says why; the DB still guards.
 // The auction is looked up before the fields are read, so another org's id is a 404 whatever else is in the form (INV-02).
-const lotFields = z.object({
+const lotFields = (tz: string) => z.object({
   title: z.string().trim().min(1, 'Give the lot a title.').max(200),
   consignorId: z.union([z.literal('').transform(() => null), z.uuid()]).default(null),
   startCents: dollars('Start price'),
   reserveCents: z.union([z.literal('').transform(() => null), dollars('Reserve')]).default(null),
-  scheduledEnd: utc,
+  scheduledEnd: optionalAt(tz), // R-10: blank = the sale's first close + (number - 1) × stagger
 });
 
 export const createLot = orgAction(
   'results.write',
-  z.object({ auctionId: ref('auction'), title: z.string(), consignorId: z.union([z.literal(''), ref('consignor')]).optional(), startCents: z.string(), reserveCents: z.string().optional(), scheduledEnd: z.string() }),
+  z.object({ auctionId: ref('auction'), title: z.string(), consignorId: z.union([z.literal(''), ref('consignor')]).optional(), startCents: z.string(), reserveCents: z.string().optional(), scheduledEnd: z.string().default('') }),
   async (ctx, raw) => {
     const auction = await db.auction.findFirst({ where: { id: raw.auctionId, ...inOrg(ctx) } });
     if (!auction) notFound();
-    const parsed = lotFields.safeParse(raw);
+    const parsed = lotFields(auction.timeZone).safeParse(raw);
     if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
     const i = parsed.data;
     if (i.startCents < 1) throw new Refused('Start price must be above zero.');
     if (i.reserveCents !== null && i.reserveCents < i.startCents) throw new Refused('Reserve must be at least the start price.');
-    if (i.scheduledEnd <= auction.opensAt) throw new Refused('The lot must close after the auction opens.');
+    if (i.scheduledEnd === null && auction.firstCloseAt === null) throw new Refused('Give a close time, or set a first close and stagger on the sale.');
+    if (i.scheduledEnd !== null && i.scheduledEnd <= auction.opensAt) throw new Refused('The lot must close after the auction opens.');
     if (i.consignorId !== null && !(await db.consignor.findFirst({ where: { id: i.consignorId, ...inOrg(ctx) }, select: { id: true } }))) throw new Refused('No such consignor in this house.'); // D-74; INV-02
-    const s = openState({ startCents: i.startCents, reserveCents: i.reserveCents, opensAtMs: auction.opensAt.getTime(), scheduledEndMs: i.scheduledEnd.getTime(), softCloseWindowMs: auction.softCloseWindowSeconds * 1000, maxExtensionMs: auction.maxExtensionSeconds * 1000, buyerPremiumBps: auction.buyerPremiumBps });
     const created = await db.$transaction(async (tx) => {
       const top = await tx.lot.aggregate({ where: { auctionId: auction.id }, _max: { number: true } });
+      const number = (top._max.number ?? 0) + 1;
+      // R-10 (D-84): an explicit close wins; otherwise first close + (number − 1) × stagger, computed under the same number
+      const scheduledEnd = i.scheduledEnd ?? new Date(auction.firstCloseAt!.getTime() + (number - 1) * auction.staggerSeconds * 1000);
+      const s = openState({ startCents: i.startCents, reserveCents: i.reserveCents, opensAtMs: auction.opensAt.getTime(), scheduledEndMs: scheduledEnd.getTime(), softCloseWindowMs: auction.softCloseWindowSeconds * 1000, maxExtensionMs: auction.maxExtensionSeconds * 1000, buyerPremiumBps: auction.buyerPremiumBps });
       const lot = await tx.lot.create({
         data: {
-          ...inOrg(ctx), auctionId: auction.id, number: (top._max.number ?? 0) + 1, title: i.title, consignorId: i.consignorId, startCents: i.startCents, reserveCents: i.reserveCents, scheduledEnd: i.scheduledEnd,
+          ...inOrg(ctx), auctionId: auction.id, number, title: i.title, consignorId: i.consignorId, startCents: i.startCents, reserveCents: i.reserveCents, scheduledEnd,
           state: { create: { ...inOrg(ctx), priceCents: s.priceCents, leaderBidderId: s.leader, leaderMaxCents: s.leaderMaxCents, leaderSeq: s.leaderSeq, bidCount: s.bidCount, acceptedCount: s.acceptedCount, closesAt: new Date(s.closesAtMs), extensionCount: s.extensionCount } },
         },
       });
@@ -74,8 +89,8 @@ export const createLot = orgAction(
 
 // D-71 (AX-06): payment due date and pickup text, editable until the sale's first bid. The refusal here is the
 // message; the Auction_terms_fixed_after_bid trigger is the guard (a bid committing between the two is refused there).
-const termsFields = z.object({
-  paymentDueAt: z.union([z.literal('').transform(() => null), utc]),
+const termsFields = (tz: string) => z.object({
+  paymentDueAt: optionalAt(tz),
   pickupText: z.string().trim().max(500),
   pickupWindowText: z.string().trim().max(200),
   // D-78 (AX-09): configuration, not advice; which base applies where the sale happens is a question for counsel.
@@ -89,7 +104,7 @@ export const updateSaleTerms = orgAction(
   async (ctx, raw) => {
     const auction = await db.auction.findFirst({ where: { id: raw.auctionId, ...inOrg(ctx) } });
     if (!auction) notFound();
-    const parsed = termsFields.safeParse(raw);
+    const parsed = termsFields(auction.timeZone).safeParse(raw);
     if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
     if (await db.bid.count({ where: { lot: { auctionId: auction.id } }, take: 1 })) throw new Refused('This sale has bids; payment, pickup and tax terms are fixed.');
     await db.$transaction(async (tx) => {

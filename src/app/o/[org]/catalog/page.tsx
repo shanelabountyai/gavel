@@ -14,7 +14,7 @@ export const metadata = { title: 'Catalog' };
 // Any member of the house. Shows the catalog only: no reserve, no max (brief §4).
 export default async function Catalog({ params }: { params: Promise<{ org: string }> }) {
   const ctx = await requireOrg((await params).org);
-  const lots = await db.lot.findMany({ where: inOrg(ctx), orderBy: [{ auction: { opensAt: 'asc' } }, { number: 'asc' }], select: { id: true, number: true, title: true, startCents: true, scheduledEnd: true, auction: { select: { name: true } }, state: { select: { priceCents: true, acceptedCount: true, closesAt: true } }, withdrawal: { select: { withdrawnAt: true } } } });
+  const lots = await db.lot.findMany({ where: inOrg(ctx), orderBy: [{ auction: { opensAt: 'asc' } }, { number: 'asc' }], select: { id: true, number: true, title: true, startCents: true, scheduledEnd: true, auction: { select: { name: true, timeZone: true } }, state: { select: { priceCents: true, acceptedCount: true, closesAt: true } }, withdrawal: { select: { withdrawnAt: true } } } });
   const t = now().getTime();
   const isWithdrawn = (l: (typeof lots)[number]) => !!l.withdrawal && l.withdrawal.withdrawnAt.getTime() <= t; // D-73
   const isClosed = (l: (typeof lots)[number]) => !l.state || l.state.closesAt.getTime() <= t || isWithdrawn(l);
@@ -40,7 +40,7 @@ export default async function Catalog({ params }: { params: Promise<{ org: strin
                   {/* AX-01: accepted bids only; a refused attempt is a ledger row, not a bid on the lot */}
                   {/* R21: a closed lot's price is final (the hammer when sold, the high bid when not); your result is the badge */}
                   <td className="num cat-price">{l.state && l.state.acceptedCount > 0 ? <>{formatCents(l.state.priceCents)}{closed && <span className="muted"> final</span>}</> : <span className="muted">No bids · opening {formatCents(l.startCents)}</span>}</td>
-                  <td className="cat-time">{closed ? <span className="badge">{isWithdrawn(l) ? 'Withdrawn' : 'Closed'}</span> : <ClosesAt at={l.state?.closesAt ?? l.scheduledEnd} nowMs={t} />}</td>
+                  <td className="cat-time">{closed ? <span className="badge">{isWithdrawn(l) ? 'Withdrawn' : 'Closed'}</span> : <ClosesAt at={l.state?.closesAt ?? l.scheduledEnd} nowMs={t} tz={l.auction.timeZone} />}</td>
                   {me && <td className="cat-you">{mine.has(l.id) && <span className="badge" data-tone={standingTone(mine.get(l.id)!)}>{standingLabel(mine.get(l.id)!)}</span>}</td>}
                 </tr>
               );

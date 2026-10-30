@@ -4,7 +4,8 @@ import { now } from '@/core/clock';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
 import { createAuction } from './actions';
-import { DateTimeUtc } from './datetime-utc';
+import { inZone } from '@/auction/house-time';
+import { NewAuctionFields } from './new-auction-fields';
 
 export const metadata = { title: 'Auctions' };
 
@@ -20,13 +21,13 @@ export default async function Auctions({ params }: { params: Promise<{ org: stri
       <h1>Auctions</h1>
       <ul>
         {auctions.map((a) => (
-          <li key={a.id}><Link href={`/o/${ctx.slug}/auctions/${a.id}`}>{a.name}</Link> <span className="badge" data-tone={status(a).tone}>{status(a).text}</span> · opens {a.opensAt.toISOString().slice(0, 16).replace('T', ' ')} UTC · {a._count.lots} lots</li>
+          <li key={a.id}><Link href={`/o/${ctx.slug}/auctions/${a.id}`}>{a.name}</Link> <span className="badge" data-tone={status(a).tone}>{status(a).text}</span> · opens {inZone(a.opensAt, a.timeZone)} · {a._count.lots} lots</li>
         ))}
       </ul>
       <h2>New auction</h2>
       <ActionForm action={createAuction.bind(null, ctx.slug)}>
         <label>Name <input name="name" required maxLength={120} /></label>
-        <DateTimeUtc name="opensAt" label="Opens (UTC)" serverNowMs={t} required future="opens in" past="opened" />
+        <NewAuctionFields serverNowMs={t} zones={Intl.supportedValuesOf('timeZone').includes('UTC') ? Intl.supportedValuesOf('timeZone') : ['UTC', ...Intl.supportedValuesOf('timeZone')]} />
         <button type="submit">Create auction</button>
       </ActionForm>
     </main>

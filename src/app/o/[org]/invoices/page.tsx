@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { formatCents } from '@/auction/engine/money';
+import { inZone } from '@/auction/house-time';
 import { paymentLabel, paymentTone } from '@/auction/outcome-labels';
 import { paidInvoices } from '@/auction/payment';
 import { inOrg, requireOrg } from '@/core/authz/guards';
@@ -15,7 +16,7 @@ export default async function YourInvoices({ params }: { params: Promise<{ org: 
   const me = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true, paddle: true } });
   const invoices = me ? await paidInvoices(ctx.orgId, { bidderId: me.id }) : [];
   const [auctions, lots] = await Promise.all([
-    db.auction.findMany({ where: { id: { in: invoices.map((i) => i.auctionId) }, ...inOrg(ctx) }, select: { id: true, name: true, buyerPremiumBps: true, paymentDueAt: true, pickupText: true, pickupWindowText: true } }),
+    db.auction.findMany({ where: { id: { in: invoices.map((i) => i.auctionId) }, ...inOrg(ctx) }, select: { id: true, name: true, buyerPremiumBps: true, paymentDueAt: true, pickupText: true, pickupWindowText: true, timeZone: true } }),
     db.lot.findMany({ where: { id: { in: invoices.flatMap((i) => i.lots.map((l) => l.lotId)) }, ...inOrg(ctx) }, select: { id: true, title: true } }),
   ]);
   const auction = new Map(auctions.map((a) => [a.id, a]));
@@ -36,7 +37,7 @@ export default async function YourInvoices({ params }: { params: Promise<{ org: 
             <section key={i.auctionId} className="invoice">
               <h2>{a?.name} · paddle {me.paddle} <span className="badge" data-tone={paymentTone(i.balance.status)}>{paymentLabel(i.balance.status)}</span></h2>
               <p>
-                Payment due {a?.paymentDueAt ? <strong>{a.paymentDueAt.toISOString().slice(0, 16).replace('T', ' ')} UTC</strong> : <span className="muted">date to be confirmed by the house</span>}.{' '}
+                Payment due {a?.paymentDueAt ? <strong>{inZone(a.paymentDueAt, a.timeZone)}</strong> : <span className="muted">date to be confirmed by the house</span>}.{' '}
                 Pickup: {pickup || <span className="muted">to be confirmed by the house</span>}.
               </p>
               <p className="muted">Buyer&apos;s premium {formatCents(a?.buyerPremiumBps ?? 0).slice(1)}% of hammer.{i.defaulted && <> <strong>This invoice was declared in default</strong> on {i.defaulted.declaredAt.toISOString().slice(0, 10)}; contact the house.</>}</p>

@@ -34,7 +34,7 @@ export async function enqueueNotice(tx: Tx, orgId: string, lotId: string, bidder
   await tx.query(
     `INSERT INTO "Outbox" ("id", "orgId", "channel", "to", "template", "data")
      SELECT gen_random_uuid(), $1::uuid, 'email', u."email", $4, jsonb_build_object('lot', l."title") || $5::jsonb
-            || CASE WHEN $4 = 'won' THEN jsonb_strip_nulls(jsonb_build_object('due', to_char(a."paymentDueAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI "UTC"'), 'pickup', NULLIF(a."pickupText", ''), 'pickupWindow', NULLIF(a."pickupWindowText", ''))) ELSE '{}' END
+            || CASE WHEN $4 = 'won' THEN jsonb_strip_nulls(jsonb_build_object('due', to_char(a."paymentDueAt" AT TIME ZONE a."timeZone", 'YYYY-MM-DD HH24:MI') || ' ' || a."timeZone", 'pickup', NULLIF(a."pickupText", ''), 'pickupWindow', NULLIF(a."pickupWindowText", ''))) ELSE '{}' END
        FROM "Bidder" b JOIN "User" u ON u."id" = b."userId", "Lot" l JOIN "Auction" a ON a."id" = l."auctionId"
       WHERE b."id" = $3::uuid AND l."id" = $2::uuid`,
     [orgId, lotId, bidderId, n.template, JSON.stringify(data)],

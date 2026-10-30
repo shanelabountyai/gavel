@@ -34,7 +34,7 @@ export default async function YourBids({ params }: { params: Promise<{ org: stri
                   <td className="cat-title"><Link href={`/o/${ctx.slug}/lots/${b.lotId}`}>{b.title}</Link></td>
                   <td className="muted cat-auction">{b.auction}</td>
                   <td className="cat-you"><span className="badge" data-tone={standingTone(b.standing)}>{standingLabel(b.standing)}</span></td>
-                  <td className="cat-time">{b.closed ? <span className="badge">Closed</span> : <ClosesAt at={new Date(b.closesAtMs)} nowMs={t} />}</td>
+                  <td className="cat-time">{b.closed ? <span className="badge">Closed</span> : <ClosesAt at={new Date(b.closesAtMs)} nowMs={t} tz={b.timeZone} />}</td>
                 </tr>
               ))}
             </tbody>

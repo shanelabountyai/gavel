@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { formatCents } from '@/auction/engine/money';
+import { inZone } from '@/auction/house-time';
 import type { LotView } from '@/auction/lot-view';
 import { formatLeft } from '@/auction/time-left';
 import { BidForm, type BidOk } from './bid-form';
@@ -14,7 +15,7 @@ const UNSETTLED_MS = 30_000; // R20: a closed lot polls every 30 s until its set
 
 // Polls /api/lots/[id]/state with the ETag. The countdown is closesAt minus the server's clock: the offset between the
 // two clocks is measured from X-Server-Time on every response, so the client's own clock only ticks, it never decides.
-export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, viewer, children }: { slug: string; lotId: string; initial: View; etag: string; serverNowMs: number; viewer: Viewer; children?: React.ReactNode }) {
+export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, viewer, timeZone, children }: { slug: string; lotId: string; initial: View; etag: string; serverNowMs: number; viewer: Viewer; timeZone: string; children?: React.ReactNode }) {
   const [view, setView] = useState(initial);
   const offset = useRef(0); // server clock minus client clock, ms; measured on every response
   const [serverNow, setServerNow] = useState(serverNowMs); // best estimate of the server's clock, advanced by the ticker
@@ -107,7 +108,7 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
     you: r.accepted || v.you ? (r.youLead ? 'LEADING' : 'OUTBID') : v.you,
     yourMaxCents: r.accepted ? Math.max(v.yourMaxCents ?? 0, sent) : r.yourMaxCents ?? v.yourMaxCents,
   }));
-  const utc = (iso: string) => `${iso.slice(0, 19).replace('T', ' ')} UTC`;
+  const at = (iso: string) => inZone(Date.parse(iso), timeZone); // R-12: printed in the house's zone; the countdown stays server-clock arithmetic
   return (
     <section className="board" data-phase={!closed && !scheduled && left < 60 ? 'final' : undefined} data-stale={stale || undefined} aria-label="Live lot">
       <p className="sr-only" role="status" aria-live="polite" data-testid="announce">{announce}</p>
@@ -142,7 +143,7 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
           {!extended && extCount > 0 && <span className="board-extended board-ext-count" data-testid="ext-count">Extended {extCount === 1 ? 'once' : `${extCount} times`} since you opened this page</span>}
         </p>
       </div>
-      {!closed && viewer.kind === 'bidder' && <BidForm slug={slug} lotId={lotId} view={view} paddle={viewer.paddle} disabledReason={scheduled ? `Bidding opens at ${utc(view.opensAt)}.` : undefined} onResult={applyResult} />}
+      {!closed && viewer.kind === 'bidder' && <BidForm slug={slug} lotId={lotId} view={view} paddle={viewer.paddle} disabledReason={scheduled ? `Bidding opens at ${at(view.opensAt)}.` : undefined} onResult={applyResult} />}
       {!closed && (viewer.kind === 'register' || viewer.kind === 'terms') && <div className="board-panel" data-testid={viewer.kind === 'terms' ? 'terms-panel' : undefined}>{children}</div>}
       {viewer.kind === 'staff' && (
         <p className="board-panel" data-testid="staff-view">
@@ -156,9 +157,9 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
         <div><dt>Bids</dt><dd data-testid="bid-count">{view.bidCount}</dd></div>
         {/* R-13: "No reserve" is advertised; with one, met or not; the amount never */}
         <div><dt>Reserve</dt><dd data-testid="reserve">{!view.hasReserve ? 'No reserve' : view.reserveMet ? 'Met' : 'Not met'}</dd></div>
-        {scheduled && <div><dt>Opens</dt><dd><time dateTime={view.opensAt}>{utc(view.opensAt)}</time></dd></div>}
-        <div><dt>{closed ? 'Closed' : 'Closes'}</dt><dd><time dateTime={view.closesAt} data-testid="closes-at">{utc(view.closesAt)}</time></dd></div>
-        {withdrawn && <div><dt>Withdrawn</dt><dd><time dateTime={view.withdrawnAt!} data-testid="withdrawn-at">{utc(view.withdrawnAt!)}</time></dd></div>}
+        {scheduled && <div><dt>Opens</dt><dd><time dateTime={view.opensAt}>{at(view.opensAt)}</time></dd></div>}
+        <div><dt>{closed ? 'Closed' : 'Closes'}</dt><dd><time dateTime={view.closesAt} data-testid="closes-at">{at(view.closesAt)}</time></dd></div>
+        {withdrawn && <div><dt>Withdrawn</dt><dd><time dateTime={view.withdrawnAt!} data-testid="withdrawn-at">{at(view.withdrawnAt!)}</time></dd></div>}
       </dl>
     </section>
   );

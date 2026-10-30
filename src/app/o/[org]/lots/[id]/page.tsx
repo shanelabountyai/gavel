@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
+import { inZone } from '@/auction/house-time';
 import { lotView, publicHistory } from '@/auction/lot-view';
 import { currentTerms, unacceptedTermsSha } from '@/auction/terms';
 import { requireOrg } from '@/core/authz/guards';
@@ -21,7 +22,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   const { id } = await params;
   const v = await lotView(ctx.userId, id);
   const { etag, ...view } = v ?? { etag: '' };
-  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, consignor: true, consignorRef: { select: { name: true } }, auctionId: true, auction: { select: { name: true } } } }));
+  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, consignor: true, consignorRef: { select: { name: true } }, auctionId: true, auction: { select: { name: true, timeZone: true } } } }));
   if (!v || !lot) notFound();
   const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true, paddle: true } });
   // D-72: a bidder who has not accepted the sale's current terms sees them, with one button, where the bid form would be
@@ -32,7 +33,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   // R-11 (D-83): rendered with the page, not polled. ponytail: a bidder watching a live lot reloads to see new rows; fold it
   // into the state poll if anyone asks for it live.
   const history = await publicHistory(id, bidder?.id ?? null);
-  const utc = (iso: string) => `${iso.slice(0, 19).replace('T', ' ')} UTC`;
+  const at = (iso: string) => inZone(Date.parse(iso), lot.auction.timeZone); // R-12
   return (
     <main>
       <header className="lot-head">
@@ -41,7 +42,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
         <h1>{lot.title}</h1>
         {(lot.consignorRef?.name || lot.consignor) && <p className="muted">Consigned by {lot.consignorRef?.name ?? lot.consignor}</p>}
       </header>
-      <LotLive slug={ctx.slug} lotId={id} initial={view as Omit<typeof v, 'etag'>} etag={etag} serverNowMs={now().getTime()} viewer={viewer}>
+      <LotLive slug={ctx.slug} lotId={id} initial={view as Omit<typeof v, 'etag'>} etag={etag} serverNowMs={now().getTime()} viewer={viewer} timeZone={lot.auction.timeZone}>
         {terms ? (
           <ActionForm action={acceptTermsAction.bind(null, ctx.slug)}>
             <input type="hidden" name="lotId" value={id} />
@@ -70,7 +71,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
                 <tr key={h.seq} data-you={h.who === 'you' || undefined}>
                   <td className="num">{i + 1}</td><td>{h.who === 'you' ? <b>You</b> : h.who}</td>
                   <td className="num">{formatCents(h.priceAfterCents)}{h.extended && <> <span className="badge" data-tone="info">Extended</span></>}</td>
-                  <td><time dateTime={h.placedAt}>{utc(h.placedAt)}</time></td>
+                  <td><time dateTime={h.placedAt}>{at(h.placedAt)}</time></td>
                 </tr>
               ))}
             </tbody>

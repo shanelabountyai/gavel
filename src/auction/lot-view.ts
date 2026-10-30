@@ -57,7 +57,7 @@ export async function myBids(orgId: string, bidderId: string) {
     if (!r.state) return [];
     const lot = toLot(r);
     const state = toState(r.state);
-    return [{ lotId: r.id, number: r.number, title: r.title, auction: r.auction.name, closesAtMs: state.closesAtMs, closed: lotStatus(lot, state, nowMs) === 'CLOSED', standing: standing(lot, state, bidderId, settlementTip(r.settlements), nowMs) }];
+    return [{ lotId: r.id, number: r.number, title: r.title, auction: r.auction.name, timeZone: r.auction.timeZone, closesAtMs: state.closesAtMs, closed: lotStatus(lot, state, nowMs) === 'CLOSED', standing: standing(lot, state, bidderId, settlementTip(r.settlements), nowMs) }];
   });
 }
 

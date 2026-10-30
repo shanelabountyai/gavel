@@ -1,18 +1,19 @@
 'use client';
 import { useId, useState } from 'react';
+import { fromLocalInput, inZone } from '@/auction/house-time';
 
-/** UX-15 (D-79): a datetime-local field that is read as UTC (the actions append `:00Z`), with the instant and its
- * distance from the server's clock under it, so a picker showing local time cannot mislead. Nothing here decides time:
- * the server parses the value; this only previews it. */
-export function DateTimeUtc({ name, label, serverNowMs, defaultValue = '', required, future, past }: { name: string; label: string; serverNowMs: number; defaultValue?: string; required?: boolean; future: string; past: string }) {
+/** UX-15 (D-79), R-12 (D-84): a datetime-local field read in the house's zone (the actions call fromLocalInput with the same
+ * zone), with the instant it names and its distance from the server's clock under it, so a picker showing the viewer's own
+ * zone cannot mislead. Nothing here decides time: the server parses the value; this only previews it. */
+export function DateTimeField({ name, label, tz, serverNowMs, defaultValue = '', required, future, past }: { name: string; label: string; tz: string; serverNowMs: number; defaultValue?: string; required?: boolean; future: string; past: string }) {
   const [v, setV] = useState(defaultValue);
   const id = useId();
-  const t = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v) ? Date.parse(`${v}:00Z`) : NaN;
-  const hint = Number.isNaN(t) ? 'Read as UTC. Your picker shows local time.' : `= ${v.replace('T', ' ')} UTC, ${t >= serverNowMs ? `${future} ${span(t - serverNowMs)}` : `${past} ${span(serverNowMs - t)} ago`}`;
+  const t = fromLocalInput(v, tz)?.getTime() ?? NaN;
+  const hint = Number.isNaN(t) ? `Read as ${tz} time; your picker may show your own zone.` : `= ${inZone(t, tz)}, ${t >= serverNowMs ? `${future} ${span(t - serverNowMs)}` : `${past} ${span(serverNowMs - t)} ago`}`;
   return (
     <div className="field">
       <label>{label} <input name={name} type="datetime-local" required={required} value={v} aria-describedby={id} onChange={(e) => setV(e.target.value)} /></label>
-      <span id={id} className="form-hint" data-testid={`${name}-utc`}>{hint}</span>
+      <span id={id} className="form-hint" data-testid={`${name}-hint`}>{hint}</span>
     </div>
   );
 }
