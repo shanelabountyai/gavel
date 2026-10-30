@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
+import { correctionError, correctSettlement } from '@/auction/correct';
 import { dollars } from '@/auction/dollars';
 import { answerOffer, declareDefault, recordPayment } from '@/auction/payment';
 import { orgAction, ref } from '@/core/authz/action';
@@ -62,5 +63,39 @@ export const answerOfferAction = orgAction(
     await answerOffer(ctx, i.offerId, i.response);
     back(ctx.slug, o.default.auctionId);
     return { notice: i.response === 'ACCEPTED' ? 'Accepted: the lot is corrected to the underbidder.' : 'Declined.' };
+  },
+);
+
+// D-87 (AX-14): the consignor accepted the high bid below the reserve. A D-44 correction to the lot's high bidder carrying the
+// approval reference; the price is the one the ledger reached (resettle decides, the reserve not applied). The settlement the
+// staff member saw is named, so a second click or a concurrent correction is refused, never applied twice.
+export const approveBelowReserveAction = orgAction(
+  'results.write',
+  z.object({ lotId: ref('lot'), settlementId: ref('settlement'), reason: z.string(), approvalRef: z.string() }),
+  async (ctx, raw) => {
+    const [lot, settlement] = await Promise.all([
+      db.lot.findFirst({ where: { id: raw.lotId, ...inOrg(ctx) }, select: { auctionId: true, state: { select: { leaderBidderId: true } } } }),
+      db.settlement.findFirst({ where: { id: raw.settlementId, lotId: raw.lotId, ...inOrg(ctx) }, select: { id: true } }),
+    ]);
+    if (!lot || !settlement) notFound(); // both ids before the fields (INV-02, INV-03)
+    const reason = raw.reason.trim();
+    const approvalRef = raw.approvalRef.trim();
+    if (!reason) throw new Refused('Give a reason for the sale.');
+    if (!approvalRef) throw new Refused('Give the consignor approval reference.');
+    if (!lot.state?.leaderBidderId) throw new Refused('This lot has no high bidder to sell to.');
+    try {
+      await correctSettlement({ orgId: ctx.orgId, lotId: raw.lotId, supersedesId: raw.settlementId, winner: lot.state.leaderBidderId, reason, consignorApprovalRef: approvalRef, userId: ctx.userId });
+    } catch (error) {
+      const e = correctionError(error);
+      if (!e) throw error;
+      throw new Refused({
+        APPROVAL_NOT_APPLICABLE: 'Only a lot that closed below its reserve can be sold this way.',
+        STALE_SETTLEMENT: 'This lot was already corrected. Reload the page.',
+        NO_CHANGE: 'This lot is already sold.',
+        CORRECTION_TIMED_OUT: 'The lot was busy. Try again.',
+      }[e.code as string] ?? `Refused: ${e.code}.`);
+    }
+    back(ctx.slug, lot.auctionId);
+    return { notice: 'Sold subject to approval: the lot is on the high bidder\'s invoice.' };
   },
 );

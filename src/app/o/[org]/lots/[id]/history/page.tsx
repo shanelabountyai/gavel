@@ -98,7 +98,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
               <tr key={s.id}>
                 <td>{i === 0 ? 'Settled' : `Correction ${i}`}</td><td><Outcome k={s.outcome} /></td><td>{who(s.winner)}</td>
                 <td className="num">{formatCents(s.hammerCents)}</td><td className="num">{formatCents(s.premiumCents)}</td><td className="num">{formatCents(s.totalCents)}</td>
-                <td>{'reason' in s ? s.reason : '—'}</td><td>{actor('correctedByUserId' in s ? s.correctedByUserId : null)}</td>
+                <td>{'reason' in s ? s.reason : '—'}{'consignorApprovalRef' in s && s.consignorApprovalRef && <div data-testid="approval">Consignor approval {s.consignorApprovalRef}: sold below the reserve (D-87)</div>}</td><td>{actor('correctedByUserId' in s ? s.correctedByUserId : null)}</td>
               </tr>
             ))}
           </tbody>

@@ -9,7 +9,7 @@ import { inOrg, requireOrg } from '@/core/authz/guards';
 import { can } from '@/core/authz/permissions';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
-import { answerOfferAction, declareDefaultAction, recordPaymentAction } from './actions';
+import { answerOfferAction, approveBelowReserveAction, declareDefaultAction, recordPaymentAction } from './actions';
 
 export const metadata = { title: 'Invoices' };
 
@@ -30,7 +30,7 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
   const ids = [...new Set([...invoices.map((i) => i.bidderId), ...offers.map((o) => o.bidderId), ...invoices.flatMap((i) => i.lots.map((l) => l.lotId)), ...unsold.map((s) => s.lotId)])];
   const [bidders, lots] = await Promise.all([
     db.bidder.findMany({ where: { id: { in: ids }, ...inOrg(ctx) }, select: { id: true, paddle: true, user: { select: { name: true, email: true } } } }),
-    db.lot.findMany({ where: { id: { in: ids }, ...inOrg(ctx) }, select: { id: true, number: true, title: true } }),
+    db.lot.findMany({ where: { id: { in: ids }, ...inOrg(ctx) }, select: { id: true, number: true, title: true, reserveCents: true, state: { select: { priceCents: true, leaderBidderId: true } } } }),
   ]);
   const bidder = new Map(bidders.map((b) => [b.id, b]));
   const lot = new Map(lots.map((l) => [l.id, l]));
@@ -40,6 +40,9 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
   const pay = recordPaymentAction.bind(null, ctx.slug);
   const dflt = declareDefaultAction.bind(null, ctx.slug);
   const answer = answerOfferAction.bind(null, ctx.slug);
+  const approve = approveBelowReserveAction.bind(null, ctx.slug);
+  const highBidders = await db.bidder.findMany({ where: { id: { in: lots.flatMap((l) => l.state?.leaderBidderId ?? []) }, ...inOrg(ctx) }, select: { id: true, paddle: true } });
+  const paddle = new Map(highBidders.map((b) => [b.id, b.paddle]));
 
   return (
     <main>
@@ -104,10 +107,36 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
       {unsold.length > 0 && (
         <section data-testid="not-sold">
           <h2>Not sold</h2>
+          <p className="muted">A lot that closed below its reserve can still be sold to its high bidder at the high bid, if the consignor accepts it (D-87). Record their approval reference; the lot moves to that bidder&apos;s invoice.</p>
           <table>
-            <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Outcome</th></tr></thead>
+            <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Outcome</th><th scope="col" className="num">High bid</th><th scope="col" className="num">Reserve</th>{canWrite && <th scope="col">Consignor approval</th>}</tr></thead>
             <tbody>
-              {unsold.map((s) => <tr key={s.lotId}><td>{lot.get(s.lotId)?.number}</td><td><Link href={`/o/${ctx.slug}/lots/${s.lotId}/history`}>{title(s.lotId)}</Link></td><td><span className="badge">{outcomeLabel(s.outcome)}</span></td></tr>)}
+              {unsold.map((s) => {
+                const l = lot.get(s.lotId);
+                const below = s.outcome === 'UNSOLD_RESERVE_NOT_MET' && l?.state?.leaderBidderId;
+                return (
+                  <tr key={s.lotId} data-testid={`not-sold-${l?.number}`}>
+                    <td>{l?.number}</td>
+                    <td><Link href={`/o/${ctx.slug}/lots/${s.lotId}/history`}>{title(s.lotId)}</Link></td>
+                    <td><span className="badge">{outcomeLabel(s.outcome)}</span></td>
+                    <td className="num">{below ? `${formatCents(l.state!.priceCents)} · paddle ${paddle.get(l.state!.leaderBidderId!)}` : ''}</td>
+                    <td className="num">{below && l.reserveCents !== null ? formatCents(l.reserveCents) : ''}</td>
+                    {canWrite && (
+                      <td>
+                        {below && (
+                          <ActionForm action={approve}>
+                            <input type="hidden" name="lotId" value={s.lotId} />
+                            <input type="hidden" name="settlementId" value={s.id} />
+                            <label>Approval reference <input name="approvalRef" required maxLength={100} /></label>{' '}
+                            <label>Reason <input name="reason" required maxLength={500} /></label>{' '}
+                            <button type="submit">Sell at high bid</button>
+                          </ActionForm>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </section>
