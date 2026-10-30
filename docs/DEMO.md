@@ -59,7 +59,7 @@ Sign in at `/demo` with **Run the sale as owner** (`owner@acme.demo.test`; it la
 
 1. `/o/gavel-fixtures/auctions` → **Harlan farm estate (online only)**: 12 lots, starts, hidden reserves (staff only).
 2. **Invoices**: 9 buyers, premium 15.00 % of hammer. Paddle 102 bought lot 1, the oak roll-top desk: hammer $160.00, premium $24.00, total $184.00. That hammer equals `price 16000` for L001 in the eval table.
-3. Back, click **Oak roll-top desk**, the lot 1 link: that is the history page, every ledger row in sequence order, accepted or rejected, with price and leader before and after.
+3. Back, click **Oak roll-top desk**, the lot 1 link: that is the history page, every ledger row in sequence order, accepted or rejected, with price and leader before and after; rows that pushed the close out carry an `Extended +m:ss` badge, staff who corrected or withdrew are named, and the back links go to the sale and to the **Bidder view** (D-82). The bidder view of the same lot shows the public version under the board, **Bids on this lot**: accepted rows only, the price each set, `Bidder 1`, `Bidder 2`… by first appearance on that lot, the viewer's own rows as **You**; no maximum, no refused row, no paddle (D-83).
 4. Open **Box lot of hand tools** (lot 6, L006 in the eval table: 7 bids, 3 extensions, 269 s). *Say:* "Three late bids each pushed the close out. The history shows `placedAt` to the millisecond; the verifier checks they are in order."
 
 5. Optional, if the audience sells rather than buys: **Consignors** in the menu → add one (code `EST-1`, any name) → back on **Live demo sale** (or any sale) set its contract (1250 bps, 500, 1500) → **Consignor statements**. The seeded sales carry no consignor, so the statement is empty until a lot made with that consignor settles; *say:* "same ledger, same settlements as the invoice, drawn on read; the commission is the only other rounding in the project, golden GB-25."
@@ -74,10 +74,12 @@ In a second browser profile (or private window) sign in as `member@acme.demo.tes
 
 As the member:
 
-3. `/o/acme/catalog` → **Register to bid** (paddle 1) → open **Demo mantel clock**. The lot page shows `Current price: No bids`, `Reserve: not met` (the amount is never shown to bidders).
+3. `/o/acme/catalog` → **Register to bid** (paddle 1) → open **Demo mantel clock**. The board shows `Opening bid $100.00` (no accepted bid yet, AX-01), `Bids 0`, `Reserve: Not met` (the amount is never shown to bidders; a lot made without a reserve says `No reserve`, D-83), and `Bids on this lot: No bids yet.` If the sale had **terms of sale** published (sale page → Terms of sale, D-72), the bid form is replaced by the terms and one **I accept** button until the bidder accepts; the seeded sales have none, so nothing is asked.
 4. Your maximum `150` → **Bid** → `Bid accepted. You lead at $150.00.` (The **Bid $…** button beside it bids the shown minimum in one tap; the board updates from the answer, not the next poll.) *Say:* "Only one bidder, so why $150? The reserve is $150 and this max clears it, so the price is floored at the reserve. Proxy bidding with a hidden floor." Double-click does not write two rows (one idempotency key per submission).
 5. **Your bids** in the menu lists the clock as `Leading` and the catalog row carries the same badge (D-80); outbid elsewhere, a bidder finds out here without opening the lot.
 6. Check the ledger: `psql gavel_test -c "select seq, outcome, \"maxCents\", \"priceAfterCents\" from \"Bid\" b join \"Lot\" l on l.id=b.\"lotId\" where l.title='Demo mantel clock'"`: one row per attempt.
+7. Optional, as the owner on the lot page: **Withdraw lot** with a reason (D-73). The board flips to `Withdrawn`, the member's page says their bids are void and nothing is owed, the ledger keeps every later attempt as `REJECTED_LOT_WITHDRAWN`, and the lot settles `UNSOLD_WITHDRAWN`. There is no un-withdraw. Also optional: **Bidders** in the menu suspends a paddle with a reason and reinstates it (D-70); a suspended bidder's next attempt is refused and recorded.
+8. Optional, on the sale page: a sale created with a **time zone**, a **first lot close** and a **stagger** (D-84) prints every time in that zone with the zone named, and a lot created with the close left blank closes at first close + (lot number − 1) × stagger. The seeded sales are UTC.
 
 ## 4. Settle and verify (1 min)
 
@@ -117,5 +119,7 @@ npm run load:bids                                       # 200 writers, 4 lots, 1
 - **Numbers are one machine's.** Every throughput figure is Apple M4, 10 cores, 24 GB, Postgres 17.11 local. They are not a capacity claim, and a loaded machine produces wrong ones (a 64 load average gave 1.6 bids/s in the run that wrote this script).
 - **Rules are one house's.** Increments, soft close and premium are data in `rules/auction.v1.json`, not an industry standard and not a statement about any state's auction law.
 - **HTTP is slower than in process.** The same bids over the HTTP route measured 1016 bids/s against about 4300 to 5200 in process, because the server's 10-connection Prisma pool is the queue (D-54, D-57).
-- **Not covered:** a correction that moves the winner sends no notice (D-53 f); no real-time push, polling only; two bids in the same millisecond exist only in the barrier test.
+- **Not covered:** a correction that moves the winner sends no notice (D-53 f); no real-time push, polling only; two bids in the same millisecond exist only in the barrier test; the public bid history under the board is rendered with the page, so a watcher reloads to see new rows (D-83); a sale's zone, first close and stagger are set at creation and not edited after (D-84).
+- **Sales tax is configuration, not advice** (D-78): a rate in basis points and a base (hammer, or hammer plus premium) per sale, rounded once per invoice, with a per-bidder exemption reference. Which base applies where a sale happens is a question for counsel.
+- **The live site may lag the repo.** Each new migration is applied to the production database by hand before the deploy that needs it; until then the pages that read the new columns error there, and the demo runs locally.
 - **Demo sign-in is a shortcut** that exists only under `DEMO_MODE=1`.

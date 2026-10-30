@@ -10,7 +10,7 @@ Learning project, synthetic data only. Every auction house, estate, lot, bidder 
 
 ## Status
 
-**Phases 1–4 complete (2026-10-23); in closure.** Engine, ledger, row lock, contention proof and load script (Phase 1); invoices, corrections and the dispute view (Phase 2); catalog, bidder lot page with polling, bid form, outbox notices and the HTTP bid route (Phase 3); lock-strategy and clock measurements (Phase 4, table below). Demo script: `docs/DEMO.md`. Exec brief: [Gavel in Brief](https://claude.ai/artifact/Qgu3afTJ2dAR8Y2EsM69Dt) (private until shared; screenshots from `e2e/brief-shots.spec.ts`). Session state is in `NEXT.md`.
+**Phases 1–4 complete (2026-10-23); closure refreshed 2026-10-30 after the review backlogs.** Engine, ledger, row lock, contention proof and load script (Phase 1); invoices, corrections and the dispute view (Phase 2); catalog, bidder lot page with polling, bid form, outbox notices and the HTTP bid route (Phase 3); lock-strategy and clock measurements (Phase 4, table below). Then three reviews (`docs/prds/`): the UX review worked in full (D-66..D-69, D-76..D-82: result banners, own maximum, one-tap minimum, live region, Your bids, demo routing by journey, keyboard confirm), the design pass (D-65, `docs/design-brief.md`), and the auction-domain review's P0s and P1s through AX-13 (D-70..D-75, D-78, D-83, D-84: suspend and reinstate, buyer invoices with due date and pickup, terms of sale accepted before bidding, withdraw a lot, consignors and statements, payment marks with default and second-chance offer, sales tax, public bid history with per-lot aliases, "No reserve", the house time zone and staggered closes). Open: AX-14..AX-23 (`docs/prds/auction-domain-gaps.md`). Demo script: `docs/DEMO.md`. Exec brief: [Gavel in Brief](https://claude.ai/artifact/Qgu3afTJ2dAR8Y2EsM69Dt) (private until shared; screenshots from `e2e/brief-shots.spec.ts`). Session state is in `NEXT.md`.
 
 **Live demo (D-64):** <https://gavel.labintelligence.co>, behind a shared password (ask the owner). It runs on Vercel with a Neon Postgres 17 database holding the 36 fixture lots, the demo accounts and a *Live demo sale* whose lots close over 30 days (`npm run seed:live`). Closed lots settle on the daily cron. No throughput figure in this repo was measured there: every number names the Mac it ran on.
 
@@ -19,8 +19,8 @@ Learning project, synthetic data only. Every auction house, estate, lot, bidder 
 | Path | What |
 |---|---|
 | `prd-gavel.md` | What and why. `docs/decisions.md` outranks it |
-| `docs/decisions.md` | D-1..D-25 resolved, O-1..O-12 open with defaults in force, review log |
-| `docs/domain-brief.md` | Vocabulary, lot kinds, bid rules, soft close, settlement, invariants V1–V9, the contention proof, goldens GB-00..GB-23, kickoff measurements, fixture hashes |
+| `docs/decisions.md` | D-1..D-84 resolved (D-26 on are build and review decisions), O-1..O-12 open with defaults in force, review log |
+| `docs/domain-brief.md` | Vocabulary, lot kinds, bid rules, soft close, settlement, invariants V1–V9, the contention proof, goldens GB-00..GB-28, kickoff measurements, fixture hashes |
 | `docs/phase-1-tasks.md` | Tasks 1.1–1.12 with acceptance criteria and the exit bar |
 | `docs/portfolio-overlap.md` | What is ported from sibling repos (real paths) and what is new |
 | `rules/auction.v1.json` | Increment bands, soft-close and premium defaults, the closed outcome sets |
