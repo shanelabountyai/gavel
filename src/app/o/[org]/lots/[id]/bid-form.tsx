@@ -15,8 +15,10 @@ type Tone = 'lead' | 'outbid' | 'refused' | 'warn';
 type Msg = { badge: string; tone: Tone; text: string; retry: boolean; code?: string };
 const BADGE: Record<Tone, string> = { lead: 'Leading', outbid: 'Outbid', refused: 'Not accepted', warn: 'Try again' };
 const say = (tone: Tone, text: string, retry = false, code?: string): Msg => ({ badge: BADGE[tone], tone, text, retry, code });
+/** The bidder-safe answer to a judged bid, as the action returns it. */
+export type BidOk = { ok: true; outcome: string; accepted: boolean; priceCents: number; minNextCents: number; youLead: boolean; yourMaxCents: number | null };
 
-export function BidForm({ slug, lotId, view, paddle, disabledReason }: { slug: string; lotId: string; view: LotView | Omit<LotView, 'etag'>; paddle: number; disabledReason?: string }) {
+export function BidForm({ slug, lotId, view, paddle, disabledReason, onResult }: { slug: string; lotId: string; view: LotView | Omit<LotView, 'etag'>; paddle: number; disabledReason?: string; onResult?: (r: BidOk, sentMaxCents: number) => void }) {
   const key = useRef(crypto.randomUUID());
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -29,14 +31,13 @@ export function BidForm({ slug, lotId, view, paddle, disabledReason }: { slug: s
     setConfirm(null);
     setMsg(null);
     try {
-      const r = (await placeBidAction(slug, { lotId, maxCents, idempotencyKey: key.current })) as
-        | { error: string; code?: string; retryable?: boolean }
-        | { ok: true; outcome: string; accepted: boolean; priceCents: number; minNextCents: number; youLead: boolean; yourMaxCents: number | null };
+      const r = (await placeBidAction(slug, { lotId, maxCents, idempotencyKey: key.current })) as { error: string; code?: string; retryable?: boolean } | BidOk;
       if (!('ok' in r)) {
         const retry = !!r.retryable;
         setMsg(say(retry ? 'warn' : 'refused', r.error, retry, r.code));
         if (!retry) key.current = crypto.randomUUID();
       } else {
+        onResult?.(r, maxCents); // UX-14: the board takes the judged numbers now; the next poll confirms them
         setMsg(r.yourMaxCents !== null ? say('refused', `Your maximum is already ${formatCents(r.yourMaxCents)}; enter more to raise it.`, false, r.outcome)
           : !r.accepted ? say('refused', `${outcomeLabel(r.outcome)}. The minimum next bid is ${formatCents(r.minNextCents)}.`, false, r.outcome)
           : r.youLead ? say('lead', `Bid accepted. You lead at ${formatCents(r.priceCents)}.`, false, r.outcome)
@@ -63,11 +64,15 @@ export function BidForm({ slug, lotId, view, paddle, disabledReason }: { slug: s
   };
 
   const invalid = msg?.code === 'INVALID_AMOUNT';
+  const min = formatCents(view.minNextCents);
   return (
     <form onSubmit={submit} aria-label="Place a bid">
-      <p className="form-hint">Minimum next bid <b data-testid="min-next">{formatCents(view.minNextCents)}</b> · paddle {paddle}</p>
-      <label>Your maximum ($) <input name="max" inputMode="decimal" autoComplete="off" value={text} aria-invalid={invalid || undefined} disabled={!!disabledReason} onChange={(e) => { setText(e.target.value); setConfirm(null); key.current = crypto.randomUUID(); }} /></label>
+      <p className="form-hint">Minimum next bid <b data-testid="min-next">{min}</b> · paddle {paddle}</p>
+      <label>Your maximum ($) <input name="max" inputMode="decimal" autoComplete="off" value={text} placeholder={min.slice(1)} aria-invalid={invalid || undefined} disabled={!!disabledReason} onChange={(e) => { setText(e.target.value); setConfirm(null); key.current = crypto.randomUUID(); }} /></label>
       <button type="submit" disabled={busy || !!disabledReason}>{busy ? 'Sending…' : 'Bid'}</button>
+      {/* UX-08: one tap bids the minimum; the same key guards a double tap, as for the typed form (D-52 b) */}
+      <button type="button" data-testid="bid-min" disabled={busy || !!disabledReason} onClick={() => void send(view.minNextCents)}>Bid {min}</button>
+      <p className="form-hint form-explain">Enter the most you will pay. We bid for you, one step at a time, only as high as needed.</p>
       {disabledReason && <p className="form-hint" data-testid="bid-disabled">{disabledReason}</p>}
       {confirm !== null && (
         <p role="alertdialog" data-testid="confirm">

@@ -119,6 +119,7 @@ li { margin: 0.35rem 0; }
 .badge[data-tone='bad'], .badge[data-tone='outbid'], .badge[data-tone='refused'] { background: var(--oxblood-soft); color: var(--oxblood); }
 .badge[data-tone='refused'] { border-style: dashed; }
 .badge[data-tone='warn'] { background: var(--warn-soft); color: var(--warn); }
+.badge[data-tone='info'] { background: var(--info-soft); color: var(--info); }
 tr.extended td { background: var(--info-soft); } /* an extension is neutral: info, not the "good" green */
 tr.extended td:first-child { box-shadow: inset 4px 0 0 var(--info); }
 
@@ -159,6 +160,7 @@ input[aria-invalid='true'] { border: 2px solid var(--oxblood); }
 .board-facts dt { color: var(--muted); font-size: 0.8125rem; }
 .board-facts dd { margin: 0; font-weight: 700; }
 .board form { padding: 1.25rem 1.5rem 1.5rem; border-top: 1px solid var(--rule); background: var(--paper); }
+.form-explain { flex-basis: 100%; margin: 0; } /* UX-08: the one-line proxy explainer under the form */
 .board form input { font-size: 1.25rem; width: 11rem; min-width: 0; }
 .board form button[type='submit'] { font-size: 1.125rem; padding: 0.65rem 2rem; }
 .board form [role='status'], .board form .form-hint { flex-basis: 100%; }

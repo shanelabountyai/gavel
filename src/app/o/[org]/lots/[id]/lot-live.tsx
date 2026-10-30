@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatCents } from '@/auction/engine/money';
 import type { LotView } from '@/auction/lot-view';
-import { BidForm } from './bid-form';
+import { BidForm, type BidOk } from './bid-form';
 
 type View = Omit<LotView, 'etag'>;
 /** Who is looking (UX-03, UX-04): a bidder gets the form, a member without a paddle the register button, a bidder who has
@@ -71,6 +71,16 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
     return () => clearTimeout(t);
   }, [extended]);
 
+  // UX-14: a judged bid's numbers go on the board at once. Status is left alone: a REJECTED_LOT_CLOSED answer means the
+  // next poll will say closed. After any accepted bid the caller has a row, so `you` is always one of the two.
+  const applyResult = (r: BidOk, sent: number) => setView((v) => ({
+    ...v,
+    priceCents: r.priceCents,
+    minNextCents: r.minNextCents,
+    bidCount: r.accepted ? v.bidCount + 1 : v.bidCount,
+    you: r.accepted || v.you ? (r.youLead ? 'LEADING' : 'OUTBID') : v.you,
+    yourMaxCents: r.accepted ? Math.max(v.yourMaxCents ?? 0, sent) : r.yourMaxCents ?? v.yourMaxCents,
+  }));
   const utc = (iso: string) => `${iso.slice(0, 19).replace('T', ' ')} UTC`;
   return (
     <section className="board" data-phase={!closed && !scheduled && left < 60 ? 'final' : undefined} data-stale={stale || undefined} aria-label="Live lot">
@@ -103,7 +113,7 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
           {extended && <span key={extended.at} className="board-extended">Extended by a late bid, +{formatLeft(Math.round(extended.ms / 1000))}</span>}
         </p>
       </div>
-      {!closed && viewer.kind === 'bidder' && <BidForm slug={slug} lotId={lotId} view={view} paddle={viewer.paddle} disabledReason={scheduled ? `Bidding opens at ${utc(view.opensAt)}.` : undefined} />}
+      {!closed && viewer.kind === 'bidder' && <BidForm slug={slug} lotId={lotId} view={view} paddle={viewer.paddle} disabledReason={scheduled ? `Bidding opens at ${utc(view.opensAt)}.` : undefined} onResult={applyResult} />}
       {!closed && (viewer.kind === 'register' || viewer.kind === 'terms') && <div className="board-panel" data-testid={viewer.kind === 'terms' ? 'terms-panel' : undefined}>{children}</div>}
       {viewer.kind === 'staff' && (
         <p className="board-panel" data-testid="staff-view">
