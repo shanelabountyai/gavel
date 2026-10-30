@@ -32,7 +32,7 @@ DEMO_MODE=1 npm run e2e:server
 
 When `curl -s localhost:6100/api/health` prints `{"ok":true}`, open <http://localhost:6100/demo>.
 
-**Accounts.** Sign-in is the one-click page at `/demo`; no password is typed. They exist only because `DEMO_MODE=1` and `isDemo` is set by `scripts/seed-demo.ts`. Owners and admins are TOTP-enrolled but `/demo` skips it. The fixed public TOTP secret is `DEMO_TOTP_SECRET` in `scripts/seed-demo.ts` (safe only because a demo session cannot change its email or TOTP).
+**Accounts.** Sign-in is the one-click page at `/demo`; no password is typed. They exist only because `DEMO_MODE=1` and `isDemo` is set by `scripts/seed-demo.ts`. Owners and admins are TOTP-enrolled but `/demo` skips it. The page groups them by journey (D-81): **Bid** (whoever holds a paddle in the live house; shared by every visitor, and the page says so), **Run the sale** (that house's owner and admin), the rest behind *Other seeded accounts*. A staff account in two houses lands on the live house's auctions, not on Your orgs. The fixed public TOTP secret is `DEMO_TOTP_SECRET` in `scripts/seed-demo.ts` (safe only because a demo session cannot change its email or TOTP).
 
 | Account | Role | Use it for |
 |---|---|---|
@@ -55,7 +55,7 @@ Point at: 39 lots, 31 sold, 3 no bids, 2 reserve not met, 3 withdrawn by staff; 
 
 ## 2. The staff view: a sold lot and its invoice (3 min)
 
-Sign in at `/demo` as `owner@acme.demo.test`, then:
+Sign in at `/demo` with **Run the sale as owner** (`owner@acme.demo.test`; it lands on the live house's auctions), then:
 
 1. `/o/gavel-fixtures/auctions` → **Harlan farm estate (online only)**: 12 lots, starts, hidden reserves (staff only).
 2. **Invoices**: 9 buyers, premium 15.00 % of hammer. Paddle 102 bought lot 1, the oak roll-top desk: hammer $160.00, premium $24.00, total $184.00. That hammer equals `price 16000` for L001 in the eval table.
@@ -67,7 +67,7 @@ Sign in at `/demo` as `owner@acme.demo.test`, then:
 
 ## 3. A live lot (4 min)
 
-In a second browser profile (or private window) sign in as `member@acme.demo.test`. In the first window, as the owner:
+In a second browser profile (or private window) sign in as `member@acme.demo.test` (under *Other seeded accounts* until it holds a paddle; after `seed:live`, **Bid as Ada** is the one-tap route). In the first window, as the owner:
 
 1. `/o/acme/auctions` → Name `Live demo sale`, Opens (UTC) `2020-01-01T10:00` → **Create auction**.
 2. Title `Demo mantel clock`, Start price ($) `100`, Reserve ($) `150`, Closes (UTC) 20 minutes from now (the line under the field shows the UTC instant and "closes in 20 min") → **Create and publish lot**; the page says `Lot 1 published.` and marks the row.
