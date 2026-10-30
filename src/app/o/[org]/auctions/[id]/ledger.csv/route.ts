@@ -9,9 +9,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // R-15 (D-86): the sale's ledger as CSV, or one lot's with ?lot=<id>. Staff (audit.read), read-only; another house's
 // sale or lot is a 404 (INV-02). The first await is requireOrg, so an anonymous caller is redirected to /login.
 export async function GET(req: Request, { params }: { params: Promise<{ org: string; id: string }> }) {
-  const { org, id } = await params;
   let ctx;
-  try { ctx = await requireOrg(org, 'audit.read'); } catch (e) { if (e instanceof AuthzError) return new Response('Forbidden', { status: 403 }); throw e; }
+  try { ctx = await requireOrg((await params).org, 'audit.read'); } catch (e) { if (e instanceof AuthzError) return new Response('Forbidden', { status: 403 }); throw e; }
+  const { id } = await params;
   const lotId = new URL(req.url).searchParams.get('lot') ?? undefined;
   if (!UUID.test(id) || (lotId && !UUID.test(lotId))) notFound();
   const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, select: { name: true } });
