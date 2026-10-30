@@ -211,6 +211,15 @@ def main() -> int:
     except ValueError:
         check("GB-26h a negative sum refused", "ValueError", "ValueError")
 
+    print("-- GB-27 sales tax (R-09, D-78): the third rounding site; once per invoice over the configured base; exempt is 0")
+    HS, PS = 10020 + 33333, 1503 + 5000  # GB-16's two lots at 1500 bps on one invoice: hammer 43,353, premium 6,503
+    check("GB-27a 825 bps on HAMMER: 43,353 × 825 / 10,000 = 3,576.6225 → 3,577", round_half_up(HS * 825, 10000), 3577)
+    check("GB-27b 825 bps on HAMMER_PLUS_PREMIUM: 49,856 × 825 / 10,000 = 4,113.12 → 4,113", round_half_up((HS + PS) * 825, 10000), 4113)
+    check("GB-27c once per invoice, not per line: two 10,005 lots at 825 bps → 1,651 (per line: 825 + 825 = 1,650)", (round_half_up(20010 * 825, 10000), 2 * round_half_up(10005 * 825, 10000)), (1651, 1650))
+    check("GB-27d 0 bps and 10,000 bps", (round_half_up(HS * 0, 10000), round_half_up(HS * 10000, 10000)), (0, 43353))
+    check("GB-27e exempt bidder: 0 whatever the rate (by definition; the engine skips the rounding)", 0, 0)
+    check("GB-27f total due = hammer + premium + tax on HAMMER", HS + PS + 3577, 53433)
+
     print("OK" if FAILS == 0 else f"FAIL: {FAILS}")
     return 0 if FAILS == 0 else 1
 

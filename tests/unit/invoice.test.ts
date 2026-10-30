@@ -70,4 +70,33 @@ describe('invoice (task 2.1)', () => {
     const s = settled.find((x) => x.outcome === 'SOLD')!;
     expect(() => invoice([{ ...s, premiumCents: s.premiumCents + 0.5 }])).toThrow(MoneyError);
   });
+
+  it('with no tax input every total is hammer + premium and the tax fields are zero', () => {
+    for (const i of out) expect([i.taxBps, i.taxBase, i.taxCents, i.exemptRef, i.totalCents]).toEqual([0, 'HAMMER', 0, null, i.hammerCents + i.premiumCents]);
+  });
+});
+
+// R-09 / AX-09 (D-78): sales tax is the third rounding site, once per invoice over the configured base; GB-27.
+describe('invoice sales tax (GB-27)', () => {
+  const line = (lotNumber: number, hammerCents: number, premiumCents: number, winner = 'B1'): SettledLot => ({ auctionId: 'S', lotId: `L${lotNumber}`, lotNumber, outcome: 'SOLD', winner, hammerCents, premiumCents, totalCents: hammerCents + premiumCents });
+  const two = [line(1, 10020, 1503), line(2, 33333, 5000)]; // GB-16's lots at 1500 bps: hammer 43,353, premium 6,503
+  const tax = (taxBps: number, taxBase: 'HAMMER' | 'HAMMER_PLUS_PREMIUM', exempt: [string, string][] = []) => ({ bySale: new Map([['S', { taxBps, taxBase }]]), exempt: new Map(exempt) });
+
+  it('GB-27a 825 bps on HAMMER → 3,577', () => expect(invoice(two, tax(825, 'HAMMER'))[0]).toMatchObject({ hammerCents: 43353, premiumCents: 6503, taxCents: 3577, totalCents: 53433, taxBps: 825, taxBase: 'HAMMER', exemptRef: null }));
+  it('GB-27b 825 bps on HAMMER_PLUS_PREMIUM → 4,113', () => expect(invoice(two, tax(825, 'HAMMER_PLUS_PREMIUM'))[0]).toMatchObject({ taxCents: 4113, totalCents: 53969 }));
+  it('GB-27c once per invoice, not per line: two 10,005 lots → 1,651', () => expect(invoice([line(1, 10005, 0), line(2, 10005, 0)], tax(825, 'HAMMER'))[0]!.taxCents).toBe(1651));
+  it('GB-27d 0 bps and 10,000 bps', () => {
+    expect(invoice(two, tax(0, 'HAMMER'))[0]).toMatchObject({ taxCents: 0, totalCents: 49856 });
+    expect(invoice(two, tax(10000, 'HAMMER'))[0]!.taxCents).toBe(43353);
+  });
+  it('GB-27e an exempt bidder owes no tax and the certificate is on the invoice; another bidder on the same sale is taxed', () => {
+    const out = invoice([...two, line(3, 10020, 1503, 'B2')], tax(825, 'HAMMER', [['B1', 'CERT-42']]));
+    expect(out.find((i) => i.bidderId === 'B1')).toMatchObject({ taxCents: 0, exemptRef: 'CERT-42', totalCents: 49856 });
+    expect(out.find((i) => i.bidderId === 'B2')).toMatchObject({ taxCents: 827, exemptRef: null, totalCents: 12350 }); // 10,020 × 825 / 10,000 = 826.65
+  });
+  it('a sale missing from the tax input is untaxed; a rate above 10,000 bps or a non-integer rate is refused', () => {
+    expect(invoice(two, { bySale: new Map(), exempt: new Map() })[0]!.taxCents).toBe(0);
+    expect(() => invoice(two, tax(10001, 'HAMMER'))).toThrow(MoneyError);
+    expect(() => invoice(two, tax(8.25, 'HAMMER'))).toThrow(MoneyError);
+  });
 });

@@ -304,17 +304,32 @@ export type SettledLot = Pick<CorrectedSettlement, 'outcome' | 'winner' | 'hamme
 
 export type InvoiceLine = Pick<SettledLot, 'lotId' | 'lotNumber' | 'hammerCents' | 'premiumCents' | 'totalCents'>;
 
+export type TaxBase = 'HAMMER' | 'HAMMER_PLUS_PREMIUM';
+export type TaxConfig = { readonly taxBps: number; readonly taxBase: TaxBase };
+/** D-78 (R-09): each sale's tax configuration and the exempt bidders' certificate references. Configuration, not advice. */
+export type TaxInput = { readonly bySale: ReadonlyMap<string, TaxConfig>; readonly exempt: ReadonlyMap<string, string> };
+const NO_TAX: TaxConfig = { taxBps: 0, taxBase: 'HAMMER' };
+
 export type Invoice = {
   readonly auctionId: string;
   readonly bidderId: string;
   readonly lots: readonly InvoiceLine[];
   readonly hammerCents: number;
   readonly premiumCents: number;
+  /** The sale's rate and base; 0 bps when the sale taxes nothing. */
+  readonly taxBps: number;
+  readonly taxBase: TaxBase;
+  /** The third rounding site (D-78, GB-27): roundHalfUp(base × bps, 10000) once over the whole invoice; 0 when exempt. */
+  readonly taxCents: number;
+  /** The exemption certificate on file for the bidder, printed on the invoice; null when taxable. */
+  readonly exemptRef: string | null;
+  /** hammer + premium + tax: what the buyer owes. */
   readonly totalCents: number;
 };
 
-/** One invoice per winning bidder per auction: SOLD lots only, lines in lot-number order, sums in integer cents. */
-export function invoice(settled: readonly SettledLot[]): Invoice[] {
+/** One invoice per winning bidder per auction: SOLD lots only, lines in lot-number order, sums in integer cents, then
+ * the sale's tax once over the invoice's base (D-78). No `tax` means no tax, so totals are hammer + premium. */
+export function invoice(settled: readonly SettledLot[], tax?: TaxInput): Invoice[] {
   const by = new Map<string, { auctionId: string; bidderId: string; lots: InvoiceLine[] }>();
   for (const s of settled) {
     if (s.outcome !== 'SOLD' || s.winner === null) continue;
@@ -327,7 +342,14 @@ export function invoice(settled: readonly SettledLot[]): Invoice[] {
     .sort((a, b) => (a.auctionId < b.auctionId ? -1 : a.auctionId > b.auctionId ? 1 : a.bidderId < b.bidderId ? -1 : a.bidderId > b.bidderId ? 1 : 0))
     .map(({ auctionId, bidderId, lots }) => {
       const sorted = [...lots].sort((a, b) => a.lotNumber - b.lotNumber);
-      return { auctionId, bidderId, lots: sorted, hammerCents: sum(sorted, 'hammerCents'), premiumCents: sum(sorted, 'premiumCents'), totalCents: sum(sorted, 'totalCents') };
+      const hammerCents = sum(sorted, 'hammerCents');
+      const premiumCents = sum(sorted, 'premiumCents');
+      const { taxBps, taxBase } = tax?.bySale.get(auctionId) ?? NO_TAX;
+      const exemptRef = tax?.exempt.get(bidderId) ?? null;
+      const base = taxBase === 'HAMMER' ? hammerCents : hammerCents + premiumCents;
+      if (assertBps(taxBps) < 0 || taxBps > 10000) throw new MoneyError('rate_out_of_range'); // as consignorStatement (D-74)
+      const taxCents = exemptRef !== null ? 0 : roundHalfUp(BigInt(base) * BigInt(taxBps), 10000n); // GB-27: once per invoice
+      return { auctionId, bidderId, lots: sorted, hammerCents, premiumCents, taxBps, taxBase, taxCents, exemptRef, totalCents: hammerCents + premiumCents + taxCents };
     });
 }
 
