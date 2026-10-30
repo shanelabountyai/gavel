@@ -47,7 +47,9 @@ test('your bids and the catalog badge show lead, outbid and won without opening 
   await expect(page.getByRole('row', { name: new RegExp(`Won lot ${T}`) })).toContainText(/Won.*Closed/);
   expect(await page.getByRole('row').count()).toBe(4); // header + the three lots Ada bid on, none of the seed's
 
-  await page.goto('/o/acme/catalog');
+  await page.getByRole('link', { name: `Outbid lot ${T}` }).click(); // to the lot, then R19's back link to the catalog
+  await page.getByRole('link', { name: /^← .* catalog$/ }).click();
+  await expect(page).toHaveURL(/\/o\/acme\/catalog$/);
   await expect(page.getByRole('row', { name: new RegExp(`Outbid lot ${T}`) }).locator('.badge')).toHaveText('Outbid');
   await expect(page.getByRole('row', { name: new RegExp(`Lead lot ${T}`) }).locator('.badge')).toHaveText('Leading');
 

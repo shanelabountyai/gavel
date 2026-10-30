@@ -137,6 +137,7 @@ input[aria-invalid='true'] { border: 2px solid var(--oxblood); }
 
 /* The lot page's price board: the one loud thing in the app. */
 .lot-head { display: grid; gap: 0.25rem; margin-bottom: 1.5rem; }
+.back-links { font-size: 0.9375rem; margin: 0 0 0.5rem; } /* R19 */
 .lot-head h1, .lot-head p { margin: 0; }
 .lot-head .lot-number { font-size: 1rem; font-weight: 700; color: var(--muted); margin: 0; }
 .board { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; max-width: 46rem; }

@@ -48,4 +48,10 @@ test('history lists every ledger row of a SNIPE lot, first and last as in expect
   expect(want.filter((w) => Number(w.closes_after_ms) > Number(w.closes_before_ms)).length).toBe(3);
   await expect(page.getByRole('heading', { name: 'Settlement' })).toBeVisible();
   await expect(page.locator('form, button, input')).toHaveCount(0); // read-only: no edit control
+  // R19: one click back to the sale, one to the page a bidder sees
+  await page.getByRole('link', { name: 'Bidder view' }).click();
+  await expect(page).toHaveURL(new RegExp(`/o/gavel-fixtures/lots/${lot.id}$`));
+  await page.goBack();
+  await page.getByRole('link', { name: /^← / }).click();
+  await expect(page).toHaveURL(new RegExp(`/o/gavel-fixtures/auctions/${lot.auctionId}$`));
 });

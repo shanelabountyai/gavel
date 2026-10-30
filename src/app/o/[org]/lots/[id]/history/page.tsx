@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
 import { formatLeft } from '@/auction/time-left';
@@ -20,7 +21,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   const ctx = await requireOrg((await params).org, 'audit.read');
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const lot = await db.lot.findFirst({ where: { id, ...inOrg(ctx) }, select: { id: true, number: true, title: true, auctionId: true } });
+  const lot = await db.lot.findFirst({ where: { id, ...inOrg(ctx) }, select: { id: true, number: true, title: true, auctionId: true, auction: { select: { name: true } } } });
   if (!lot) notFound();
   const [bids, loaded, withdrawal] = await Promise.all([
     db.bid.findMany({ where: { lotId: id, ...inOrg(ctx) }, orderBy: { seq: 'asc' } }),
@@ -42,6 +43,8 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
 
   return (
     <main>
+      {/* R19: back to the sale, and the page a bidder sees */}
+      <p className="back-links"><Link href={`/o/${ctx.slug}/auctions/${lot.auctionId}`}>← {lot.auction.name}</Link> · <Link href={`/o/${ctx.slug}/lots/${lot.id}`}>Bidder view</Link></p>
       <h1>Lot {lot.number} history: {lot.title}</h1>
       <p className="muted">{bids.length} {bids.length === 1 ? 'attempt' : 'attempts'}, in the order they were judged, accepted or refused. Rows marked Extended pushed the close out. What a bidder saw is the price and leader after the row before theirs.</p>
       <div className="table-scroll history">

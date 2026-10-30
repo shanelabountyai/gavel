@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { lotView } from '@/auction/lot-view';
 import { currentTerms, unacceptedTermsSha } from '@/auction/terms';
@@ -30,6 +31,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   return (
     <main>
       <header className="lot-head">
+        <p className="back-links"><Link href={`/o/${ctx.slug}/catalog`}>← {lot.auction.name} catalog</Link></p>{/* R19 */}
         <p className="lot-number">Lot {lot.number} · {lot.auction.name}</p>
         <h1>{lot.title}</h1>
         {(lot.consignorRef?.name || lot.consignor) && <p className="muted">Consigned by {lot.consignorRef?.name ?? lot.consignor}</p>}
