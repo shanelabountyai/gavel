@@ -1,4 +1,5 @@
 import { test } from '@playwright/test';
+import { demoSignIn } from './demo-signin';
 import { registerBidder } from '../src/auction/bidder';
 import { placeBid } from '../src/auction/place-bid';
 import { db } from '../src/core/db';
@@ -31,8 +32,7 @@ test('bidder lot page: proxy lead inside the soft close', async ({ page }) => {
   await placeBid({ orgId: org.id, lotId: lot.id, bidderId: other.id, maxCents: 30000, idempotencyKey: `shot-${lot.id}-1` });
   await placeBid({ orgId: org.id, lotId: lot.id, bidderId: mine.id, maxCents: 50000, idempotencyKey: `shot-${lot.id}-2` });
 
-  await page.goto('/demo');
-  await page.getByRole('button', { name: 'member@acme.demo.test' }).click();
+  await demoSignIn(page, 'member@acme.demo.test');
   await page.goto(`/o/acme/lots/${lot.id}`);
   await page.getByTestId('you').waitFor();
   await page.setViewportSize({ width: 800, height: 900 }); // the board is 46rem; no empty half-page beside it
@@ -44,8 +44,7 @@ test('staff history: two late bids refused and kept', async ({ page }) => {
   const owner = await db.user.findUniqueOrThrow({ where: { email: 'owner@acme.demo.test' } });
   await db.membership.upsert({ where: { orgId_userId: { orgId: org.id, userId: owner.id } }, create: { orgId: org.id, userId: owner.id, role: 'owner' }, update: { role: 'owner' } });
   const lot = await db.lot.findFirstOrThrow({ where: { orgId: org.id, title: 'Stoneware crock, 5 gal', number: 9 } }); // L009, LATE
-  await page.goto('/demo');
-  await page.getByRole('button', { name: 'owner@acme.demo.test' }).click();
+  await demoSignIn(page, 'owner@acme.demo.test');
   await page.goto(`/o/gavel-fixtures/lots/${lot.id}/history`);
   await page.locator('tbody tr[data-seq]').first().waitFor();
   await page.locator('main').screenshot({ path: `${out}/history-shot.png` });

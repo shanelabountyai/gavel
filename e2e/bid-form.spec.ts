@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { demoSignIn } from './demo-signin';
 import { registerBidder } from '../src/auction/bidder';
 import { placeBid } from '../src/auction/place-bid';
 import { db } from '../src/core/db';
@@ -19,8 +20,7 @@ test('double click writes one row; a 50× max confirms, and cancel writes nothin
   });
   const rows = () => db.bid.count({ where: { lotId: lot.id } });
 
-  await page.goto('/demo');
-  await page.getByRole('button', { name: 'member@acme.demo.test' }).click();
+  await demoSignIn(page, 'member@acme.demo.test');
   await page.goto(`/o/acme/lots/${lot.id}`);
 
   await page.getByLabel('Your maximum ($)').fill('150');
@@ -64,8 +64,7 @@ test('one tap bids the minimum, a double tap writes one row, and the board takes
   });
   const rows = () => db.bid.findMany({ where: { lotId: lot.id, bidderId: mine.id }, orderBy: { seq: 'asc' } });
 
-  await page.goto('/demo');
-  await page.getByRole('button', { name: 'member@acme.demo.test' }).click();
+  await demoSignIn(page, 'member@acme.demo.test');
   await page.goto(`/o/acme/lots/${lot.id}`);
   await expect(page.getByLabel('Your maximum ($)')).toHaveAttribute('placeholder', '100.00');
   await expect(page.getByText('Enter the most you will pay.')).toBeVisible();

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
+import { demoSignIn } from './demo-signin';
 import { formatCents } from '../src/auction/engine/money';
 import { db } from '../src/core/db';
 import { runDb } from '../scripts/auction-eval';
@@ -27,8 +28,7 @@ test.beforeAll(async () => {
 
 test('history lists every ledger row of a SNIPE lot, first and last as in expected_bids.csv', async ({ page }) => {
   const lot = await db.lot.findFirstOrThrow({ where: { title: fixtureLot.title, number: fixtureLot.lot_number } });
-  await page.goto('/demo');
-  await page.getByRole('button', { name: 'owner@acme.demo.test' }).click();
+  await demoSignIn(page, 'owner@acme.demo.test');
   await page.goto(`/o/gavel-fixtures/lots/${lot.id}/history`);
 
   const state = await db.lotState.findUniqueOrThrow({ where: { lotId: lot.id } });

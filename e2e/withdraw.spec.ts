@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { demoSignIn } from './demo-signin';
 import { registerBidder } from '../src/auction/bidder';
 import { placeBid } from '../src/auction/place-bid';
 import { db } from '../src/core/db';
@@ -14,9 +15,7 @@ const user = async (email: string) => {
   return u;
 };
 const signIn = async (page: Page, email: string) => {
-  await page.goto('/demo');
-  await page.getByRole('button', { name: email }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith('/demo'));
+  await demoSignIn(page, email);
 };
 
 test.beforeAll(async () => {

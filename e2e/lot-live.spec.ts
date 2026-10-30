@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { demoSignIn } from './demo-signin';
 import { registerBidder } from '../src/auction/bidder';
 import { placeBid } from '../src/auction/place-bid';
 import { db } from '../src/core/db';
@@ -29,8 +30,7 @@ async function makeLot(end: Date) {
 
 test('the live region announces the final minute, an extension and the close once each, not per tick', async ({ page }) => {
   const lot = await makeLot(new Date(Date.now() + 63_000));
-  await page.goto('/demo');
-  await page.getByRole('button', { name: 'member@acme.demo.test' }).click();
+  await demoSignIn(page, 'member@acme.demo.test');
   await page.goto(`/o/acme/lots/${lot.id}`);
   const announce = page.getByTestId('announce');
   await expect(announce).toHaveText('', { timeout: 1000 });
@@ -53,8 +53,7 @@ test('the live region announces the final minute, an extension and the close onc
 
 test('coming back to the page polls at once; a failing route says Reconnecting and leaves the form usable', async ({ page }) => {
   const lot = await makeLot(new Date(Date.now() + 3_600_000));
-  await page.goto('/demo');
-  await page.getByRole('button', { name: 'member@acme.demo.test' }).click();
+  await demoSignIn(page, 'member@acme.demo.test');
   await page.goto(`/o/acme/lots/${lot.id}`);
   await expect(page.getByTestId('countdown')).toBeVisible();
 

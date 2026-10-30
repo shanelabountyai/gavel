@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { demoSignIn } from './demo-signin';
 import { registerBidder } from '../src/auction/bidder';
 import { placeBid } from '../src/auction/place-bid';
 import { db } from '../src/core/db';
@@ -17,9 +18,7 @@ async function makeLot(number: number, title: string, end: Date) {
   return db.lot.create({ data: { orgId: org.id, auctionId: auction.id, number, title, startCents: 10000, scheduledEnd: end, state: { create: { orgId: org.id, priceCents: 0, leaderMaxCents: 0, bidCount: 0, acceptedCount: 0, closesAt: end, extensionCount: 0 } } } });
 }
 const signIn = async (page: Page, email: string) => {
-  await page.goto('/demo');
-  await page.getByRole('button', { name: email }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith('/demo'));
+  await demoSignIn(page, email);
 };
 
 test.beforeAll(async () => {

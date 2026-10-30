@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { demoSignIn } from './demo-signin';
 import { registerBidder } from '../src/auction/bidder';
 import { placeBid } from '../src/auction/place-bid';
 import { db } from '../src/core/db';
@@ -23,8 +24,7 @@ test('a rival bid and a soft-close extension reach the open lot page by polling'
   });
   const bid = (b: { id: string }, maxCents: number) => placeBid({ orgId: org.id, lotId: lot.id, bidderId: b.id, maxCents, idempotencyKey: `e2e-${lot.id}-${maxCents}` });
 
-  await page.goto('/demo');
-  await page.getByRole('button', { name: 'member@acme.demo.test' }).click();
+  await demoSignIn(page, 'member@acme.demo.test');
   await page.goto(`/o/acme/lots/${lot.id}`);
   await expect(page.getByTestId('price')).toHaveText('$100.00'); // no accepted bid: the opening bid, never the state's 0 (AX-01)
   const countdown = async () => Number(await page.getByTestId('countdown').getAttribute('data-seconds'));

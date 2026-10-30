@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { demoSignIn } from './demo-signin';
 import { db } from '../src/core/db';
 import { runDb } from '../scripts/auction-eval';
 import { seedDemo } from '../scripts/seed-demo';
@@ -13,8 +14,7 @@ test.beforeAll(async () => {
 }, 120_000);
 
 test('suspend then reinstate paddle 100', async ({ page }) => {
-  await page.goto('/demo');
-  await page.getByRole('button', { name: 'owner@acme.demo.test' }).click();
+  await demoSignIn(page, 'owner@acme.demo.test');
   await page.goto('/o/gavel-fixtures/bidders');
   await expect(page.getByText('standing maximums stay live')).toBeVisible();
   const row = page.getByTestId('bidder-100');

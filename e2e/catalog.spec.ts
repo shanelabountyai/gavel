@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { demoSignIn } from './demo-signin';
 import { db } from '../src/core/db';
 import { runDb } from '../scripts/auction-eval';
 import { seedDemo } from '../scripts/seed-demo';
@@ -16,8 +17,7 @@ test.beforeAll(async () => {
 
 test('create auction and lot, see it in the catalog; reserve below start is refused', async ({ page }) => {
   const name = `E2E auction ${Date.now()}`;
-  await page.goto('/demo');
-  await page.getByRole('button', { name: 'owner@acme.demo.test' }).click();
+  await demoSignIn(page, 'owner@acme.demo.test');
   await page.goto('/o/gavel-fixtures/auctions');
   await page.getByLabel('Name').fill(name);
   await page.getByLabel('Opens (UTC)').fill('2031-01-01T10:00');
