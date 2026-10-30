@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from auctionlib import (Lot, Rules, Submission, apply_bid, fold, increment_for, lot_status, min_next_bid,  # noqa: E402
                         open_state, replay, round_half_up, settle, LedgerRow,
-                        Contract, ConsignedLot, consignor_statement, invoice_balance)
+                        Contract, ConsignedLot, consignor_statement, invoice_balance, bidder_aliases)
 
 FAILS = 0
 R = Rules.load()
@@ -219,6 +219,17 @@ def main() -> int:
     check("GB-27d 0 bps and 10,000 bps", (round_half_up(HS * 0, 10000), round_half_up(HS * 10000, 10000)), (0, 43353))
     check("GB-27e exempt bidder: 0 whatever the rate (by definition; the engine skips the rounding)", 0, 0)
     check("GB-27f total due = hammer + premium + tax on HAMMER", HS + PS + 3577, 53433)
+
+    print("-- GB-28 public bid history aliases (R-11, D-83): by first accepted appearance; a refused-only bidder gets none")
+    class _Row:  # (seq, bidder, accepted) is all the rule reads
+        def __init__(self, seq, bidder, accepted): self.seq, self.bidder, self.accepted = seq, bidder, accepted
+    # fixtures/expected_bids.csv L001 (PROXY_WAR): seq, bidder, accepted, given out of order to show the sort
+    L001 = [(12, "B003", True), (1, "B034", True), (2, "B027", True), (3, "B003", True), (4, "B034", False), (5, "B015", True), (6, "B019", False),
+            (7, "B027", True), (8, "B019", False), (9, "B003", False), (10, "B019", True), (11, "B027", True)]
+    check("GB-28a L001: five bidders, numbered by first accepted row", bidder_aliases([_Row(*r) for r in L001]), {"B034": 1, "B027": 2, "B003": 3, "B015": 4, "B019": 5})
+    check("GB-28b a bidder refused before anyone accepted them takes no number; the next accepted bidder is 2, not 3",
+          bidder_aliases([_Row(1, "A", True), _Row(2, "X", False), _Row(3, "B", True), _Row(4, "X", False)]), {"A": 1, "B": 2})
+    check("GB-28c no accepted rows: no aliases", bidder_aliases([_Row(1, "X", False)]), {})
 
     print("OK" if FAILS == 0 else f"FAIL: {FAILS}")
     return 0 if FAILS == 0 else 1

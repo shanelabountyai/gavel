@@ -231,6 +231,14 @@ export function fold(lot: Lot, rows: readonly FoldRow[], rules: Rules): LotState
   return state;
 }
 
+/** R-11 (D-83, GB-28): per-lot public aliases, "Bidder N" with N by first accepted appearance in seq order. A bidder whose
+ * rows were all refused gets none: refused rows are never shown, and a numbering gap would reveal one. Viewer-independent. */
+export function bidderAliases(rows: readonly { readonly seq: number; readonly bidderId: string; readonly accepted: boolean }[]): ReadonlyMap<string, number> {
+  const aliases = new Map<string, number>();
+  for (const r of [...rows].sort((a, b) => a.seq - b.seq)) if (r.accepted && !aliases.has(r.bidderId)) aliases.set(r.bidderId, aliases.size + 1);
+  return aliases;
+}
+
 export type Settlement = {
   readonly outcome: SettlementOutcome;
   readonly winner: string | null;

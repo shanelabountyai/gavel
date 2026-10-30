@@ -283,6 +283,16 @@ def fold(lot: Lot, rows: list, rules: Rules) -> LotState:
     return state
 
 
+def bidder_aliases(rows: list) -> dict:
+    """Public bid history (R-11, D-83): per-lot aliases 'Bidder N', N by first ACCEPTED appearance in seq order.
+    A bidder whose rows were all refused gets none: refused rows are never shown, and a numbering gap would reveal one."""
+    aliases: dict = {}
+    for row in sorted(rows, key=lambda r: r.seq):
+        if row.accepted and row.bidder not in aliases:
+            aliases[row.bidder] = len(aliases) + 1
+    return aliases
+
+
 @dataclass(frozen=True)
 class Settlement:
     outcome: str

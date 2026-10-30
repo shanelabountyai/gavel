@@ -1,9 +1,10 @@
 // Task 1.5: the brief §9 goldens that need only applyBid (GB-00..GB-14, GB-17, GB-19, GB-22, GB-23), with
 // the exact values tools/golden_answers.py prints. Lot G: start 10,000, no reserve, opens 0, T = 3,600,000,
 // W = 120 s, cap 600 s, premium 1500 bps. Lot R: as G with reserve 25,000.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { MoneyError } from '@/auction/engine/money';
-import { type FoldRow, type Lot, type LotState, applyBid, fold, incrementFor, lotStatus, minNextBid, openState, reserveMet, resettle, settle } from '@/auction/engine/engine';
+import { type FoldRow, type Lot, type LotState, applyBid, bidderAliases, fold, incrementFor, lotStatus, minNextBid, openState, reserveMet, resettle, settle } from '@/auction/engine/engine';
 import { loadRules } from '@/auction/load-rules';
 
 const { rules } = loadRules();
@@ -181,5 +182,21 @@ describe('boundary: integers only', () => {
     const r2 = bid(G, frozen, 'A', 15_000, 100_000);
     expect(r1).toEqual(r2);
     expect(frozen).toEqual(s);
+  });
+});
+
+describe('GB-28 public bid history aliases (R-11, D-83)', () => {
+  it('GB-28a L001: five bidders numbered by first accepted row, whatever the input order', () => {
+    const rows = readFileSync('fixtures/expected_bids.csv', 'utf8').trim().split('\n').slice(1).map((l) => l.split(','))
+      .filter((c) => c[1] === 'L001').map((c) => ({ seq: Number(c[2]), bidderId: c[3]!, accepted: c[9] === 'true' }));
+    expect(rows).toHaveLength(12);
+    const exp = new Map([['B034', 1], ['B027', 2], ['B003', 3], ['B015', 4], ['B019', 5]]);
+    expect(bidderAliases(rows)).toEqual(exp);
+    expect(bidderAliases([...rows].reverse())).toEqual(exp);
+  });
+  it('GB-28b a bidder refused before anyone accepted them takes no number; GB-28c none without an accepted row', () => {
+    const r = (seq: number, bidderId: string, accepted: boolean) => ({ seq, bidderId, accepted });
+    expect(bidderAliases([r(1, 'A', true), r(2, 'X', false), r(3, 'B', true), r(4, 'X', false)])).toEqual(new Map([['A', 1], ['B', 2]]));
+    expect(bidderAliases([r(1, 'X', false)])).toEqual(new Map());
   });
 });

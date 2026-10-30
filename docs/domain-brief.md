@@ -83,7 +83,7 @@ Lots close two minutes apart from `t0` = 2026-11-07 14:00:00 UTC (invented). 40 
 | 9 | Close | `auction:close --as-of` | `settle(lot, state, asOf)` for closed unsettled lots (D-22) | `Settlement` rows |
 | 10 | Verify | `auction:verify` | §8 V1–V9 over every lot | OK or the first failure |
 
-The response never includes anyone's max, the reserve amount, or another bidder's identity beyond "you lead" / "you are outbid".
+The response never includes anyone's max, the reserve amount, or another bidder's identity beyond "you lead" / "you are outbid". The lot page's public history (D-83) shows accepted rows with a per-lot alias ("Bidder 3", GB-28): never another bidder's identity, maximum or refused attempt; an alias is not an identity.
 
 ## 5. Proxy bidding (`rules/auction.v1.json`, D-8..D-11)
 
@@ -172,6 +172,7 @@ Lot G: start 10,000, no reserve, opens 0, `scheduledEnd` T = 3,600,000, W = 120,
 | GB-25 | Contract 1250 bps, 500 per sold lot, 1,500 per unsold lot. Lots (given in reverse order): 1 SOLD 10,020; 2 SOLD 33,333; 3 UNSOLD_NO_BIDS; 4 UNSOLD_RESERVE_NOT_MET; 5 UNSOLD_WITHDRAWN; 6 UNSOLD_BY_CORRECTION; 7 SOLD 100. Also: lot 1 alone at 0 and at 10,000 bps with no fees; no lots; 10,001 bps | Lines in lot order (hammer, commission, fee, net): (10,020, 1,253, 500, 8,267); (33,333, 4,167, 500, 28,666); (0, 0, 1,500, −1,500); (0, 0, 1,500, −1,500); (0, 0, 0, 0); (0, 0, 0, 0); (100, 13, 500, −413). Totals 43,453 / 5,433 / 4,500 / 33,520, and net + commission + fees = hammer. Nets 100 and 0. A zero statement. Refused |
 | GB-26 | Payment status (R-08, D-75). Total 11,523 (GB-16's 10,020 + 1,503 at 1500 bps), due at 1,000,000 ms. Marks and instants: none at due − 1; none at due and at due + 1; none with no due date; 5,000 past due; 11,523 past due; 11,523 marked then the total corrected to 8,000 and to 0; 5,000 marked and defaulted; a negative sum | (UNPAID, 0, 11,523); UNPAID then OVERDUE; UNPAID; (PARTIAL, 5,000, 6,523); (PAID, 11,523, 0); (CREDIT, 11,523, −3,523) and (CREDIT, 11,523, −11,523); (DEFAULTED, 5,000, 6,523). Refused. Status, paid, balance = total − paid; no rounding |
 | GB-27 | Sales tax (R-09, D-78). GB-16's two lots on one invoice: hammer 43,353, premium 6,503. 825 bps on HAMMER → 3,577 (3,576.6225); on HAMMER_PLUS_PREMIUM → 4,113 (4,113.12); two 10,005 lots at 825 bps → 1,651 per invoice, where per line would give 1,650; 0 bps → 0; 10,000 bps → 43,353; an exempt bidder → 0; total due on HAMMER 53,433 |
+| GB-28 | Public bid history aliases (R-11, D-83). L001's ledger (seq, bidder, accepted): 1 B034 ✓, 2 B027 ✓, 3 B003 ✓, 4 B034 ✗, 5 B015 ✓, 6 B019 ✗, 7 B027 ✓, 8 B019 ✗, 9 B003 ✗, 10 B019 ✓, 11 B027 ✓, 12 B003 ✓; then A ✓, X ✗, B ✓, X ✗; then X ✗ alone | B034 1, B027 2, B003 3, B015 4, B019 5 (five aliases by first accepted row, whatever the input order); A 1, B 2, X none; none |
 
 ## 10. Reference measurements (kickoff, seed 20261019, rules v1)
 
