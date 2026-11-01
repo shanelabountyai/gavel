@@ -209,11 +209,12 @@ Each requirement lists what it changes, using these labels:
 - [x] Numbers on the fixtures equal brief §10. That comparison is the test.
 - *Changes:* read only. D. G: brief §10 is the golden. F: none.
 
-**R-16 Per-sale registration approval (AX-16).**
-- [ ] The `Auction` row gains `requiresApproval`.
-- [ ] New table `AuctionRegistration` (`auctionId`, `bidderId`, status `PENDING | APPROVED | DECLINED` as insert-only rows; the latest one wins).
-- [ ] The boundary refuses with `NOT_APPROVED_FOR_SALE` before the lock.
-- [ ] Any card or deposit check happens outside the system and appears only as a staff note.
+**R-16 Per-sale registration approval (AX-16).** **Built 2026-11-01 (D-88).**
+- [x] The `Auction` row gains `requiresApproval`.
+- [x] New table `AuctionRegistration` (`auctionId`, `bidderId`, status `PENDING | APPROVED | DECLINED` as insert-only rows; the latest one wins).
+- [x] The boundary refuses with `NOT_APPROVED_FOR_SALE` before the lock.
+- [x] Any card or deposit check happens outside the system and appears only as a staff note.
+- *Answered (Shane, D-88): per sale; the bidder requests and staff decide; staff may revoke during the sale, with suspension semantics.*
 - *Changes:* schema. D (amends D-47 Q2). G/F: none.
 
 **R-17 Relist an unsold lot (AX-17).** A "Relist" action on a lot whose current settlement is unsold creates a new lot in a chosen auction that has not opened yet, with `relistOfLotId`. The original's history and the consignor statement link to it. *Changes:* schema (one column). D. G/F: none.
@@ -256,7 +257,7 @@ Each requirement lists what it changes, using these labels:
 7. Do you advertise "No reserve" on absolute lots, or say nothing? (R-13)
 8. Stagger interval: one lot per minute, two, or more? Do you stagger by lot number or by group? (R-10)
 9. Do you ever withdraw a lot that has bids, and do you tell the bidders why? (R-04)
-10. Is approval per sale or per bidder, and is a card or deposit check the trigger? (R-16)
+10. Is approval per sale or per bidder, and is a card or deposit check the trigger? (R-16) *Answered D-88: per sale; any check happens outside and goes in the staff note.*
 11. Do terms change between sales often enough that per-version acceptance matters, or is per-house acceptance enough? (R-03)
 
 ## Build notes
