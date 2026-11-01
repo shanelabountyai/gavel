@@ -1,5 +1,5 @@
 // Task 2.2 (D-42 Q2, D-44): resettle(lot, ledger, target) is the settlement a correction writes. Hand-worked
-// lots, increments from rules/auction.v1.json (100 cents below 10000); every expected number is derived in the comment.
+// lots, increments from the standard table of rules/auction.v2.json (100 cents below 10000); every expected number is derived in the comment.
 import { describe, expect, it } from 'vitest';
 import { type Lot, type Submission, UNSOLD_BY_CORRECTION, replay, resettle, settle, fold } from '@/auction/engine/engine';
 import { MoneyError } from '@/auction/engine/money';
@@ -23,12 +23,12 @@ describe('resettle (task 2.2)', () => {
   it("the fold's own winner at the auction's rate is settle() exactly", () => {
     const st = settle(lot, fold(lot, rows, rules), 100_000)!;
     expect(st).toMatchObject({ outcome: 'SOLD', winner: 'A', winningSeq: 1, hammerCents: 3100, premiumCents: 465, totalCents: 3565 });
-    expect(resettle(lot, rows, rules, { winner: 'A', premiumBps: 1500 })).toEqual({ ...st, premiumBps: 1500 });
+    expect(resettle(lot, rows, rules, { winner: 'A', premiumBps: 1500 })).toEqual({ ...st, premiumBps: 1500, premiumBands: null });
   });
 
   it('to the underbidder: their last accepted row, capped at their own max (3100 reached, 3000 agreed)', () => {
     expect(resettle(lot, rows, rules, { winner: 'B', premiumBps: 1500 })).toEqual({
-      outcome: 'SOLD', winner: 'B', winningSeq: 2, hammerCents: 3000, premiumCents: 450, totalCents: 3450, closedAtMs: 100_000, premiumBps: 1500,
+      outcome: 'SOLD', winner: 'B', winningSeq: 2, hammerCents: 3000, premiumCents: 450, totalCents: 3450, closedAtMs: 100_000, premiumBps: 1500, premiumBands: null,
     });
   });
 
@@ -38,7 +38,7 @@ describe('resettle (task 2.2)', () => {
 
   it('unsold is zero amounts and no winner, keeping the rate for a later correction back', () => {
     expect(resettle(lot, rows, rules, { winner: null, premiumBps: 1500 })).toEqual({
-      outcome: UNSOLD_BY_CORRECTION, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: 100_000, premiumBps: 1500,
+      outcome: UNSOLD_BY_CORRECTION, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: 100_000, premiumBps: 1500, premiumBands: null,
     });
   });
 
@@ -55,6 +55,13 @@ describe('resettle (task 2.2)', () => {
     // Reserve 9000: A's max 5000 never reaches it, the lot closed UNSOLD_RESERVE_NOT_MET, and A cannot be sold to.
     const high = { ...lot, reserveCents: 9000 };
     expect(resettle(high, rowsOf(high, [sub(1, 'A', 5000)]), rules, { winner: 'A', premiumBps: 1500 })).toEqual({ refused: 'RESERVE_NOT_MET' });
+  });
+
+  it('D-90 tiered (GB-29 shape): 3100 at 1500 bps to 3000, 1000 above → (3000 × 1500 + 100 × 1000) / 10000 = 460', () => {
+    const premiumBands = [{ loCents: 0, hiCents: 3000, bps: 1500 }, { loCents: 3000, hiCents: null, bps: 1000 }];
+    expect(resettle(lot, rows, rules, { winner: 'A', premiumBps: 1500, premiumBands })).toEqual({
+      outcome: 'SOLD', winner: 'A', winningSeq: 1, hammerCents: 3100, premiumCents: 460, totalCents: 3560, closedAtMs: 100_000, premiumBps: 1500, premiumBands,
+    });
   });
 
   it('a non-integer rate is a MoneyError', () => {
@@ -75,7 +82,7 @@ describe('resettle with a consignor approval (AX-14)', () => {
 
   it('sells to the high bidder at the reached 3100: premium 3100 × 1500 / 10000 = 465, total 3565', () => {
     expect(resettle(high, below, rules, { winner: 'A', premiumBps: 1500, consignorApprovalRef: 'CA-1' })).toEqual({
-      outcome: 'SOLD', winner: 'A', winningSeq: 1, hammerCents: 3100, premiumCents: 465, totalCents: 3565, closedAtMs: 100_000, premiumBps: 1500,
+      outcome: 'SOLD', winner: 'A', winningSeq: 1, hammerCents: 3100, premiumCents: 465, totalCents: 3565, closedAtMs: 100_000, premiumBps: 1500, premiumBands: null,
     });
   });
 

@@ -1,5 +1,5 @@
 // rules:lint (task 1.4, CLAUDE.md non-negotiables 1, 6, 7): three checks, exit 1 on the first failure.
-//   1. rules/auction.v1.json parses, validates, and its sha256 equals D-23 (loadRules does both).
+//   1. rules/auction.v2.json parses, validates, and its sha256 equals D-23 (loadRules does both).
 //   2. Nothing under src/auction/engine/ names Prisma, @/core, @/app, Date.now, new Date, Math.random,
 //      process.env, fetch or setTimeout. The service files beside the engine are not scanned.
 //   3. No float path under the engine: Math.round, toFixed, parseFloat, a decimal literal, or `/`,
@@ -55,5 +55,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const problems = lintEngineDir();
   for (const p of problems) console.error(`rules:lint: ${p}`);
   if (problems.length) process.exit(1);
-  console.log(`rules:lint: OK (${rules.bands.length} bands, sha256 ${hash} = D-23, ${ENGINE_DIR} clean)`);
+  console.log(`rules:lint: OK (${Object.keys(rules.tables).length} increment tables, ${rules.bands.length} bands in ${rules.defaultTable}, sha256 ${hash} = D-23, ${ENGINE_DIR} clean)`);
 }

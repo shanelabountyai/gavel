@@ -16,7 +16,7 @@ from typing import Optional
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-RULES_PATH = os.path.join(ROOT, "rules", "auction.v1.json")
+RULES_PATH = os.path.join(ROOT, "rules", "auction.v2.json")  # D-90: v2; auction.v1.json stays for the old rows' hashes
 
 ACCEPTED = ("ACCEPTED_LEAD", "ACCEPTED_OUTBID", "ACCEPTED_RAISE")
 
@@ -30,26 +30,61 @@ def round_half_up(numerator: int, denominator: int) -> int:
 
 @dataclass(frozen=True)
 class Rules:
-    bands: tuple  # ((lo, hi_or_None, inc), ...)
+    tables: dict  # name -> ((lo, hi_or_None, inc), ...)  (D-90: named increment tables; a sale picks one)
+    default_table: str
     soft_close_window_ms: int
     max_extension_ms: int
-    buyer_premium_bps: int
+    premium_bands: tuple  # the default schedule: ((lo, hi_or_None, bps), ...)
+
+    @property
+    def bands(self) -> tuple:
+        return self.tables[self.default_table]
+
+    @property
+    def buyer_premium_bps(self) -> int:
+        return self.premium_bands[0][2]
 
     @staticmethod
     def load(path: str = RULES_PATH) -> "Rules":
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        bands = []
-        for b in data["increments"]["bands"]:
-            bands.append((int(b["lo_cents"]), None if b["hi_cents"] is None else int(b["hi_cents"]), int(b["increment_cents"])))
-        _check_bands(bands)
+        tables = {}
+        for name, raw in data["increments"]["tables"].items():
+            bands = [(int(b["lo_cents"]), None if b["hi_cents"] is None else int(b["hi_cents"]), int(b["increment_cents"])) for b in raw]
+            _check_bands(bands)
+            tables[name] = tuple(bands)
         d = data["defaults"]
         return Rules(
-            bands=tuple(bands),
+            tables=tables,
+            default_table=data["increments"]["default_table"],
             soft_close_window_ms=int(d["soft_close_window_seconds"]) * 1000,
             max_extension_ms=int(d["max_extension_seconds"]) * 1000,
-            buyer_premium_bps=int(d["buyer_premium_bps"]),
+            premium_bands=premium_bands_from(d["premium_bands"]),
         )
+
+
+def premium_bands_from(raw: list) -> tuple:
+    """[{lo_cents, hi_cents, bps}] -> ((lo, hi, bps), ...), checked: contiguous from 0, last open, bps in 0..10000."""
+    bands = tuple((int(b["lo_cents"]), None if b["hi_cents"] is None else int(b["hi_cents"]), int(b["bps"])) for b in raw)
+    if not bands or bands[0][0] != 0 or bands[-1][1] is not None:
+        raise ValueError("premium bands must start at 0 and end open")
+    for i in range(len(bands) - 1):
+        if bands[i][1] is None or bands[i][1] <= bands[i][0] or bands[i][1] != bands[i + 1][0]:
+            raise ValueError("premium bands must be contiguous and non-empty")
+    for _, _, bps in bands:
+        if not 0 <= bps <= 10000:
+            raise ValueError("premium bps must be in 0..10000")
+    return bands
+
+
+def premium_for(hammer_cents: int, bands: tuple) -> int:
+    """D-90: each band's rate on the slice of the hammer inside it, summed exactly, rounded half up once."""
+    numerator = 0
+    for lo, hi, bps in bands:
+        top = hammer_cents if hi is None else min(hammer_cents, hi)
+        if top > lo:
+            numerator += (top - lo) * bps
+    return round_half_up(numerator, 10000)
 
 
 def _check_bands(bands: list) -> None:
@@ -65,10 +100,10 @@ def _check_bands(bands: list) -> None:
             raise ValueError("increment must be positive")
 
 
-def increment_for(price_cents: int, rules: Rules) -> int:
+def increment_for(price_cents: int, rules: Rules, table: Optional[str] = None) -> int:
     if price_cents < 0:
         raise ValueError("negative price")
-    for lo, hi, inc in rules.bands:
+    for lo, hi, inc in rules.tables[table or rules.default_table]:
         if price_cents >= lo and (hi is None or price_cents < hi):
             return inc
     raise AssertionError("unreachable: bands cover [0, inf)")
@@ -88,6 +123,14 @@ class Lot:
     # R-04 (D-73): the instant staff withdrew the lot, or None. CLOSED from it; a second input to the
     # outcome beside the ledger. Read under the same row lock as a bid; never changes once set.
     withdrawn_at_ms: Optional[int] = None
+    # R-18 (D-90): the sale's increment table by name (None = the rules' default) and its premium schedule
+    # ((lo, hi, bps), ...); None = flat at buyer_premium_bps, which is the one-band schedule.
+    increment_table: Optional[str] = None
+    premium_bands: Optional[tuple] = None
+
+    @property
+    def premium_schedule(self) -> tuple:
+        return self.premium_bands if self.premium_bands is not None else ((0, None, self.buyer_premium_bps),)
 
     @property
     def hard_close_ms(self) -> int:
@@ -120,7 +163,7 @@ def min_next_bid(lot: Lot, state: LotState, rules: Rules) -> int:
     """What a non-leader must bid at least. Before any bid: the start price."""
     if state.leader is None:
         return lot.start_cents
-    return state.price_cents + increment_for(state.price_cents, rules)
+    return state.price_cents + increment_for(state.price_cents, rules, lot.increment_table)
 
 
 @dataclass(frozen=True)
@@ -174,12 +217,12 @@ def apply_bid(lot: Lot, state: LotState, bidder: str, max_cents: int, now_ms: in
         s = replace(state, price_cents=lot.start_cents, leader=bidder, leader_max_cents=max_cents, leader_seq=seq)
         outcome = "ACCEPTED_LEAD"
     elif max_cents > state.leader_max_cents:
-        price = min(max_cents, state.leader_max_cents + increment_for(state.leader_max_cents, rules))
+        price = min(max_cents, state.leader_max_cents + increment_for(state.leader_max_cents, rules, lot.increment_table))
         s = replace(state, price_cents=price, leader=bidder, leader_max_cents=max_cents, leader_seq=seq)
         outcome = "ACCEPTED_LEAD"
     else:
         # max_cents <= leader_max: the earlier max keeps the lead (tie goes to the earlier seq).
-        price = min(state.leader_max_cents, max_cents + increment_for(max_cents, rules))
+        price = min(state.leader_max_cents, max_cents + increment_for(max_cents, rules, lot.increment_table))
         s = replace(state, price_cents=price)
         outcome = "ACCEPTED_OUTBID"
     s = replace(s, bid_count=seq, accepted_count=state.accepted_count + 1)
@@ -325,7 +368,7 @@ def settle(lot: Lot, state: LotState, now_ms: int) -> Optional[Settlement]:
     if not state.reserve_met(lot):
         return Settlement("UNSOLD_RESERVE_NOT_MET", None, None, 0, 0, 0, state.closes_at_ms)
     hammer = state.price_cents
-    premium = round_half_up(hammer * lot.buyer_premium_bps, 10000)
+    premium = premium_for(hammer, lot.premium_schedule)  # one band = the v1 formula, exactly
     return Settlement("SOLD", state.leader, state.leader_seq, hammer, premium, hammer + premium, state.closes_at_ms)
 
 

@@ -1,5 +1,5 @@
 import type { BidErrorCode } from '@/auction/errors';
-// Human labels for the outcome keys in rules/auction.v1.json (docs/design-brief.md "Outcomes"). Display only: the key
+// Human labels for the outcome keys in rules/auction.v2.json (docs/design-brief.md "Outcomes"). Display only: the key
 // stays the record, and staff see it beside the label. A key missing here shows as itself.
 type Tone = 'good' | 'bad' | 'plain';
 const LABELS: Record<string, [label: string, tone: Tone]> = {

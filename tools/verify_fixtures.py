@@ -41,10 +41,10 @@ def main() -> int:
     manifest = json.load(open(manifest_path, encoding="utf-8"))
     seed = manifest["seed"]
     bad = 0
-    rules_hash = sha(os.path.join(ROOT, "rules", "auction.v1.json"))
+    rules_hash = sha(os.path.join(ROOT, "rules", "auction.v2.json"))
     if rules_hash != manifest["rules_sha256"]:
         bad += 1
-        print(f"MOVED rules/auction.v1.json: manifest {manifest['rules_sha256'][:12]}… file {rules_hash[:12]}…")
+        print(f"MOVED rules/auction.v2.json: manifest {manifest['rules_sha256'][:12]}… file {rules_hash[:12]}…")
     expected = dict(manifest["sha256"])
     for name in GENERATED:
         p = os.path.join(fixtures, name)

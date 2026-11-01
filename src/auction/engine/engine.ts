@@ -2,7 +2,7 @@
 // Written from docs/domain-brief.md §5–§6 (D-8..D-12, D-21); tools/auctionlib.py is the oracle it must agree
 // with, not its source. Integers only: cents and epoch ms. No clock, no I/O, no float, no `/` (rules:lint).
 import { MoneyError, assertBps, assertCents, roundHalfUp } from './money';
-import type { BidOutcome, NotWrittenOutcome, Rules, SettlementOutcome } from './rules';
+import type { BidOutcome, NotWrittenOutcome, PremiumBand, Rules, SettlementOutcome } from './rules';
 
 /** Catalog data plus the auction's settings, flattened: nothing here changes once the lot has a bid, except that
  * `withdrawnAtMs` is set once if staff withdraw the lot (D-73). It is the lot's one input beside the ledger: the lot is
@@ -17,6 +17,11 @@ export type Lot = {
   readonly maxExtensionMs: number;
   readonly buyerPremiumBps: number;
   readonly withdrawnAtMs: number | null;
+  /** R-18 (D-90): the sale's increment table by name; absent is the rules' default (`standard`, v1's bands). */
+  readonly incrementTable?: string;
+  /** R-18 (D-90): the sale's premium schedule; absent or null is flat at `buyerPremiumBps`, the one-band schedule.
+   * When set, its first band's rate is `buyerPremiumBps` (a CHECK on the row). */
+  readonly premiumBands?: readonly PremiumBand[] | null;
 };
 
 const withdrawn = (lot: Lot, nowMs: number): boolean => lot.withdrawnAtMs !== null && nowMs >= lot.withdrawnAtMs;
@@ -61,17 +66,20 @@ export const openState = (lot: Omit<Lot, 'withdrawnAtMs'> & { readonly withdrawn
   extensionCount: 0,
 });
 
-/** The increment of the band containing `cents` (D-8: the band of the amount being stepped from). */
-export function incrementFor(cents: number, rules: Rules): number {
+/** The increment of the band containing `cents` (D-8: the band of the amount being stepped from), in the named table
+ * (D-90), or the rules' default table when none is named. An unknown name is refused, never defaulted. */
+export function incrementFor(cents: number, rules: Rules, table?: string): number {
   if (assertCents(cents) < 0) throw new RangeError('incrementFor: negative cents');
-  const band = rules.bands.find((b) => cents >= b.loCents && (b.hiCents === null || cents < b.hiCents));
+  const bands = table === undefined ? rules.bands : rules.tables[table];
+  if (!bands) throw new RangeError(`incrementFor: no increment table ${table}`);
+  const band = bands.find((b) => cents >= b.loCents && (b.hiCents === null || cents < b.hiCents));
   if (!band) throw new RangeError('unreachable: bands cover [0, inf)');
   return band.incrementCents;
 }
 
 /** What a non-leader must bid at least: the start price before any bid, else price + inc(price). */
 export const minNextBid = (lot: Lot, state: LotState, rules: Rules): number =>
-  state.leader === null ? lot.startCents : state.priceCents + incrementFor(state.priceCents, rules);
+  state.leader === null ? lot.startCents : state.priceCents + incrementFor(state.priceCents, rules, lot.incrementTable);
 
 /** D-11: once the leading max reaches the reserve the price is at least the reserve. False with no leader. */
 export const reserveMet = (lot: Lot, state: LotState): boolean =>
@@ -125,12 +133,12 @@ export function applyBid(lot: Lot, state: LotState, bidderId: string, maxCents: 
     s = { ...state, ...accepted, priceCents: lot.startCents, leader: bidderId, leaderMaxCents: maxCents, leaderSeq: seq };
   } else if (maxCents > state.leaderMaxCents) {
     outcome = 'ACCEPTED_LEAD';
-    const priceCents = Math.min(maxCents, state.leaderMaxCents + incrementFor(state.leaderMaxCents, rules));
+    const priceCents = Math.min(maxCents, state.leaderMaxCents + incrementFor(state.leaderMaxCents, rules, lot.incrementTable));
     s = { ...state, ...accepted, priceCents, leader: bidderId, leaderMaxCents: maxCents, leaderSeq: seq };
   } else {
     // Equal max included: the earlier seq keeps the lead at the full max (D-9).
     outcome = 'ACCEPTED_OUTBID';
-    s = { ...state, ...accepted, priceCents: Math.min(state.leaderMaxCents, maxCents + incrementFor(maxCents, rules)) };
+    s = { ...state, ...accepted, priceCents: Math.min(state.leaderMaxCents, maxCents + incrementFor(maxCents, rules, lot.incrementTable)) };
   }
   s = withReserveFloor(lot, s);
 
@@ -249,8 +257,23 @@ export type Settlement = {
   readonly closedAtMs: number;
 };
 
-const sold = (winner: string, winningSeq: number, hammerCents: number, premiumBps: number, closedAtMs: number): Settlement => {
-  const premiumCents = roundHalfUp(BigInt(assertCents(hammerCents)) * BigInt(assertBps(premiumBps)), 10000n);
+/**
+ * The buyer's premium, the first rounding site (D-22, D-74, GB-16; D-90, GB-29): each band's rate on the slice of the
+ * hammer inside it, summed exactly, rounded half up once. No bands is flat at `premiumBps`, which is the one-band case.
+ */
+export function premiumFor(hammerCents: number, premiumBps: number, bands?: readonly PremiumBand[] | null): number {
+  const hammer = BigInt(assertCents(hammerCents));
+  let numerator = 0n;
+  for (const b of bands ?? [{ loCents: 0, hiCents: null, bps: premiumBps }]) {
+    const lo = BigInt(assertCents(b.loCents));
+    const top = b.hiCents === null || hammer < BigInt(b.hiCents) ? hammer : BigInt(b.hiCents);
+    if (top > lo) numerator += (top - lo) * BigInt(assertBps(b.bps));
+  }
+  return roundHalfUp(numerator, 10000n);
+}
+
+const sold = (winner: string, winningSeq: number, hammerCents: number, premiumBps: number, closedAtMs: number, bands?: readonly PremiumBand[] | null): Settlement => {
+  const premiumCents = premiumFor(hammerCents, assertBps(premiumBps), bands);
   return { outcome: 'SOLD', winner, winningSeq, hammerCents, premiumCents, totalCents: hammerCents + premiumCents, closedAtMs };
 };
 
@@ -262,7 +285,7 @@ export function settle(lot: Lot, state: LotState, nowMs: number): Settlement | n
   if (lot.withdrawnAtMs !== null) return unsold('UNSOLD_WITHDRAWN', lot.withdrawnAtMs);
   if (state.leader === null) return unsold('UNSOLD_NO_BIDS');
   if (!reserveMet(lot, state)) return unsold('UNSOLD_RESERVE_NOT_MET');
-  return sold(state.leader, state.leaderSeq!, state.priceCents, lot.buyerPremiumBps, state.closesAtMs);
+  return sold(state.leader, state.leaderSeq!, state.priceCents, lot.buyerPremiumBps, state.closesAtMs, lot.premiumBands);
 }
 
 // ---- Corrections (task 2.2, D-42 Q2, D-44): a superseding settlement, recomputable from the ledger and its target ----
@@ -272,10 +295,12 @@ export const UNSOLD_BY_CORRECTION = 'UNSOLD_BY_CORRECTION';
 export type CorrectedSettlement = Omit<Settlement, 'outcome'> & {
   readonly outcome: SettlementOutcome | typeof UNSOLD_BY_CORRECTION;
   readonly premiumBps: number; // stored on every row, the first one too, so each row is recomputable from itself
+  readonly premiumBands: readonly PremiumBand[] | null; // D-90: likewise; null is flat at premiumBps
 };
 /** What a correction may set, and nothing else (D-42 Q2): the winner (null = unsold) and the premium rate. */
 /** `consignorApprovalRef` (AX-14, D-87): the consignor accepted the high bid below the reserve; only then is the reserve not applied. */
-export type CorrectionTarget = { readonly winner: string | null; readonly premiumBps: number; readonly consignorApprovalRef?: string | null };
+/** `premiumBands` (D-90): the schedule the premium is taken at; absent or null is flat at `premiumBps`. */
+export type CorrectionTarget = { readonly winner: string | null; readonly premiumBps: number; readonly premiumBands?: readonly PremiumBand[] | null; readonly consignorApprovalRef?: string | null };
 export type CorrectionRefusal = 'NOT_AN_ACCEPTED_BIDDER' | 'RESERVE_NOT_MET' | 'LOT_WITHDRAWN' | 'APPROVAL_NOT_APPLICABLE';
 
 /**
@@ -287,24 +312,27 @@ export function resettle(lot: Lot, rows: readonly FoldRow[], rules: Rules, targe
   const folded = fold(lot, rows, rules);
   const original = settle(lot, folded, folded.closesAtMs)!; // at its own closesAt a lot is CLOSED
   assertBps(target.premiumBps);
+  const premiumBands = target.premiumBands ?? null;
+  const rate = { premiumBps: target.premiumBps, premiumBands };
+  const sale = (winner: string, seq: number, hammerCents: number) => ({ ...sold(winner, seq, hammerCents, target.premiumBps, original.closedAtMs, premiumBands), ...rate });
   if (lot.withdrawnAtMs !== null && target.winner !== null) return { refused: 'LOT_WITHDRAWN' }; // D-73: a withdrawn lot is never sold, by correction either
   if (target.consignorApprovalRef) {
     // D-87: the high bidder only, on a lot that closed below its reserve, at the price the ledger reached.
     if (target.winner === null || target.winner !== folded.leader || original.outcome !== 'UNSOLD_RESERVE_NOT_MET') return { refused: 'APPROVAL_NOT_APPLICABLE' };
-    return { ...sold(target.winner, folded.leaderSeq!, folded.priceCents, target.premiumBps, original.closedAtMs), premiumBps: target.premiumBps };
+    return sale(target.winner, folded.leaderSeq!, folded.priceCents);
   }
   if (target.winner === null) {
-    return { outcome: UNSOLD_BY_CORRECTION, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: original.closedAtMs, premiumBps: target.premiumBps };
+    return { outcome: UNSOLD_BY_CORRECTION, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: original.closedAtMs, ...rate };
   }
   if (target.winner === folded.leader) {
     if (original.outcome !== 'SOLD') return { refused: 'RESERVE_NOT_MET' };
-    return { ...sold(target.winner, original.winningSeq!, original.hammerCents, target.premiumBps, original.closedAtMs), premiumBps: target.premiumBps };
+    return sale(target.winner, original.winningSeq!, original.hammerCents);
   }
   const own = rows.filter((r) => r.bidderId === target.winner && !r.outcome.startsWith('REJECTED_')).sort((a, b) => b.seq - a.seq)[0];
   if (!own) return { refused: 'NOT_AN_ACCEPTED_BIDDER' };
   const hammerCents = Math.min(fold(lot, rows.filter((r) => r.seq <= own.seq), rules).priceCents, own.maxCents);
   if (lot.reserveCents !== null && hammerCents < lot.reserveCents) return { refused: 'RESERVE_NOT_MET' };
-  return { ...sold(target.winner, own.seq, hammerCents, target.premiumBps, original.closedAtMs), premiumBps: target.premiumBps };
+  return sale(target.winner, own.seq, hammerCents);
 }
 
 // ---- Invoices (task 2.1, D-42 Q1): derived on read from each lot's current settlement, never stored ----
@@ -435,13 +463,13 @@ export type SecondChance = { readonly bidderId: string; readonly settlement: Cor
  * min(price their last accepted row reached, their own max); a tie goes to the earlier last row. Null when nobody is
  * left or every candidate is under the reserve. The ledger is closed, so the answer is the same on every read.
  */
-export function secondChance(lot: Lot, rows: readonly FoldRow[], rules: Rules, defaulter: string, premiumBps: number, exclude: readonly string[] = []): SecondChance | null {
+export function secondChance(lot: Lot, rows: readonly FoldRow[], rules: Rules, defaulter: string, premiumBps: number, exclude: readonly string[] = [], premiumBands: readonly PremiumBand[] | null = null): SecondChance | null {
   const out = new Set([defaulter, ...exclude]);
   const lastSeq = new Map<string, number>();
   for (const r of rows) if (!out.has(r.bidderId) && !r.outcome.startsWith('REJECTED_')) lastSeq.set(r.bidderId, r.seq);
   let best: (SecondChance & { seq: number }) | null = null;
   for (const [bidderId, seq] of lastSeq) {
-    const s = resettle(lot, rows, rules, { winner: bidderId, premiumBps });
+    const s = resettle(lot, rows, rules, { winner: bidderId, premiumBps, premiumBands });
     if ('refused' in s) continue;
     if (!best || s.hammerCents > best.settlement.hammerCents || (s.hammerCents === best.settlement.hammerCents && seq < best.seq)) best = { bidderId, settlement: s, seq };
   }

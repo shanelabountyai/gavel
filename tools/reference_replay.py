@@ -17,7 +17,7 @@ import sys
 from collections import Counter, defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from auctionlib import Lot, Rules, Submission, fold, replay, settle  # noqa: E402
+from auctionlib import Lot, Rules, Submission, fold, premium_bands_from, replay, settle  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -38,7 +38,8 @@ def load(fixtures: str):
         for l in a["lots"]:
             lots[l["lot_id"]] = (Lot(l["lot_id"], a["auction_id"], l["start_cents"], l["reserve_cents"], l["opens_at_ms"], l["scheduled_end_ms"],
                                      a["soft_close_window_seconds"] * 1000, a["max_extension_seconds"] * 1000, a["buyer_premium_bps"],
-                                     l.get("withdrawn_at_ms")), l)
+                                     l.get("withdrawn_at_ms"), a.get("increment_table"),
+                                     None if "premium_bands" not in a else premium_bands_from(a["premium_bands"])), l)
     subs = defaultdict(list)
     with open(os.path.join(fixtures, "submissions.jsonl"), encoding="utf-8") as f:
         for line in f:

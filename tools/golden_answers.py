@@ -16,7 +16,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from auctionlib import (Lot, Rules, Submission, apply_bid, fold, increment_for, lot_status, min_next_bid,  # noqa: E402
                         open_state, replay, round_half_up, settle, LedgerRow,
-                        Contract, ConsignedLot, consignor_statement, invoice_balance, bidder_aliases)
+                        Contract, ConsignedLot, consignor_statement, invoice_balance, bidder_aliases,
+                        premium_for, premium_bands_from)
 
 FAILS = 0
 R = Rules.load()
@@ -230,6 +231,46 @@ def main() -> int:
     check("GB-28b a bidder refused before anyone accepted them takes no number; the next accepted bidder is 2, not 3",
           bidder_aliases([_Row(1, "A", True), _Row(2, "X", False), _Row(3, "B", True), _Row(4, "X", False)]), {"A": 1, "B": 2})
     check("GB-28c no accepted rows: no aliases", bidder_aliases([_Row(1, "X", False)]), {})
+
+    print("-- GB-29 premium bands (R-18, D-90): each band's rate on its slice of the hammer, summed, rounded half up once")
+    TWO = ((0, 500000, 1500), (500000, None, 1000))  # 15% up to $5,000, 10% above
+    check("GB-29a 499,999 x 1500 / 10,000 = 74,999.85 -> 75,000", premium_for(499999, TWO), 75000)
+    check("GB-29b exactly the boundary: 500,000 x 1500 / 10,000 = 75,000", premium_for(500000, TWO), 75000)
+    check("GB-29c one cent above: (750,000,000 + 1 x 1000) / 10,000 = 75,000.1 -> 75,000", premium_for(500001, TWO), 75000)
+    check("GB-29d five cents above: 75,000.5 -> 75,001 (half up)", premium_for(500005, TWO), 75001)
+    check("GB-29e 1,000,000: 75,000 + 500,000 x 1000 / 10,000 = 125,000", premium_for(1000000, TWO), 125000)
+    ODD = ((0, 10003, 1500), (10003, None, 1000))
+    check("GB-29f rounded once, not per band: 20,006 -> (15,004,500 + 10,003,000) / 10,000 = 2,500.75 -> 2,501 (per band 1,500 + 1,000 = 2,500)",
+          (premium_for(20006, ODD), round_half_up(10003 * 1500, 10000) + round_half_up(10003 * 1000, 10000)), (2501, 2500))
+    check("GB-29g one band is the v1 flat formula: GB-16's 10,020 at 1500 -> 1,503", (premium_for(10020, ((0, None, 1500),)), round_half_up(10020 * 1500, 10000)), (1503, 1503))
+    THREE = ((0, 500000, 2000), (500000, 2500000, 1500), (2500000, None, 1000))
+    check("GB-29h three bands, 3,000,000: (1e9 + 3e9 + 5e8) / 10,000 = 450,000", premium_for(3000000, THREE), 450000)
+    check("GB-29i the rules default is one band at 1500", R.premium_bands, ((0, None, 1500),))
+    for label, raw in (("GB-29j not from 0", [{"lo_cents": 1, "hi_cents": None, "bps": 1500}]),
+                       ("GB-29k a gap", [{"lo_cents": 0, "hi_cents": 100, "bps": 1500}, {"lo_cents": 200, "hi_cents": None, "bps": 1000}]),
+                       ("GB-29l last band closed", [{"lo_cents": 0, "hi_cents": 100, "bps": 1500}]),
+                       ("GB-29m bps above 10,000", [{"lo_cents": 0, "hi_cents": None, "bps": 10001}])):
+        try:
+            premium_bands_from(raw)
+            check(label + " refused", "accepted", "ValueError")
+        except ValueError:
+            check(label + " refused", "ValueError", "ValueError")
+
+    print("-- GB-30 named increment tables (R-18, D-90): standard is v1; a sale picks one")
+    check("GB-30a standard equals GB-17", [increment_for(p, R, "standard") for p in (0, 9999, 10000, 49999, 50000, 99999, 100000, 499999, 500000, 2499999, 2500000)],
+          [100, 100, 500, 500, 1000, 1000, 2500, 2500, 5000, 10000, 25000])
+    check("GB-30b equipment at each boundary", [increment_for(p, R, "equipment") for p in (0, 9999, 10000, 99999, 100000, 499999, 500000, 2499999, 2500000, 9999999, 10000000)],
+          [500, 500, 2500, 2500, 5000, 5000, 10000, 10000, 25000, 25000, 50000])
+    check("GB-30c estate at each boundary", [increment_for(p, R, "estate") for p in (0, 1999, 2000, 9999, 10000, 24999, 25000, 49999, 50000, 99999, 100000, 499999, 500000)],
+          [50, 50, 100, 100, 250, 250, 500, 500, 1000, 1000, 2500, 2500, 5000])
+    EQ = Lot("E", "A", 100000, None, 0, T, W, CAP, 1500, None, "equipment")
+    ST = Lot("S", "A", 100000, None, 0, T, W, CAP, 1500)
+    def outbid(lot):
+        s = apply_bid(lot, open_state(lot), "A", 150000, 100_000, R).state
+        r = apply_bid(lot, s, "B", 120000, 200_000, R)
+        return (r.outcome, r.state.price_cents, min_next_bid(lot, r.state, R))
+    check("GB-30d same bids, equipment table: 120,000 under 150,000 is outbid at 120,000 + 5,000; next 125,000 + 5,000", outbid(EQ), ("ACCEPTED_OUTBID", 125000, 130000))
+    check("GB-30e same bids, standard table: 120,000 + 2,500; next 122,500 + 2,500", outbid(ST), ("ACCEPTED_OUTBID", 122500, 125000))
 
     print("OK" if FAILS == 0 else f"FAIL: {FAILS}")
     return 0 if FAILS == 0 else 1

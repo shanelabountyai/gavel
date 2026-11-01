@@ -26,12 +26,20 @@ type AuctionsJson = {
     soft_close_window_seconds: number;
     max_extension_seconds: number;
     buyer_premium_bps: number;
+    increment_table?: string; // D-90: the two v2 sales only; absent is standard
+    premium_bands?: { lo_cents: number; hi_cents: number | null; bps: number }[]; // absent is flat
     lots: { lot_id: string; kind: string; lot_number: number; title: string; start_cents: number; reserve_cents: number | null; opens_at_ms: number; scheduled_end_ms: number; withdrawn_at_ms?: number }[];
   }[];
 };
 
 type FixtureLot = { lot_id: string; auction_id: string; kind: string; lot_number: number; title: string; lot: Lot };
 type FileSub = { submission_id: string; lot_id: string; bidder_id: string; max_cents: number; placed_at_ms: number; idempotency_key: string };
+
+/** D-90: a v2 sale's table and premium schedule in the engine's shape; a sale without the keys gets neither (standard, flat). */
+const v2Terms = (a: AuctionsJson['auctions'][number]) => ({
+  ...(a.increment_table ? { incrementTable: a.increment_table } : {}),
+  ...(a.premium_bands ? { premiumBands: a.premium_bands.map((b) => ({ loCents: b.lo_cents, hiCents: b.hi_cents, bps: b.bps })) } : {}),
+});
 
 function loadFixtures(asOfArg?: number) {
   const data: AuctionsJson = JSON.parse(readFileSync(`${FIXTURES}/auctions.json`, 'utf8'));
@@ -40,6 +48,7 @@ function loadFixtures(asOfArg?: number) {
       startCents: l.start_cents, reserveCents: l.reserve_cents, opensAtMs: l.opens_at_ms, scheduledEndMs: l.scheduled_end_ms,
       softCloseWindowMs: a.soft_close_window_seconds * 1000, maxExtensionMs: a.max_extension_seconds * 1000, buyerPremiumBps: a.buyer_premium_bps,
       withdrawnAtMs: l.withdrawn_at_ms ?? null, // D-73: the WITHDRAWN lots carry the instant; every other lot has no key
+      ...v2Terms(a),
     } as Lot })))
     .sort((a, b) => (a.lot_id < b.lot_id ? -1 : 1));
   const fileOrder: FileSub[] = readFileSync(`${FIXTURES}/submissions.jsonl`, 'utf8').trim().split('\n').map((raw) => JSON.parse(raw));
@@ -102,7 +111,7 @@ export async function runDb(asOfArg?: number): Promise<{ ok: boolean; report: st
   }
   const lotUuid = new Map<string, string>();
   for (const a of data.auctions) {
-    const auction = await db.auction.create({ data: { orgId: org.id, name: a.name, softCloseWindowSeconds: a.soft_close_window_seconds, maxExtensionSeconds: a.max_extension_seconds, buyerPremiumBps: a.buyer_premium_bps, opensAt: new Date(a.opens_at_ms) } });
+    const auction = await db.auction.create({ data: { orgId: org.id, name: a.name, softCloseWindowSeconds: a.soft_close_window_seconds, maxExtensionSeconds: a.max_extension_seconds, buyerPremiumBps: a.buyer_premium_bps, opensAt: new Date(a.opens_at_ms), ...v2Terms(a) } });
     for (const l of a.lots) {
       const s = openState(lots.find((x) => x.lot_id === l.lot_id)!.lot);
       const row = await db.lot.create({ data: {

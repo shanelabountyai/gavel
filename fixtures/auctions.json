@@ -461,6 +461,167 @@
    "name": "Mill Street contents, no reserve",
    "opens_at_ms": 1793973600000,
    "soft_close_window_seconds": 60
+  },
+  {
+   "auction_id": "A4",
+   "buyer_premium_bps": 1500,
+   "increment_table": "equipment",
+   "lots": [
+    {
+     "auction_id": "A4",
+     "kind": "PROXY_WAR",
+     "lot_id": "L040",
+     "lot_number": 1,
+     "opens_at_ms": 1793930400000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794064680000,
+     "start_cents": 250000,
+     "title": "Pickup toolbox, aluminum"
+    },
+    {
+     "auction_id": "A4",
+     "kind": "SNIPE",
+     "lot_id": "L041",
+     "lot_number": 2,
+     "opens_at_ms": 1793930400000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794064800000,
+     "start_cents": 100000,
+     "title": "Table saw, 10 in cabinet"
+    },
+    {
+     "auction_id": "A4",
+     "kind": "RESERVE_MET",
+     "lot_id": "L042",
+     "lot_number": 3,
+     "opens_at_ms": 1793930400000,
+     "reserve_cents": 300000,
+     "scheduled_end_ms": 1794064920000,
+     "start_cents": 100000,
+     "title": "Post-hole auger with 3 bits"
+    },
+    {
+     "auction_id": "A4",
+     "kind": "PREMIUM_EDGE",
+     "lot_id": "L043",
+     "lot_number": 4,
+     "opens_at_ms": 1793930400000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794065040000,
+     "start_cents": 500000,
+     "title": "Pressure washer, 4,000 psi"
+    },
+    {
+     "auction_id": "A4",
+     "kind": "PREMIUM_ABOVE",
+     "lot_id": "L044",
+     "lot_number": 5,
+     "opens_at_ms": 1793930400000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794065160000,
+     "start_cents": 500005,
+     "title": "Generator, 12 kW"
+    }
+   ],
+   "max_extension_seconds": 900,
+   "name": "Ridgeway equipment yard",
+   "opens_at_ms": 1793930400000,
+   "premium_bands": [
+    {
+     "bps": 1500,
+     "hi_cents": 500000,
+     "lo_cents": 0
+    },
+    {
+     "bps": 1000,
+     "hi_cents": null,
+     "lo_cents": 500000
+    }
+   ],
+   "soft_close_window_seconds": 120
+  },
+  {
+   "auction_id": "A5",
+   "buyer_premium_bps": 2000,
+   "increment_table": "estate",
+   "lots": [
+    {
+     "auction_id": "A5",
+     "kind": "PROXY_WAR",
+     "lot_id": "L045",
+     "lot_number": 1,
+     "opens_at_ms": 1793952000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794065280000,
+     "start_cents": 5000,
+     "title": "Oak roll-top desk"
+    },
+    {
+     "auction_id": "A5",
+     "kind": "TIE",
+     "lot_id": "L046",
+     "lot_number": 2,
+     "opens_at_ms": 1793952000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794065400000,
+     "start_cents": 2500,
+     "title": "Set of six Windsor chairs"
+    },
+    {
+     "auction_id": "A5",
+     "kind": "BELOW_MIN",
+     "lot_id": "L047",
+     "lot_number": 3,
+     "opens_at_ms": 1793952000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794065520000,
+     "start_cents": 1500,
+     "title": "Cast-iron skillet lot (4)"
+    },
+    {
+     "auction_id": "A5",
+     "kind": "CHAIN_TO_CAP",
+     "lot_id": "L048",
+     "lot_number": 4,
+     "opens_at_ms": 1793952000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794065640000,
+     "start_cents": 2000,
+     "title": "Pendulum wall clock"
+    },
+    {
+     "auction_id": "A5",
+     "kind": "PREMIUM_EDGE",
+     "lot_id": "L049",
+     "lot_number": 5,
+     "opens_at_ms": 1793952000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794065760000,
+     "start_cents": 10000,
+     "title": "Hand-stitched quilt, c. 1960"
+    }
+   ],
+   "max_extension_seconds": 600,
+   "name": "Linden Lane estate",
+   "opens_at_ms": 1793952000000,
+   "premium_bands": [
+    {
+     "bps": 2000,
+     "hi_cents": 10000,
+     "lo_cents": 0
+    },
+    {
+     "bps": 1500,
+     "hi_cents": 50000,
+     "lo_cents": 10000
+    },
+    {
+     "bps": 1000,
+     "hi_cents": null,
+     "lo_cents": 50000
+    }
+   ],
+   "soft_close_window_seconds": 90
   }
  ],
  "bidders": [

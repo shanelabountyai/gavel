@@ -78,7 +78,7 @@ describe('GB-09, GB-21 unsold outcomes', () => {
 describe('the frozen fixtures (brief §10–§11)', () => {
   it('auction:eval reproduces expected_bids.csv and expected_lots.csv column for column', () => {
     const { ok, report } = run();
-    expect(report, report).toContain('OK: expected_bids.csv (233 rows) and expected_lots.csv (39 rows)');
+    expect(report, report).toContain('OK: expected_bids.csv (293 rows) and expected_lots.csv (49 rows)');
     expect(ok).toBe(true);
   });
   it('replays every lot twice and diffs nothing (determinism)', () => {
@@ -93,6 +93,6 @@ describe('the frozen fixtures (brief §10–§11)', () => {
       expect(twice).toEqual(once);
       expect(fold(lot, once.rows, rules)).toEqual(once.state);
     }
-    expect(lots).toHaveLength(39);
+    expect(lots).toHaveLength(49); // D-90 appended L040-L049 (A4, A5)
   });
 });
