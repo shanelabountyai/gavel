@@ -27,7 +27,9 @@ export default async function Statements({ params }: { params: Promise<{ org: st
   const [views, paid] = await Promise.all([statementsForAuction(prismaTx(db as unknown as Prisma.TransactionClient), ctx.orgId, id), paidInvoices(ctx.orgId, { auctionId: id })]);
   const buyerStatus = new Map(paid.map((p) => [p.bidderId, p.balance.status]));
   const winnerOf = new Map(views.flatMap((v) => v.lots.map((l) => [l.lotId, l.winner] as const)));
-  const titles = new Map((await db.lot.findMany({ where: { auctionId: id, ...inOrg(ctx) }, select: { id: true, title: true } })).map((l) => [l.id, l.title]));
+  const lots = await db.lot.findMany({ where: { auctionId: id, ...inOrg(ctx) }, select: { id: true, title: true, relistedAs: { select: { id: true, number: true, auction: { select: { name: true } } } } } });
+  const titles = new Map(lots.map((l) => [l.id, l.title]));
+  const relisted = new Map(lots.flatMap((l) => (l.relistedAs ? [[l.id, l.relistedAs] as const] : []))); // D-89 (AX-17)
   return (
     <main>
       <h1>Consignor statements: {auction.name}</h1>
@@ -44,7 +46,7 @@ export default async function Statements({ params }: { params: Promise<{ org: st
               <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Outcome</th><th scope="col" className="num">Hammer</th><th scope="col" className="num">Commission</th><th scope="col" className="num">Fee</th><th scope="col" className="num">Net</th><th scope="col">Buyer</th></tr></thead>
               <tbody>
                 {v.statement.lines.map((l) => (
-                  <tr key={l.lotId}><td>{l.lotNumber}</td><td><Link href={`/o/${ctx.slug}/lots/${l.lotId}/history`}>{titles.get(l.lotId)}</Link></td><td>{outcomeLabel(l.outcome)}</td><td className="num">{l.outcome === 'SOLD' ? formatCents(l.hammerCents) : <span className="muted">—</span>}</td><td className="num">{formatCents(l.commissionCents)}</td><td className="num">{formatCents(l.feeCents)}</td><td className="num">{formatCents(l.netCents)}</td><td>{l.outcome === 'SOLD' ? paymentLabel(buyerStatus.get(winnerOf.get(l.lotId) ?? '') ?? 'UNPAID') : <span className="muted">—</span>}</td></tr>
+                  <tr key={l.lotId}><td>{l.lotNumber}</td><td><Link href={`/o/${ctx.slug}/lots/${l.lotId}/history`}>{titles.get(l.lotId)}</Link></td><td>{outcomeLabel(l.outcome)}{relisted.has(l.lotId) && <> · <Link href={`/o/${ctx.slug}/lots/${relisted.get(l.lotId)!.id}`} data-testid="statement-relisted">relisted as lot {relisted.get(l.lotId)!.number} in {relisted.get(l.lotId)!.auction.name}</Link></>}</td><td className="num">{l.outcome === 'SOLD' ? formatCents(l.hammerCents) : <span className="muted">—</span>}</td><td className="num">{formatCents(l.commissionCents)}</td><td className="num">{formatCents(l.feeCents)}</td><td className="num">{formatCents(l.netCents)}</td><td>{l.outcome === 'SOLD' ? paymentLabel(buyerStatus.get(winnerOf.get(l.lotId) ?? '') ?? 'UNPAID') : <span className="muted">—</span>}</td></tr>
                 ))}
               </tbody>
               <tfoot>
@@ -52,7 +54,7 @@ export default async function Statements({ params }: { params: Promise<{ org: st
               </tfoot>
             </table>
           ) : v.lots.length > 0 && (
-            <ul>{[...v.lots].sort((a, b) => a.lotNumber - b.lotNumber).map((l) => <li key={l.lotId}>Lot {l.lotNumber} {titles.get(l.lotId)}: {outcomeLabel(l.outcome)}</li>)}</ul>
+            <ul>{[...v.lots].sort((a, b) => a.lotNumber - b.lotNumber).map((l) => <li key={l.lotId}>Lot {l.lotNumber} {titles.get(l.lotId)}: {outcomeLabel(l.outcome)}{relisted.has(l.lotId) && `, relisted as lot ${relisted.get(l.lotId)!.number} in ${relisted.get(l.lotId)!.auction.name}`}</li>)}</ul>
           )}
         </section>
       ))}

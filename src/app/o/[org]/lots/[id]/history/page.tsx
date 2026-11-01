@@ -22,7 +22,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   const ctx = await requireOrg((await params).org, 'audit.read');
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const lot = await db.lot.findFirst({ where: { id, ...inOrg(ctx) }, select: { id: true, number: true, title: true, auctionId: true, auction: { select: { name: true, requiresApproval: true } } } });
+  const lot = await db.lot.findFirst({ where: { id, ...inOrg(ctx) }, select: { id: true, number: true, title: true, auctionId: true, auction: { select: { name: true, requiresApproval: true } }, relistOf: { select: { id: true, number: true, auction: { select: { name: true } } } }, relistedAs: { select: { id: true, number: true, auction: { select: { name: true } } } } } });
   if (!lot) notFound();
   const [bids, loaded, withdrawal] = await Promise.all([
     db.bid.findMany({ where: { lotId: id, ...inOrg(ctx) }, orderBy: { seq: 'asc' } }),
@@ -47,6 +47,9 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
       {/* R19: back to the sale, and the page a bidder sees */}
       <p className="back-links"><Link href={`/o/${ctx.slug}/auctions/${lot.auctionId}`}>← {lot.auction.name}</Link> · <Link href={`/o/${ctx.slug}/lots/${lot.id}`}>Bidder view</Link> · <a href={`/o/${ctx.slug}/auctions/${lot.auctionId}/ledger.csv?lot=${lot.id}`} data-testid="csv-lot">This ledger as CSV</a></p>
       <h1>Lot {lot.number} history: {lot.title}</h1>
+      {/* D-89 (AX-17): the relist chain, both ways */}
+      {lot.relistOf && <p data-testid="history-relist-of">Relisted from <Link href={`/o/${ctx.slug}/lots/${lot.relistOf.id}/history`}>lot {lot.relistOf.number} of {lot.relistOf.auction.name}</Link>.</p>}
+      {lot.relistedAs && <p data-testid="history-relisted-as">Relisted as <Link href={`/o/${ctx.slug}/lots/${lot.relistedAs.id}/history`}>lot {lot.relistedAs.number} in {lot.relistedAs.auction.name}</Link>; this lot&apos;s settlement stands.</p>}
       <p className="muted">{bids.length} {bids.length === 1 ? 'attempt' : 'attempts'}, in the order they were judged, accepted or refused. Rows marked Extended pushed the close out. What a bidder saw is the price and leader after the row before theirs.</p>
       <div className="table-scroll history">
       <table>

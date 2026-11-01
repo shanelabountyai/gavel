@@ -10,6 +10,7 @@ import { can } from '@/core/authz/permissions';
 import { now } from '@/core/clock';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
+import { relistLotAction } from '../../auctions/actions';
 import { registerBidderAction } from '../../catalog/actions';
 import { acceptTermsAction, requestApprovalAction, withdrawLotAction } from './actions';
 import { LotLive, type Viewer } from './lot-live';
@@ -23,7 +24,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   const { id } = await params;
   const v = await lotView(ctx.userId, id);
   const { etag, ...view } = v ?? { etag: '' };
-  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, consignor: true, consignorRef: { select: { name: true } }, auctionId: true, auction: { select: { name: true, timeZone: true, requiresApproval: true } } } }));
+  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, consignor: true, consignorRef: { select: { name: true } }, auctionId: true, startCents: true, reserveCents: true, auction: { select: { name: true, timeZone: true, requiresApproval: true } }, relistOf: { select: { id: true, number: true, auction: { select: { name: true } } } }, relistedAs: { select: { id: true, number: true, auction: { select: { name: true } } } }, settlements: { select: { id: true, supersedesId: true, outcome: true } } } }));
   if (!v || !lot) notFound();
   const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true, paddle: true } });
   // D-72: a bidder who has not accepted the sale's current terms sees them, with one button, where the bid form would be
@@ -37,6 +38,15 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   // into the state poll if anyone asks for it live.
   const history = await publicHistory(id, bidder?.id ?? null);
   const at = (iso: string) => inZone(Date.parse(iso), lot.auction.timeZone); // R-12
+  // D-89 (AX-17): staff relist a lot whose current settlement is unsold into a sale that has not opened. ponytail: only
+  // sales with a first close are offered, since the relist takes first close + stagger; give the form a close field if a
+  // house relists into sales that time every lot by hand.
+  const superseded = new Set(lot.settlements.map((x) => x.supersedesId));
+  const unsold = lot.settlements.find((x) => !superseded.has(x.id))?.outcome.startsWith('UNSOLD') ?? false;
+  const targets = unsold && !lot.relistedAs && can(ctx.role, 'results.write')
+    ? await db.auction.findMany({ where: { orgId: ctx.orgId, id: { not: lot.auctionId }, opensAt: { gt: now() }, firstCloseAt: { not: null } }, select: { id: true, name: true }, orderBy: { opensAt: 'asc' } })
+    : null;
+  const usd = (c: number) => `${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;
   return (
     <main>
       <header className="lot-head">
@@ -44,6 +54,8 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
         <p className="lot-number">Lot {lot.number} · {lot.auction.name}</p>
         <h1>{lot.title}</h1>
         {(lot.consignorRef?.name || lot.consignor) && <p className="muted">Consigned by {lot.consignorRef?.name ?? lot.consignor}</p>}
+        {lot.relistOf && <p className="muted" data-testid="relist-of">Relisted from <Link href={`/o/${ctx.slug}/lots/${lot.relistOf.id}`}>lot {lot.relistOf.number} of {lot.relistOf.auction.name}</Link></p>}
+        {lot.relistedAs && <p data-testid="relisted-as">Unsold here; relisted as <Link href={`/o/${ctx.slug}/lots/${lot.relistedAs.id}`}>lot {lot.relistedAs.number} in {lot.relistedAs.auction.name}</Link></p>}
       </header>
       <LotLive slug={ctx.slug} lotId={id} initial={view as Omit<typeof v, 'etag'>} etag={etag} serverNowMs={now().getTime()} viewer={viewer} timeZone={lot.auction.timeZone}>
         {terms ? (
@@ -74,6 +86,22 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
           <ActionForm action={registerBidderAction.bind(null, ctx.slug)}><p>Register once to get a paddle number, then bid on this lot.</p><button type="submit">Register to bid</button></ActionForm>
         )}
       </LotLive>
+      {targets && (
+        <section aria-labelledby="relist-h">
+          <h2 id="relist-h">Relist this lot</h2>
+          {targets.length === 0 ? <p className="muted">No sale of this house is still to open with a first close set. Create the next sale, then relist from here.</p> : (
+            <ActionForm action={relistLotAction.bind(null, ctx.slug)}>
+              <input type="hidden" name="lotId" value={id} />
+              <p className="muted">A new lot in the chosen sale, with this title, description, image and consignor, closing at that sale&apos;s first close plus its stagger. This lot and its record stay as they are and link to it.</p>
+              <label htmlFor="relist-sale">Into sale</label>
+              <select id="relist-sale" name="auctionId" required>{targets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+              <label>Start price ($) <input name="startCents" inputMode="decimal" required defaultValue={usd(lot.startCents)} /></label>
+              <label>Reserve ($, optional) <input name="reserveCents" inputMode="decimal" defaultValue={lot.reserveCents === null ? '' : usd(lot.reserveCents)} placeholder="blank = no reserve" /></label>
+              <button type="submit">Relist lot</button>
+            </ActionForm>
+          )}
+        </section>
+      )}
       <section className="public-history" aria-labelledby="public-history-h">
         <h2 id="public-history-h">Bids on this lot</h2>
         {history.length === 0 ? <p className="muted" data-testid="public-history-empty">No bids yet.</p> : (
