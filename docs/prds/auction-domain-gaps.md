@@ -217,7 +217,7 @@ Each requirement lists what it changes, using these labels:
 - *Answered (Shane, D-88): per sale; the bidder requests and staff decide; staff may revoke during the sale, with suspension semantics.*
 - *Changes:* schema. D (amends D-47 Q2). G/F: none.
 
-**R-17 Relist an unsold lot (AX-17).** A "Relist" action on a lot whose current settlement is unsold creates a new lot in a chosen auction that has not opened yet, with `relistOfLotId`. The original's history and the consignor statement link to it. *Changes:* schema (one column). D. G/F: none.
+**R-17 Relist an unsold lot (AX-17).** **Built 2026-11-01 (D-89).** A "Relist" action on a lot whose current settlement is unsold creates a new lot in a chosen auction that has not opened yet, with `relistOfLotId`. The original's history and the consignor statement link to it. *Changes:* schema (one column). D. G/F: none.
 
 **R-18 Rules v2: premium tiers and per-auction increment tables (AX-18).**
 - [ ] A new `rules/auction.v2.json` adds `premium_bands`. The premium is applied per band and rounded once, which is a golden at each boundary.
