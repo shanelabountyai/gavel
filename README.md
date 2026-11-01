@@ -23,7 +23,7 @@ Learning project, synthetic data only. Every auction house, estate, lot, bidder 
 | `docs/domain-brief.md` | Vocabulary, lot kinds, bid rules, soft close, settlement, invariants V1–V9, the contention proof, goldens GB-00..GB-28, kickoff measurements, fixture hashes |
 | `docs/phase-1-tasks.md` | Tasks 1.1–1.12 with acceptance criteria and the exit bar |
 | `docs/portfolio-overlap.md` | What is ported from sibling repos (real paths) and what is new |
-| `rules/auction.v1.json` | Increment bands, soft-close and premium defaults, the closed outcome sets |
+| `rules/auction.v2.json` | Named increment tables (standard, equipment, estate), soft-close and premium-band defaults, the closed outcome sets (D-90; `auction.v1.json` is kept for the hashes on older settlements) |
 | `tools/` | Python 3 (stdlib) test oracles: rules made executable, fixture generator, reference replay, golden answers, freeze check |
 | `fixtures/` | 3 synthetic sales, 39 lots, 40 bidders, 233 submissions, the expected outcome per submission and per lot, `MANIFEST.json` |
 

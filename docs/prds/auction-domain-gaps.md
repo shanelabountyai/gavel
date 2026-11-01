@@ -219,10 +219,10 @@ Each requirement lists what it changes, using these labels:
 
 **R-17 Relist an unsold lot (AX-17).** **Built 2026-11-01 (D-89).** A "Relist" action on a lot whose current settlement is unsold creates a new lot in a chosen auction that has not opened yet, with `relistOfLotId`. The original's history and the consignor statement link to it. *Changes:* schema (one column). D. G/F: none.
 
-**R-18 Rules v2: premium tiers and per-auction increment tables (AX-18).**
-- [ ] A new `rules/auction.v2.json` adds `premium_bands`. The premium is applied per band and rounded once, which is a golden at each boundary.
-- [ ] It adds named increment tables. `Auction.incrementTable` picks one.
-- [ ] v1 settlements stay verifiable under v1: V9 accepts the set of hashes listed in D-23.
+**R-18 Rules v2: premium tiers and per-auction increment tables (AX-18).** **Built 2026-11-01 (D-90).**
+- [x] A new `rules/auction.v2.json` adds `premium_bands`. The premium is applied per band and rounded once, which is a golden at each boundary. *GB-29; per-sale bands on `Auction` and `Settlement` (Shane, D-90).*
+- [x] It adds named increment tables. `Auction.incrementTable` picks one. *standard (v1), equipment, estate; GB-30.*
+- [x] v1 settlements stay verifiable under v1: V9 accepts the set of hashes listed in D-23. *The fixtures grew by appending (Shane, D-90), so L001–L039 are unchanged.*
 - *Changes:* rule data, engine, settlement. D, G, F (the whole set regenerated, and v1 kept for the old rows). This is the existing PRD P1, re-stated so a house sees it.
 
 ### P2
