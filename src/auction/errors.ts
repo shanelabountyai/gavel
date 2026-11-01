@@ -41,6 +41,7 @@ export type BidErrorCode =
   | 'LOT_NOT_FOUND'
   | 'BIDDER_NOT_ACTIVE'
   | 'TERMS_NOT_ACCEPTED' // D-72: the sale's current terms have no acceptance row for this bidder
+  | 'NOT_APPROVED_FOR_SALE' // D-88: the sale requires approval and the bidder's latest registration is not APPROVED
   | 'BID_TIMED_OUT' // lock_timeout (D-13): retryable with the same key
   | 'IDEMPOTENCY_MISMATCH'; // same key, different amount (D-17): no row
 

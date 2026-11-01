@@ -26,6 +26,8 @@ model Auction {
   // D-84 (AX-10): a new lot with no close of its own closes at firstCloseAt + (number - 1) * staggerSeconds. CHECK >= 0.
   firstCloseAt           DateTime?             @db.Timestamptz(6)
   staggerSeconds         Int                   @default(0)
+  // D-88 (AX-16): bidders need staff approval for this sale; fixed with the terms above once the sale has a bid
+  requiresApproval       Boolean               @default(false)
   createdAt              DateTime              @default(now()) @db.Timestamptz(6)
   updatedAt              DateTime              @updatedAt @db.Timestamptz(6)
   lots                   Lot[]
@@ -34,7 +36,28 @@ model Auction {
   contracts              ConsignmentContract[]
   paymentMarks           PaymentMark[]
   buyerDefaults          BuyerDefault[]
+  registrations          AuctionRegistration[]
 
+  @@index([orgId])
+}
+
+/// D-88 (AX-16): a bidder's registration for one sale that requires approval, insert-only by trigger. Version 1 is the
+/// bidder's request (PENDING); staff append APPROVED or DECLINED; the highest version is the status. placeBid's boundary
+/// reads it only when `Auction.requiresApproval`. Any card or deposit check happens outside the system: `note` says so.
+model AuctionRegistration {
+  id         String   @id @default(uuid()) @db.Uuid
+  orgId      String   @db.Uuid
+  auctionId  String   @db.Uuid
+  auction    Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderId   String   @db.Uuid
+  bidder     Bidder   @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  version    Int // latest + 1 per (sale, bidder); the unique index is the guard. CHECK: version 1 is PENDING, and only it
+  status     String // PENDING | APPROVED | DECLINED (CHECK)
+  note       String   @default("") // staff note; a DECLINED row's reason (CHECK not blank)
+  byUserId   String   @db.Uuid // the bidder's user on the request, staff after; no FK, as AuditEvent's actor
+  recordedAt DateTime @db.Timestamptz(6) // now() from @/core/clock
+
+  @@unique([auctionId, bidderId, version])
   @@index([orgId])
 }
 
@@ -194,6 +217,7 @@ model Bidder {
   paymentMarks  PaymentMark[]
   defaults      BuyerDefault[]
   offers        SecondChanceOffer[]
+  registrations AuctionRegistration[]
 
   @@unique([orgId, userId])
   @@unique([orgId, paddle])

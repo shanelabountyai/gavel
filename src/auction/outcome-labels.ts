@@ -41,6 +41,7 @@ const BID_ERRORS: Record<BidErrorCode, string> = {
   LOT_NOT_FOUND: 'This lot is no longer in the sale.',
   BIDDER_NOT_ACTIVE: 'Register to bid first.',
   TERMS_NOT_ACCEPTED: 'Accept the terms of sale for this auction first.',
+  NOT_APPROVED_FOR_SALE: 'The house has not approved you to bid in this sale.',
   BID_TIMED_OUT: 'The lot is busy. Press Bid again; your bid will not be placed twice.',
   IDEMPOTENCY_MISMATCH: 'That bid was already sent with a different amount. Enter your maximum again.',
 };

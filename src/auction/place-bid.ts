@@ -12,6 +12,7 @@ import type { BidOutcome, Rules } from '@/auction/engine/rules';
 import { BidError, LOCK_NOT_AVAILABLE, UNIQUE_VIOLATION, constraintName, sqlState } from '@/auction/errors';
 import { loadRules } from '@/auction/load-rules';
 import { enqueueNotice } from '@/auction/notices';
+import { registrationStatus } from '@/auction/registration';
 import { unacceptedTermsSha } from '@/auction/terms';
 
 export const INT4_MAX = 2147483647; // D-36: cents are int4; a lot that needs more is a BigInt migration
@@ -79,6 +80,10 @@ export async function placeBid(input: BidInput, deps: Deps = {}): Promise<BidRes
   if (!bidder) throw new BidError('BIDDER_NOT_ACTIVE', 'the bidder is not registered and active with this house');
   // D-72: one indexed query; a sale with no terms rows asks nothing, so the fixtures, the barrier test and load:bids are unchanged
   if (await unacceptedTermsSha(lotRow.auctionId, bidderId)) throw new BidError('TERMS_NOT_ACCEPTED', "the sale's current terms of sale have not been accepted by this bidder");
+  // D-88: read only when the sale requires approval (the flag came with the lot row), so every other sale pays nothing
+  if (lotRow.auction.requiresApproval && (await registrationStatus(lotRow.auctionId, bidderId)) !== 'APPROVED') {
+    throw new BidError('NOT_APPROVED_FOR_SALE', 'the sale requires approval and this bidder is not approved for it');
+  }
 
   const lot = toLot(lotRow);
   const rules = deps.rules ?? (cachedRules ??= loadRules().rules);
