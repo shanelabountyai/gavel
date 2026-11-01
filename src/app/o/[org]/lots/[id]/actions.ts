@@ -6,6 +6,7 @@ import { ownMaxCents } from '@/auction/lot-view';
 import { placeBid } from '@/auction/place-bid';
 import { BidError } from '@/auction/errors';
 import { bidErrorText } from '@/auction/outcome-labels';
+import { requestApproval } from '@/auction/registration';
 import { acceptTerms } from '@/auction/terms';
 import { withdrawLot } from '@/auction/withdraw';
 import { orgAction, ref } from '@/core/authz/action';
@@ -55,4 +56,15 @@ export const acceptTermsAction = orgAction(null, z.object({ lotId: ref('lot') })
   const a = await acceptTerms(ctx.orgId, bidder.id, lot.auctionId);
   revalidatePath(`/o/${ctx.slug}`, 'layout'); // every lot of the sale swaps the terms panel for the bid form
   return { accepted: a.termsSha256 };
+});
+
+// D-88 (AX-16): a bidder asks to bid in a sale that requires approval, from any of its lot pages. Idempotent.
+export const requestApprovalAction = orgAction(null, z.object({ lotId: ref('lot') }), async (ctx, i) => {
+  const lot = await db.lot.findFirst({ where: { id: i.lotId, orgId: ctx.orgId }, select: { auctionId: true } });
+  if (!lot) notFound(); // INV-02
+  const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true } });
+  if (!bidder) throw new Refused('Register to bid first.');
+  await requestApproval(ctx, bidder.id, lot.auctionId);
+  revalidatePath(`/o/${ctx.slug}`, 'layout'); // every lot of the sale shows the request as awaiting approval
+  return { requested: true };
 });

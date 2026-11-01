@@ -6,6 +6,7 @@ import { fromLocalInput, isTimeZone } from '@/auction/house-time';
 import { loadRules } from '@/auction/load-rules';
 import { openState } from '@/auction/engine/engine';
 import { createConsignor, setContract } from '@/auction/consignor';
+import { decideRegistration } from '@/auction/registration';
 import { publishTerms } from '@/auction/terms';
 import { audit } from '@/core/audit';
 import { orgAction, ref } from '@/core/authz/action';
@@ -96,17 +97,18 @@ const termsFields = (tz: string) => z.object({
   // D-78 (AX-09): configuration, not advice; which base applies where the sale happens is a question for counsel.
   taxBps: z.string().regex(/^\d+$/, 'Sales tax must be whole basis points (825 = 8.25%).').transform(Number).pipe(z.number().int().max(10000, 'Sales tax cannot exceed 10,000 bps.')),
   taxBase: z.enum(['HAMMER', 'HAMMER_PLUS_PREMIUM']),
+  requiresApproval: z.string().optional().transform((v) => v === 'on'), // D-88: an unticked checkbox posts nothing
 });
 
 export const updateSaleTerms = orgAction(
   'results.write',
-  z.object({ auctionId: ref('auction'), paymentDueAt: z.string(), pickupText: z.string(), pickupWindowText: z.string(), taxBps: z.string(), taxBase: z.string() }),
+  z.object({ auctionId: ref('auction'), paymentDueAt: z.string(), pickupText: z.string(), pickupWindowText: z.string(), taxBps: z.string(), taxBase: z.string(), requiresApproval: z.string().optional() }),
   async (ctx, raw) => {
     const auction = await db.auction.findFirst({ where: { id: raw.auctionId, ...inOrg(ctx) } });
     if (!auction) notFound();
     const parsed = termsFields(auction.timeZone).safeParse(raw);
     if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
-    if (await db.bid.count({ where: { lot: { auctionId: auction.id } }, take: 1 })) throw new Refused('This sale has bids; payment, pickup and tax terms are fixed.');
+    if (await db.bid.count({ where: { lot: { auctionId: auction.id } }, take: 1 })) throw new Refused('This sale has bids; payment, pickup, tax and approval terms are fixed.');
     await db.$transaction(async (tx) => {
       await tx.auction.update({ where: { id: auction.id }, data: parsed.data });
       await audit(ctx, 'auction.terms_updated', { targetType: 'auction', targetId: auction.id }, tx);
@@ -123,6 +125,19 @@ export const publishTermsAction = orgAction(
   async (ctx, i) => {
     if (!(await db.auction.findFirst({ where: { id: i.auctionId, ...inOrg(ctx) }, select: { id: true } }))) notFound(); // INV-02
     await publishTerms(ctx, i.auctionId, i.text);
+    redirect(`/o/${ctx.slug}/auctions/${i.auctionId}`);
+  },
+);
+
+// D-88 (AX-16): staff approve or decline a bidder's request for this sale. One form, two buttons; the note is optional
+// on an approval (the card or deposit check done outside) and required on a decline, which decideRegistration enforces.
+export const decideRegistrationAction = orgAction(
+  'results.write',
+  z.object({ auctionId: ref('auction'), bidderId: ref('bidder'), status: z.enum(['APPROVED', 'DECLINED']), note: z.string().max(500, 'Keep the note under 500 characters.') }),
+  async (ctx, i) => {
+    if (!(await db.auction.findFirst({ where: { id: i.auctionId, ...inOrg(ctx) }, select: { id: true } }))) notFound(); // INV-02
+    if (!(await db.bidder.findFirst({ where: { id: i.bidderId, ...inOrg(ctx) }, select: { id: true } }))) notFound(); // INV-03
+    await decideRegistration(ctx, i.auctionId, i.bidderId, i.status, i.note);
     redirect(`/o/${ctx.slug}/auctions/${i.auctionId}`);
   },
 );

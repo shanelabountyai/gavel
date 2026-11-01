@@ -8,8 +8,9 @@ import { now } from '@/core/clock';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
 import { currentContracts } from '@/auction/consignor';
+import { registrationsFor } from '@/auction/registration';
 import { acceptancesFor, currentTerms } from '@/auction/terms';
-import { createLot, publishTermsAction, setContractAction, updateSaleTerms } from '../actions';
+import { createLot, decideRegistrationAction, publishTermsAction, setContractAction, updateSaleTerms } from '../actions';
 import { inZone, toLocalInput } from '@/auction/house-time';
 import { DateTimeField } from '../datetime-field';
 
@@ -39,7 +40,10 @@ export default async function Auction({ params, searchParams }: { params: Promis
   const hasBids = (await db.bid.count({ where: { lot: { auctionId: id } }, take: 1 })) > 0;
   const tz = auction.timeZone;
   const due = auction.paymentDueAt ? toLocalInput(auction.paymentDueAt, tz) : undefined;
-  const [terms, accepted, contracts, consignors] = await Promise.all([currentTerms(id), acceptancesFor(id), currentContracts(ctx.orgId, id), db.consignor.findMany({ where: inOrg(ctx), orderBy: { code: 'asc' }, select: { id: true, code: true, name: true } })]);
+  const [terms, accepted, regs, contracts, consignors] = await Promise.all([currentTerms(id), acceptancesFor(id), registrationsFor(id), currentContracts(ctx.orgId, id), db.consignor.findMany({ where: inOrg(ctx), orderBy: { code: 'asc' }, select: { id: true, code: true, name: true } })]);
+  // D-88: the latest row per bidder is the status; rows come oldest first per bidder
+  const regLatest = [...new Map(regs.map((r) => [r.bidderId, r])).values()].sort((a, b) => a.bidder.paddle - b.bidder.paddle);
+  const regLabel = { PENDING: 'Awaiting approval', APPROVED: 'Approved', DECLINED: 'Declined' } as Record<string, string>;
   const pct = (bps: number) => `${formatCents(bps).slice(1)}%`;
   const taxText = auction.taxBps === 0 ? 'No sales tax.' : `Sales tax ${pct(auction.taxBps)} of ${auction.taxBase === 'HAMMER' ? 'hammer' : 'hammer + premium'}, once per invoice.`;
   return (
@@ -50,7 +54,7 @@ export default async function Auction({ params, searchParams }: { params: Promis
       <p><Link href={`/o/${ctx.slug}/auctions/${id}/invoices`}>Invoices for this sale</Link> · <Link href={`/o/${ctx.slug}/auctions/${id}/statements`}>Consignor statements</Link> · <Link href={`/o/${ctx.slug}/auctions/${id}/recap`}>Sale recap</Link></p>
       <h2>Payment and pickup</h2>
       {hasBids ? (
-        <p>Payment due {auction.paymentDueAt ? inZone(auction.paymentDueAt, tz) : <span className="muted">not set</span>}. Pickup: {auction.pickupText || <span className="muted">not set</span>}{auction.pickupWindowText && `, ${auction.pickupWindowText}`}. <span data-testid="tax-fixed">{taxText}</span> <span className="muted">Fixed: the sale has bids.</span></p>
+        <p>Payment due {auction.paymentDueAt ? inZone(auction.paymentDueAt, tz) : <span className="muted">not set</span>}. Pickup: {auction.pickupText || <span className="muted">not set</span>}{auction.pickupWindowText && `, ${auction.pickupWindowText}`}. <span data-testid="tax-fixed">{taxText}</span> {auction.requiresApproval ? 'Bidders need approval for this sale.' : 'No approval needed to bid.'} <span className="muted">Fixed: the sale has bids.</span></p>
       ) : (
         <ActionForm action={updateSaleTerms.bind(null, ctx.slug)}>
           <p className="muted">Shown on each buyer&apos;s invoice and in the won notice. Fixed once the sale has a bid.</p>
@@ -61,6 +65,8 @@ export default async function Auction({ params, searchParams }: { params: Promis
           <label>Sales tax (bps, 0 = none) <input name="taxBps" inputMode="numeric" defaultValue={auction.taxBps} required /></label>
           <label>Taxed on <select name="taxBase" defaultValue={auction.taxBase}><option value="HAMMER">Hammer only</option><option value="HAMMER_PLUS_PREMIUM">Hammer + premium</option></select></label>
           <p className="muted form-explain">Tax is configuration, not advice: the rate and the base depend on where the sale happens. Exempt bidders (certificate on file, Bidders page) owe no tax.</p>
+          <label className="check"><input type="checkbox" name="requiresApproval" defaultChecked={auction.requiresApproval} /> Bidders need approval for this sale</label>
+          <p className="muted form-explain">Each bidder asks from a lot page and you approve or decline them below. Any card or deposit check happens outside Gavel; note it on the approval.</p>
           <button type="submit">Save payment and pickup</button>
         </ActionForm>
       )}
@@ -86,6 +92,34 @@ export default async function Auction({ params, searchParams }: { params: Promis
           </tbody>
         </table>
       )}
+      {(auction.requiresApproval || regLatest.length > 0) && <>
+        <h2>Bidder approval</h2>
+        {!auction.requiresApproval && <p className="muted">This sale no longer requires approval; the rows below are the record.</p>}
+        {regLatest.length === 0 ? <p className="muted">No bidder has asked to bid in this sale yet.</p> : (
+          <table data-testid="registrations">
+            <thead><tr><th scope="col">Paddle</th><th scope="col">Bidder</th><th scope="col">Status</th><th scope="col">Note</th><th scope="col">Since</th><th scope="col">Decide</th></tr></thead>
+            <tbody>
+              {regLatest.map((r) => (
+                <tr key={r.bidderId} data-testid={`registration-${r.bidder.paddle}`}>
+                  <td>#{r.bidder.paddle}</td><td>{r.bidder.user.name || r.bidder.user.email}</td>
+                  <td><span className="badge" data-tone={r.status === 'APPROVED' ? 'good' : r.status === 'PENDING' ? 'warn' : 'plain'}>{regLabel[r.status]}</span></td>
+                  <td>{r.note || <span className="muted">—</span>}</td><td>{inZone(r.recordedAt, tz)}</td>
+                  <td>
+                    <ActionForm action={decideRegistrationAction.bind(null, ctx.slug)}>
+                      <input type="hidden" name="auctionId" value={id} />
+                      <input type="hidden" name="bidderId" value={r.bidderId} />
+                      <label>Note <input name="note" maxLength={500} placeholder={r.status === 'APPROVED' ? 'reason to revoke' : 'e.g. deposit taken; required to decline'} /></label>
+                      {r.status !== 'APPROVED' && <button type="submit" name="status" value="APPROVED">Approve</button>}
+                      {r.status !== 'DECLINED' && <button type="submit" name="status" value="DECLINED">{r.status === 'APPROVED' ? 'Revoke' : 'Decline'}</button>}
+                    </ActionForm>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {regLatest.length > 0 && <p className="muted">A revoke stops new bids from that bidder. Bids already placed, and any standing maximum, stay live, as with a suspension.</p>}
+      </>}
       <h2>Consignor contracts</h2>
       {contracts.length === 0 ? <p className="muted">No contracts for this sale yet. A consignor&apos;s lots settle without a statement until one is set.</p> : (
         <table data-testid="contracts">

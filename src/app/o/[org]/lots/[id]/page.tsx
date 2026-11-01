@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
 import { inZone } from '@/auction/house-time';
 import { lotView, publicHistory } from '@/auction/lot-view';
+import { registrationStatus } from '@/auction/registration';
 import { currentTerms, unacceptedTermsSha } from '@/auction/terms';
 import { requireOrg } from '@/core/authz/guards';
 import { can } from '@/core/authz/permissions';
@@ -10,7 +11,7 @@ import { now } from '@/core/clock';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
 import { registerBidderAction } from '../../catalog/actions';
-import { acceptTermsAction, withdrawLotAction } from './actions';
+import { acceptTermsAction, requestApprovalAction, withdrawLotAction } from './actions';
 import { LotLive, type Viewer } from './lot-live';
 
 export const metadata = { title: 'Lot' };
@@ -22,13 +23,15 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   const { id } = await params;
   const v = await lotView(ctx.userId, id);
   const { etag, ...view } = v ?? { etag: '' };
-  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, consignor: true, consignorRef: { select: { name: true } }, auctionId: true, auction: { select: { name: true, timeZone: true } } } }));
+  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, consignor: true, consignorRef: { select: { name: true } }, auctionId: true, auction: { select: { name: true, timeZone: true, requiresApproval: true } } } }));
   if (!v || !lot) notFound();
   const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true, paddle: true } });
   // D-72: a bidder who has not accepted the sale's current terms sees them, with one button, where the bid form would be
   const terms = bidder && (await unacceptedTermsSha(lot.auctionId, bidder.id)) ? await currentTerms(lot.auctionId) : null;
+  // D-88: then, on a sale that requires approval, a bidder not yet approved sees where they stand (and the ask, once)
+  const reg = !terms && bidder && lot.auction.requiresApproval ? await registrationStatus(lot.auctionId, bidder.id) : 'APPROVED';
   // Only the member role gets a paddle (D-49); everyone else is staff here, with the history link where audit.read allows.
-  const viewer: Viewer = terms ? { kind: 'terms' } : bidder ? { kind: 'bidder', paddle: bidder.paddle } : ctx.role === 'member' ? { kind: 'register' }
+  const viewer: Viewer = terms ? { kind: 'terms' } : reg !== 'APPROVED' ? { kind: 'approval' } : bidder ? { kind: 'bidder', paddle: bidder.paddle } : ctx.role === 'member' ? { kind: 'register' }
     : { kind: 'staff', historyHref: can(ctx.role, 'audit.read') ? `/o/${ctx.slug}/lots/${id}/history` : null, canWithdraw: can(ctx.role, 'results.write') && v.status !== 'CLOSED' }; // D-73
   // R-11 (D-83): rendered with the page, not polled. ponytail: a bidder watching a live lot reloads to see new rows; fold it
   // into the state poll if anyone asks for it live.
@@ -50,6 +53,16 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
             <p className="terms-text" data-testid="terms-text">{terms.text}</p>
             <button type="submit">I accept the terms of sale</button>
           </ActionForm>
+        ) : viewer.kind === 'approval' ? (
+          reg === 'PENDING' ? <p data-testid="approval-pending">Your request to bid in {lot.auction.name} is awaiting the house&apos;s approval.</p>
+          : reg === 'DECLINED' ? <p>The house has not approved you to bid in {lot.auction.name}.</p>
+          : (
+            <ActionForm action={requestApprovalAction.bind(null, ctx.slug)}>
+              <input type="hidden" name="lotId" value={id} />
+              <p>{lot.auction.name} needs the house&apos;s approval to bid. Ask once; staff approve each bidder for this sale.</p>
+              <button type="submit">Ask to bid in this sale</button>
+            </ActionForm>
+          )
         ) : viewer.kind === 'staff' ? (
           <ActionForm action={withdrawLotAction.bind(null, ctx.slug)}>
             <input type="hidden" name="lotId" value={id} />

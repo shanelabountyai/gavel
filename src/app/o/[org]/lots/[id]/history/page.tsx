@@ -4,6 +4,7 @@ import { formatCents } from '@/auction/engine/money';
 import { formatLeft } from '@/auction/time-left';
 import { outcomeLabel, outcomeTone } from '@/auction/outcome-labels';
 import { prismaTx } from '@/auction/place-bid';
+import { registrationsFor } from '@/auction/registration';
 import { acceptancesFor, currentTerms } from '@/auction/terms';
 import { loadLot } from '@/auction/verify-sql';
 import { inOrg, requireOrg } from '@/core/authz/guards';
@@ -21,7 +22,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   const ctx = await requireOrg((await params).org, 'audit.read');
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const lot = await db.lot.findFirst({ where: { id, ...inOrg(ctx) }, select: { id: true, number: true, title: true, auctionId: true, auction: { select: { name: true } } } });
+  const lot = await db.lot.findFirst({ where: { id, ...inOrg(ctx) }, select: { id: true, number: true, title: true, auctionId: true, auction: { select: { name: true, requiresApproval: true } } } });
   if (!lot) notFound();
   const [bids, loaded, withdrawal] = await Promise.all([
     db.bid.findMany({ where: { lotId: id, ...inOrg(ctx) }, orderBy: { seq: 'asc' } }),
@@ -33,11 +34,11 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   const pad = new Map(bidders.map((b) => [b.id, `#${b.paddle}`]));
   // D-72: which terms each bidder in this lot accepted, and when, beside the sale's current hash
   const bidderIds = [...new Set(bids.map((b) => b.bidderId))];
-  const [terms, accepted] = await Promise.all([currentTerms(lot.auctionId), acceptancesFor(lot.auctionId, bidderIds)]);
+  const [terms, accepted, regs] = await Promise.all([currentTerms(lot.auctionId), acceptancesFor(lot.auctionId, bidderIds), registrationsFor(lot.auctionId, bidderIds)]); // D-88
   const who = (x: string | null | undefined) => (x ? (pad.get(x) ?? '?') : '—');
   const chain = [loaded.settlement, ...loaded.corrections].filter((s) => s !== null);
   // R18: staff who acted are named, not printed as ids. The id stays in the title for the record.
-  const actorIds = [...chain.map((s) => ('correctedByUserId' in s ? s.correctedByUserId : null)), withdrawal?.byUserId].filter((x): x is string => !!x);
+  const actorIds = [...chain.map((s) => ('correctedByUserId' in s ? s.correctedByUserId : null)), withdrawal?.byUserId, ...regs.filter((r) => r.status !== 'PENDING').map((r) => r.byUserId)].filter((x): x is string => !!x);
   const actors = new Map((await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
   const actor = (id: string | null | undefined) => (id ? <span title={id}>{actors.get(id) ?? id}</span> : '—');
 
@@ -82,6 +83,19 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
             </tbody>
           </table>
         </>
+      )}
+      <h2>Approval to bid</h2>
+      {!lot.auction.requiresApproval && regs.length === 0 ? <p className="muted">This sale needs no approval to bid.</p> : (
+        <table data-testid="registration-history">
+          <thead><tr><th scope="col">Bidder</th><th scope="col" className="num">Step</th><th scope="col">Status</th><th scope="col">Note</th><th scope="col">By</th><th scope="col">At</th></tr></thead>
+          <tbody>
+            {bidderIds.map((id) => {
+              const rows = regs.filter((r) => r.bidderId === id);
+              return rows.length === 0 ? <tr key={id}><td>{who(id)}</td><td className="num">—</td><td className="muted" colSpan={4}>none on record</td></tr>
+                : rows.map((r) => <tr key={r.id}><td>{who(id)}</td><td className="num">{r.version}</td><td>{r.status}</td><td>{r.note || '—'}</td><td>{r.status === 'PENDING' ? 'the bidder' : actor(r.byUserId)}</td><td>{iso(r.recordedAt)}</td></tr>);
+            })}
+          </tbody>
+        </table>
       )}
       <h2>Withdrawal</h2>
       {withdrawal ? (

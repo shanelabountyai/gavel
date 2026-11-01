@@ -9,7 +9,7 @@ import { BidForm, type BidOk } from './bid-form';
 type View = Omit<LotView, 'etag'>;
 /** Who is looking (UX-03, UX-04): a bidder gets the form, a member without a paddle the register button, a bidder who has
  * not accepted the sale's terms the terms (D-72), staff none of these. */
-export type Viewer = { kind: 'bidder'; paddle: number } | { kind: 'register' } | { kind: 'terms' } | { kind: 'staff'; historyHref: string | null; canWithdraw: boolean };
+export type Viewer = { kind: 'bidder'; paddle: number } | { kind: 'register' } | { kind: 'terms' } | { kind: 'approval' } | { kind: 'staff'; historyHref: string | null; canWithdraw: boolean };
 const NEAR_CLOSE_MS = 60_000; // D-47: poll every 1 s near the close, 2 s otherwise
 const UNSETTLED_MS = 30_000; // R20: a closed lot polls every 30 s until its settlement is final, then not at all
 
@@ -144,7 +144,7 @@ export function LotLive({ slug, lotId, initial, etag: firstEtag, serverNowMs, vi
         </p>
       </div>
       {!closed && viewer.kind === 'bidder' && <BidForm slug={slug} lotId={lotId} view={view} paddle={viewer.paddle} disabledReason={scheduled ? `Bidding opens at ${at(view.opensAt)}.` : undefined} onResult={applyResult} />}
-      {!closed && (viewer.kind === 'register' || viewer.kind === 'terms') && <div className="board-panel" data-testid={viewer.kind === 'terms' ? 'terms-panel' : undefined}>{children}</div>}
+      {!closed && (viewer.kind === 'register' || viewer.kind === 'terms' || viewer.kind === 'approval') && <div className="board-panel" data-testid={viewer.kind === 'register' ? undefined : `${viewer.kind}-panel`}>{children}</div>}
       {viewer.kind === 'staff' && (
         <p className="board-panel" data-testid="staff-view">
           Staff view: staff accounts do not bid.{viewer.historyHref && <> <a href={viewer.historyHref}>Bid history</a></>}
