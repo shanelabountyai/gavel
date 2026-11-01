@@ -7,12 +7,14 @@ import { loadRules } from '@/auction/load-rules';
 import { createConsignor, setContract } from '@/auction/consignor';
 import { decideRegistration } from '@/auction/registration';
 import { checkLotFields, insertLot, relistLot } from '@/auction/relist';
+import { parsePremium } from '@/auction/premium-text';
 import { publishTerms } from '@/auction/terms';
 import { audit } from '@/core/audit';
 import { orgAction, ref } from '@/core/authz/action';
 import { inOrg } from '@/core/authz/guards';
 import { db } from '@/core/db';
 import { Refused } from '@/core/errors';
+import { Prisma } from '@/generated/prisma/client';
 
 // Task 3.1 (D-48). Staff only (owner/admin, results.write). Money is typed in dollars and parsed as text into whole
 // cents (UX-15, D-79); a typed time is read in the sale's zone (R-12, D-84) and stored as the UTC instant it names.
@@ -32,9 +34,9 @@ export const createAuction = orgAction(
     if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
     const i = { ...parsed.data, name: raw.name, timeZone: raw.timeZone };
     if (i.firstCloseAt && i.firstCloseAt <= i.opensAt) throw new Refused('The first close must be after the auction opens.');
-    const d = loadRules().rules.defaults; // D-7: copied onto the row at creation
+    const { defaults: d, defaultTable } = loadRules().rules; // D-7: copied onto the row at creation (D-90: the table and the schedule too)
     const a = await db.$transaction(async (tx) => {
-      const a = await tx.auction.create({ data: { ...inOrg(ctx), name: i.name, opensAt: i.opensAt, timeZone: i.timeZone, firstCloseAt: i.firstCloseAt, staggerSeconds: i.staggerSeconds, softCloseWindowSeconds: d.softCloseWindowSeconds, maxExtensionSeconds: d.maxExtensionSeconds, buyerPremiumBps: d.buyerPremiumBps } });
+      const a = await tx.auction.create({ data: { ...inOrg(ctx), name: i.name, opensAt: i.opensAt, timeZone: i.timeZone, firstCloseAt: i.firstCloseAt, staggerSeconds: i.staggerSeconds, softCloseWindowSeconds: d.softCloseWindowSeconds, maxExtensionSeconds: d.maxExtensionSeconds, buyerPremiumBps: d.buyerPremiumBps, incrementTable: defaultTable, premiumBands: d.premiumBands.length > 1 ? d.premiumBands : Prisma.DbNull } });
       await audit(ctx, 'auction.created', { targetType: 'auction', targetId: a.id }, tx);
       return a;
     });
@@ -101,15 +103,23 @@ const termsFields = (tz: string) => z.object({
 
 export const updateSaleTerms = orgAction(
   'results.write',
-  z.object({ auctionId: ref('auction'), paymentDueAt: z.string(), pickupText: z.string(), pickupWindowText: z.string(), taxBps: z.string(), taxBase: z.string(), requiresApproval: z.string().optional() }),
+  z.object({ auctionId: ref('auction'), paymentDueAt: z.string(), pickupText: z.string(), pickupWindowText: z.string(), taxBps: z.string(), taxBase: z.string(), requiresApproval: z.string().optional(), incrementTable: z.string().optional(), premium: z.string().optional() }),
   async (ctx, raw) => {
     const auction = await db.auction.findFirst({ where: { id: raw.auctionId, ...inOrg(ctx) } });
     if (!auction) notFound();
     const parsed = termsFields(auction.timeZone).safeParse(raw);
     if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
-    if (await db.bid.count({ where: { lot: { auctionId: auction.id } }, take: 1 })) throw new Refused('This sale has bids; payment, pickup, tax and approval terms are fixed.');
+    // D-90 (R-18): the increment table and the buyer's premium; a form without the fields leaves them as they are.
+    if (raw.incrementTable !== undefined && !(raw.incrementTable in loadRules().rules.tables)) throw new Refused('Pick one of the increment tables.');
+    const premium = raw.premium === undefined ? undefined : parsePremium(raw.premium);
+    if (premium && 'error' in premium) throw new Refused(premium.error);
+    if (await db.bid.count({ where: { lot: { auctionId: auction.id } }, take: 1 })) throw new Refused('This sale has bids; payment, pickup, tax, approval, increment and premium terms are fixed.');
     await db.$transaction(async (tx) => {
-      await tx.auction.update({ where: { id: auction.id }, data: parsed.data });
+      await tx.auction.update({ where: { id: auction.id }, data: {
+        ...parsed.data,
+        ...(raw.incrementTable !== undefined && { incrementTable: raw.incrementTable }),
+        ...(premium && { buyerPremiumBps: premium.buyerPremiumBps, premiumBands: premium.premiumBands ?? Prisma.DbNull }),
+      } });
       await audit(ctx, 'auction.terms_updated', { targetType: 'auction', targetId: auction.id }, tx);
     });
     redirect(`/o/${ctx.slug}/auctions/${auction.id}`);

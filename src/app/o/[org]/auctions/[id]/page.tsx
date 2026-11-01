@@ -12,6 +12,9 @@ import { registrationsFor } from '@/auction/registration';
 import { acceptancesFor, currentTerms } from '@/auction/terms';
 import { createLot, decideRegistrationAction, publishTermsAction, setContractAction, updateSaleTerms } from '../actions';
 import { inZone, toLocalInput } from '@/auction/house-time';
+import { loadRules } from '@/auction/load-rules';
+import { formatPremium } from '@/auction/premium-text';
+import type { PremiumBand } from '@/auction/engine/rules';
 import { DateTimeField } from '../datetime-field';
 
 export const metadata = { title: 'Auction' };
@@ -45,16 +48,17 @@ export default async function Auction({ params, searchParams }: { params: Promis
   const regLatest = [...new Map(regs.map((r) => [r.bidderId, r])).values()].sort((a, b) => a.bidder.paddle - b.bidder.paddle);
   const regLabel = { PENDING: 'Awaiting approval', APPROVED: 'Approved', DECLINED: 'Declined' } as Record<string, string>;
   const pct = (bps: number) => `${formatCents(bps).slice(1)}%`;
+  const premiumText = formatPremium(auction.buyerPremiumBps, auction.premiumBands as PremiumBand[] | null);
   const taxText = auction.taxBps === 0 ? 'No sales tax.' : `Sales tax ${pct(auction.taxBps)} of ${auction.taxBase === 'HAMMER' ? 'hammer' : 'hammer + premium'}, once per invoice.`;
   return (
     <main>
       <h1>{auction.name}</h1>
       <p className="muted" data-testid="house-time">Times are shown in {tz}.{auction.firstCloseAt && ` Lots close from ${inZone(auction.firstCloseAt, tz)}, ${auction.staggerSeconds} s apart, unless a lot sets its own close.`}</p>
-      <p className="muted">Opens {inZone(auction.opensAt, tz)}. Soft close: a bid in the last {auction.softCloseWindowSeconds / 60} min extends the lot, up to {auction.maxExtensionSeconds / 60} min in all. Buyer&apos;s premium {formatCents(auction.buyerPremiumBps).slice(1)}%.</p>
+      <p className="muted">Opens {inZone(auction.opensAt, tz)}. Soft close: a bid in the last {auction.softCloseWindowSeconds / 60} min extends the lot, up to {auction.maxExtensionSeconds / 60} min in all. Buyer&apos;s premium <span data-testid="premium-terms">{premiumText}</span>. Increments: {auction.incrementTable} table.</p>
       <p><Link href={`/o/${ctx.slug}/auctions/${id}/invoices`}>Invoices for this sale</Link> · <Link href={`/o/${ctx.slug}/auctions/${id}/statements`}>Consignor statements</Link> · <Link href={`/o/${ctx.slug}/auctions/${id}/recap`}>Sale recap</Link></p>
       <h2>Payment and pickup</h2>
       {hasBids ? (
-        <p>Payment due {auction.paymentDueAt ? inZone(auction.paymentDueAt, tz) : <span className="muted">not set</span>}. Pickup: {auction.pickupText || <span className="muted">not set</span>}{auction.pickupWindowText && `, ${auction.pickupWindowText}`}. <span data-testid="tax-fixed">{taxText}</span> {auction.requiresApproval ? 'Bidders need approval for this sale.' : 'No approval needed to bid.'} <span className="muted">Fixed: the sale has bids.</span></p>
+        <p>Payment due {auction.paymentDueAt ? inZone(auction.paymentDueAt, tz) : <span className="muted">not set</span>}. Pickup: {auction.pickupText || <span className="muted">not set</span>}{auction.pickupWindowText && `, ${auction.pickupWindowText}`}. <span data-testid="tax-fixed">{taxText}</span> {auction.requiresApproval ? 'Bidders need approval for this sale.' : 'No approval needed to bid.'} Premium {premiumText}; {auction.incrementTable} increments. <span className="muted">Fixed: the sale has bids.</span></p>
       ) : (
         <ActionForm action={updateSaleTerms.bind(null, ctx.slug)}>
           <p className="muted">Shown on each buyer&apos;s invoice and in the won notice. Fixed once the sale has a bid.</p>
@@ -67,6 +71,13 @@ export default async function Auction({ params, searchParams }: { params: Promis
           <p className="muted form-explain">Tax is configuration, not advice: the rate and the base depend on where the sale happens. Exempt bidders (certificate on file, Bidders page) owe no tax.</p>
           <label className="check"><input type="checkbox" name="requiresApproval" defaultChecked={auction.requiresApproval} /> Bidders need approval for this sale</label>
           <p className="muted form-explain">Each bidder asks from a lot page and you approve or decline them below. Any card or deposit check happens outside Gavel; note it on the approval.</p>
+          <label htmlFor="premium">Buyer&apos;s premium</label>
+          <input id="premium" name="premium" defaultValue={premiumText} required />
+          <p className="muted form-explain">One rate (15%) or tiers on the hammer, each rate on the part of the price up to the next amount: &ldquo;15% to $5,000; 10% above&rdquo;.</p>
+          <label htmlFor="incrementTable">Bid increments</label>
+          <select id="incrementTable" name="incrementTable" defaultValue={auction.incrementTable}>
+            {Object.keys(loadRules().rules.tables).map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
           <button type="submit">Save payment and pickup</button>
         </ActionForm>
       )}

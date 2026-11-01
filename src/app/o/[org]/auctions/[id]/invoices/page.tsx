@@ -1,3 +1,5 @@
+import { formatPremium } from '@/auction/premium-text';
+import type { PremiumBand } from '@/auction/engine/rules';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
@@ -22,7 +24,7 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
   const ctx = await requireOrg((await params).org, 'audit.read');
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, select: { name: true, buyerPremiumBps: true, paymentDueAt: true, timeZone: true } });
+  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, select: { name: true, buyerPremiumBps: true, premiumBands: true, paymentDueAt: true, timeZone: true } });
   if (!auction) notFound();
   const utc = (d: Date) => inZone(d, auction.timeZone); // R-12: the sale's zone, named
   const [invoices, offers, settled] = await Promise.all([paidInvoices(ctx.orgId, { auctionId: id }), offersForAuction(ctx.orgId, id), currentSettlements(ctx.orgId, id)]);
@@ -48,7 +50,7 @@ export default async function Invoices({ params }: { params: Promise<{ org: stri
     <main>
       <h1>Invoices: {auction.name}</h1>
       <p className="muted">
-        Buyer&apos;s premium {formatCents(auction.buyerPremiumBps).slice(1)}% of hammer. {invoices.length} {invoices.length === 1 ? 'buyer' : 'buyers'}.{' '}
+        Buyer&apos;s premium on the hammer: {formatPremium(auction.buyerPremiumBps, auction.premiumBands as PremiumBand[] | null)}. {invoices.length} {invoices.length === 1 ? 'buyer' : 'buyers'}.{' '}
         Payment due {auction.paymentDueAt ? utc(auction.paymentDueAt) : 'not set (no invoice can go overdue or into default until it is)'}.{' '}
         A recorded payment is a mark, never a charge. <Link href={`/o/${ctx.slug}/auctions/${id}`}>Back to the sale</Link>.
       </p>

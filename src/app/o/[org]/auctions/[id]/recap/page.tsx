@@ -1,3 +1,5 @@
+import { formatPremium } from '@/auction/premium-text';
+import type { PremiumBand } from '@/auction/engine/rules';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
@@ -17,7 +19,7 @@ export default async function Recap({ params }: { params: Promise<{ org: string;
   const ctx = await requireOrg((await params).org, 'audit.read');
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, select: { name: true, timeZone: true, buyerPremiumBps: true } });
+  const auction = await db.auction.findFirst({ where: { id, ...inOrg(ctx) }, select: { name: true, timeZone: true, buyerPremiumBps: true, premiumBands: true } });
   if (!auction) notFound();
   const { recap: r, lots, consignors } = await recapForAuction(ctx.orgId, id);
   const csv = (lotId?: string) => `/o/${ctx.slug}/auctions/${id}/ledger.csv${lotId ? `?lot=${lotId}` : ''}`;
@@ -31,7 +33,7 @@ export default async function Recap({ params }: { params: Promise<{ org: string;
         <div><dt>Sold</dt><dd data-testid="sold">{r.sold}</dd></div>
         <div><dt>Sell-through</dt><dd data-testid="sell-through">{pct(r.sellThroughBps)}</dd></div>
         <div><dt>Hammer</dt><dd data-testid="hammer">{formatCents(r.hammerCents)}</dd></div>
-        <div><dt>Premium ({pct(auction.buyerPremiumBps)})</dt><dd data-testid="premium">{formatCents(r.premiumCents)}</dd></div>
+        <div><dt>Premium ({formatPremium(auction.buyerPremiumBps, auction.premiumBands as PremiumBand[] | null)})</dt><dd data-testid="premium">{formatCents(r.premiumCents)}</dd></div>
         <div><dt>Buyers owe</dt><dd>{formatCents(r.totalCents)}</dd></div>
         <div><dt>Extended</dt><dd data-testid="extended">{r.lotsExtended} {r.lotsExtended === 1 ? 'lot' : 'lots'}, {r.extensions} {r.extensions === 1 ? 'extension' : 'extensions'}</dd></div>
         {r.unsettled > 0 && <div><dt>Not settled yet</dt><dd>{r.unsettled}</dd></div>}

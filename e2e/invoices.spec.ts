@@ -39,7 +39,9 @@ test('terms set by staff reach the winner\'s invoice, and only the winner\'s', a
   await page.getByLabel('Pickup instructions').fill('Barn 2, 14 Mill Road');
   await page.getByLabel('Pickup window').fill('Sat 9:00–12:00');
   await page.getByLabel('Sales tax (bps, 0 = none)').fill('825'); // D-78: 8.25% of hammer, once per invoice
-  await page.getByRole('button', { name: 'Save payment and pickup' }).click();
+  // The typed value is in the input before the action commits; wait for the action's response, or the bids below can
+  // land first and the terms trigger (rightly) refuses the save.
+  await Promise.all([page.waitForResponse((r) => r.request().method() === 'POST'), page.getByRole('button', { name: 'Save payment and pickup' }).click()]);
   await expect(page.getByLabel('Pickup instructions')).toHaveValue('Barn 2, 14 Mill Road');
   await expect(page.getByLabel('Sales tax (bps, 0 = none)')).toHaveValue('825');
 

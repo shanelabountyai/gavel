@@ -1,3 +1,5 @@
+import { formatPremium } from '@/auction/premium-text';
+import type { PremiumBand } from '@/auction/engine/rules';
 import Link from 'next/link';
 import { formatCents } from '@/auction/engine/money';
 import { inZone } from '@/auction/house-time';
@@ -16,7 +18,7 @@ export default async function YourInvoices({ params }: { params: Promise<{ org: 
   const me = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true, paddle: true } });
   const invoices = me ? await paidInvoices(ctx.orgId, { bidderId: me.id }) : [];
   const [auctions, lots] = await Promise.all([
-    db.auction.findMany({ where: { id: { in: invoices.map((i) => i.auctionId) }, ...inOrg(ctx) }, select: { id: true, name: true, buyerPremiumBps: true, paymentDueAt: true, pickupText: true, pickupWindowText: true, timeZone: true } }),
+    db.auction.findMany({ where: { id: { in: invoices.map((i) => i.auctionId) }, ...inOrg(ctx) }, select: { id: true, name: true, buyerPremiumBps: true, premiumBands: true, paymentDueAt: true, pickupText: true, pickupWindowText: true, timeZone: true } }),
     db.lot.findMany({ where: { id: { in: invoices.flatMap((i) => i.lots.map((l) => l.lotId)) }, ...inOrg(ctx) }, select: { id: true, title: true } }),
   ]);
   const auction = new Map(auctions.map((a) => [a.id, a]));
@@ -40,7 +42,7 @@ export default async function YourInvoices({ params }: { params: Promise<{ org: 
                 Payment due {a?.paymentDueAt ? <strong>{inZone(a.paymentDueAt, a.timeZone)}</strong> : <span className="muted">date to be confirmed by the house</span>}.{' '}
                 Pickup: {pickup || <span className="muted">to be confirmed by the house</span>}.
               </p>
-              <p className="muted">Buyer&apos;s premium {formatCents(a?.buyerPremiumBps ?? 0).slice(1)}% of hammer.{i.defaulted && <> <strong>This invoice was declared in default</strong> on {i.defaulted.declaredAt.toISOString().slice(0, 10)}; contact the house.</>}</p>
+              <p className="muted">Buyer&apos;s premium on the hammer: {formatPremium(a?.buyerPremiumBps ?? 0, a?.premiumBands as PremiumBand[] | null)}.{i.defaulted && <> <strong>This invoice was declared in default</strong> on {i.defaulted.declaredAt.toISOString().slice(0, 10)}; contact the house.</>}</p>
               <table>
                 <thead>
                   <tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col" className="num">Hammer</th><th scope="col" className="num">Premium</th><th scope="col" className="num">Total</th></tr>
