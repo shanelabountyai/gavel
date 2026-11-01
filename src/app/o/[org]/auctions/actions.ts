@@ -4,9 +4,9 @@ import { z } from 'zod';
 import { dollars } from '@/auction/dollars';
 import { fromLocalInput, isTimeZone } from '@/auction/house-time';
 import { loadRules } from '@/auction/load-rules';
-import { openState } from '@/auction/engine/engine';
 import { createConsignor, setContract } from '@/auction/consignor';
 import { decideRegistration } from '@/auction/registration';
+import { checkLotFields, insertLot, relistLot } from '@/auction/relist';
 import { publishTerms } from '@/auction/terms';
 import { audit } from '@/core/audit';
 import { orgAction, ref } from '@/core/authz/action';
@@ -44,8 +44,6 @@ export const createAuction = orgAction(
 
 // Creating a lot publishes it: the Lot and its LotState row (D-16) are written together, so it is in the
 // catalog at once. Refusals mirror the DB's CHECKs and triggers (D-11) so the form says why; the DB still guards.
-// Creating a lot publishes it: the Lot and its LotState row (D-16) are written together, so it is in the
-// catalog at once. Refusals mirror the DB's CHECKs and triggers (D-11) so the form says why; the DB still guards.
 // The auction is looked up before the fields are read, so another org's id is a 404 whatever else is in the form (INV-02).
 const lotFields = (tz: string) => z.object({
   title: z.string().trim().min(1, 'Give the lot a title.').max(200),
@@ -64,27 +62,28 @@ export const createLot = orgAction(
     const parsed = lotFields(auction.timeZone).safeParse(raw);
     if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
     const i = parsed.data;
-    if (i.startCents < 1) throw new Refused('Start price must be above zero.');
-    if (i.reserveCents !== null && i.reserveCents < i.startCents) throw new Refused('Reserve must be at least the start price.');
-    if (i.scheduledEnd === null && auction.firstCloseAt === null) throw new Refused('Give a close time, or set a first close and stagger on the sale.');
-    if (i.scheduledEnd !== null && i.scheduledEnd <= auction.opensAt) throw new Refused('The lot must close after the auction opens.');
+    checkLotFields(auction, i);
     if (i.consignorId !== null && !(await db.consignor.findFirst({ where: { id: i.consignorId, ...inOrg(ctx) }, select: { id: true } }))) throw new Refused('No such consignor in this house.'); // D-74; INV-02
-    const created = await db.$transaction(async (tx) => {
-      const top = await tx.lot.aggregate({ where: { auctionId: auction.id }, _max: { number: true } });
-      const number = (top._max.number ?? 0) + 1;
-      // R-10 (D-84): an explicit close wins; otherwise first close + (number − 1) × stagger, computed under the same number
-      const scheduledEnd = i.scheduledEnd ?? new Date(auction.firstCloseAt!.getTime() + (number - 1) * auction.staggerSeconds * 1000);
-      const s = openState({ startCents: i.startCents, reserveCents: i.reserveCents, opensAtMs: auction.opensAt.getTime(), scheduledEndMs: scheduledEnd.getTime(), softCloseWindowMs: auction.softCloseWindowSeconds * 1000, maxExtensionMs: auction.maxExtensionSeconds * 1000, buyerPremiumBps: auction.buyerPremiumBps });
-      const lot = await tx.lot.create({
-        data: {
-          ...inOrg(ctx), auctionId: auction.id, number, title: i.title, consignorId: i.consignorId, startCents: i.startCents, reserveCents: i.reserveCents, scheduledEnd,
-          state: { create: { ...inOrg(ctx), priceCents: s.priceCents, leaderBidderId: s.leader, leaderMaxCents: s.leaderMaxCents, leaderSeq: s.leaderSeq, bidCount: s.bidCount, acceptedCount: s.acceptedCount, closesAt: new Date(s.closesAtMs), extensionCount: s.extensionCount } },
-        },
-      });
-      await audit(ctx, 'lot.created', { targetType: 'lot', targetId: lot.id }, tx);
-      return lot;
-    });
+    const created = await db.$transaction((tx) => insertLot(tx, ctx, auction, i));
     redirect(`/o/${ctx.slug}/auctions/${auction.id}?new=${created.id}`); // UX-15: the page says "Lot N published" and marks the row
+  },
+);
+
+// D-89 (AX-17): staff relist an unsold lot into a later sale. Both ids are looked up before the fields are read (INV-02);
+// the price is retyped (a lower reserve is the usual reason), the close read in the target sale's zone (R-12).
+export const relistLotAction = orgAction(
+  'results.write',
+  z.object({ lotId: ref('lot'), auctionId: ref('auction'), startCents: z.string(), reserveCents: z.string().optional(), scheduledEnd: z.string().default('') }),
+  async (ctx, raw) => {
+    const [lot, auction] = await Promise.all([
+      db.lot.findFirst({ where: { id: raw.lotId, ...inOrg(ctx) }, select: { id: true } }),
+      db.auction.findFirst({ where: { id: raw.auctionId, ...inOrg(ctx) }, select: { timeZone: true } }),
+    ]);
+    if (!lot || !auction) notFound();
+    const parsed = lotFields(auction.timeZone).pick({ startCents: true, reserveCents: true, scheduledEnd: true }).safeParse(raw);
+    if (!parsed.success) throw new Refused(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
+    const created = await relistLot(ctx, { lotId: raw.lotId, auctionId: raw.auctionId, ...parsed.data });
+    redirect(`/o/${ctx.slug}/auctions/${raw.auctionId}?new=${created.id}`);
   },
 );
 

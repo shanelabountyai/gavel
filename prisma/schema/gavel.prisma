@@ -108,6 +108,9 @@ model Lot {
   consignor    String         @default("") // free text, kept for rows older than D-74; new lots use consignorId
   consignorId  String?        @db.Uuid // D-74 (AX-07): the consignor the statement is drawn for
   consignorRef Consignor?     @relation(fields: [consignorId], references: [id], onDelete: Restrict)
+  relistOfLotId String?       @unique @db.Uuid // D-89 (AX-17): the unsold lot this one relists; set at creation, never changed (trigger)
+  relistOf     Lot?           @relation("Relist", fields: [relistOfLotId], references: [id], onDelete: Restrict)
+  relistedAs   Lot?           @relation("Relist")
   startCents   Int // CHECK > 0
   reserveCents Int? // CHECK null or >= startCents
   scheduledEnd DateTime       @db.Timestamptz(6) // trigger: > auction.opensAt
