@@ -8,7 +8,7 @@ import { now as clockNow } from '@/core/clock';
 import { db } from '@/core/db';
 import type { Prisma } from '@/generated/prisma/client';
 import { applyBid, minNextBid, type Lot, type LotState } from '@/auction/engine/engine';
-import type { BidOutcome, Rules } from '@/auction/engine/rules';
+import type { BidOutcome, PremiumBand, Rules } from '@/auction/engine/rules';
 import { BidError, LOCK_NOT_AVAILABLE, UNIQUE_VIOLATION, constraintName, sqlState } from '@/auction/errors';
 import { loadRules } from '@/auction/load-rules';
 import { enqueueNotice } from '@/auction/notices';
@@ -111,7 +111,7 @@ export async function placeBid(input: BidInput, deps: Deps = {}): Promise<BidRes
 
 /** The pure engine's view of a catalog row (the auction's settings flattened in, D-34). `withdrawal` is the LotWithdrawal
  * row when the caller joined it (D-73); the bid path ignores whatever the boundary read and re-reads it under the lock. */
-export const toLot = (r: { startCents: number; reserveCents: number | null; scheduledEnd: Date; auction: { opensAt: Date; softCloseWindowSeconds: number; maxExtensionSeconds: number; buyerPremiumBps: number }; withdrawal?: { withdrawnAt: Date } | null }): Lot => ({
+export const toLot = (r: { startCents: number; reserveCents: number | null; scheduledEnd: Date; auction: { opensAt: Date; softCloseWindowSeconds: number; maxExtensionSeconds: number; buyerPremiumBps: number; incrementTable: string; premiumBands: unknown }; withdrawal?: { withdrawnAt: Date } | null }): Lot => ({
   startCents: r.startCents,
   reserveCents: r.reserveCents,
   opensAtMs: r.auction.opensAt.getTime(),
@@ -120,6 +120,8 @@ export const toLot = (r: { startCents: number; reserveCents: number | null; sche
   maxExtensionMs: r.auction.maxExtensionSeconds * 1000,
   buyerPremiumBps: r.auction.buyerPremiumBps,
   withdrawnAtMs: r.withdrawal?.withdrawnAt.getTime() ?? null,
+  incrementTable: r.auction.incrementTable, // D-90
+  premiumBands: r.auction.premiumBands as PremiumBand[] | null, // shape held by the Auction_premiumBands_shape CHECK
 });
 
 export type StateRow = {

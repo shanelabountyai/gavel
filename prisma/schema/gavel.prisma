@@ -28,6 +28,10 @@ model Auction {
   staggerSeconds         Int                   @default(0)
   // D-88 (AX-16): bidders need staff approval for this sale; fixed with the terms above once the sale has a bid
   requiresApproval       Boolean               @default(false)
+  // D-90 (AX-18): a named table of rules/auction.v2.json (CHECK) and a tiered premium, [{loCents, hiCents, bps}] with
+  // at least two bands whose first rate is buyerPremiumBps; null is flat. All three fixed once the sale has a bid.
+  incrementTable         String                @default("standard")
+  premiumBands           Json?
   createdAt              DateTime              @default(now()) @db.Timestamptz(6)
   updatedAt              DateTime              @updatedAt @db.Timestamptz(6)
   lots                   Lot[]
@@ -284,6 +288,7 @@ model Settlement {
   correctedByUserId String?  @db.Uuid // no FK, as AuditEvent.actorUserId; required on a correction (CHECK)
   consignorApprovalRef String? // D-87 (AX-14): set only on a correction selling to the high bidder below the reserve (CHECK; V8 recomputes it)
   premiumBps        Int // the rate premiumCents was taken at; the auction's on the first row
+  premiumBands      Json? // D-90: the schedule premiumCents was taken at; null is flat at premiumBps (CHECK); the auction's on the first row
   lot               Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
   outcome           String // SOLD | UNSOLD_NO_BIDS | UNSOLD_RESERVE_NOT_MET, or UNSOLD_BY_CORRECTION on a correction (CHECK)
   winnerBidderId    String?  @db.Uuid

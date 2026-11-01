@@ -3,7 +3,7 @@
 // because the fold *is* the engine and a second copy of it in SQL would be a second spec. Runs over the same Tx
 // interface as placeBid, so a raw pg client and Prisma read through one implementation.
 import { fold, resettle, settle, type CorrectedSettlement, type FoldRow, type Lot, type LotState, type Settlement } from '@/auction/engine/engine';
-import { RULES_HASHES_D23, type BidOutcome, type Rules } from '@/auction/engine/rules';
+import { RULES_HASHES_D23, type BidOutcome, type PremiumBand, type Rules } from '@/auction/engine/rules';
 import type { Tx } from '@/auction/place-bid';
 
 export type LoadedLot = {
@@ -13,7 +13,7 @@ export type LoadedLot = {
   readonly lot: Lot;
   readonly state: LotState | null; // null: the lot has no LotState row (a V1 failure)
   readonly rows: FoldRow[];
-  readonly settlement: (Settlement & { id: string; rulesHash: string; premiumBps: number }) | null; // the first row: settle(fold(ledger))
+  readonly settlement: (Settlement & { id: string; rulesHash: string; premiumBps: number; premiumBands: readonly PremiumBand[] | null }) | null; // the first row: settle(fold(ledger))
   readonly corrections: StoredCorrection[]; // the rows superseding it, in chain order (D-44)
   readonly strays: string[]; // ids of rows the chain from the first row never reaches; verify fails on any
 };
@@ -23,12 +23,13 @@ export type StoredCorrection = CorrectedSettlement & { id: string; rulesHash: st
 type LotRow = {
   id: string; orgId: string; number: number; startCents: number; reserveCents: number | null; scheduledEnd: Date;
   opensAt: Date; softCloseWindowSeconds: number; maxExtensionSeconds: number; buyerPremiumBps: number;
+  incrementTable: string; premiumBands: PremiumBand[] | null; // D-90
   priceCents: number | null; leaderBidderId: string | null; leaderMaxCents: number | null; leaderSeq: number | null;
   bidCount: number | null; acceptedCount: number | null; closesAt: Date | null; extensionCount: number | null;
   withdrawnAt: Date | null; // D-73: the LotWithdrawal row, if any
 };
 type SettlementRow = {
-  id: string; supersedesId: string | null; reason: string | null; correctedByUserId: string | null; consignorApprovalRef: string | null; premiumBps: number;
+  id: string; supersedesId: string | null; reason: string | null; correctedByUserId: string | null; consignorApprovalRef: string | null; premiumBps: number; premiumBands: PremiumBand[] | null;
   outcome: string; winnerBidderId: string | null; winningSeq: number | null; hammerCents: number; premiumCents: number; totalCents: number; closedAt: Date; rulesHash: string;
 };
 
@@ -36,7 +37,7 @@ type SettlementRow = {
 export async function loadLot(q: Tx, lotId: string): Promise<LoadedLot> {
   const [l] = await q.query<LotRow>(
     `SELECT l."id", l."orgId", l."number", l."startCents", l."reserveCents", l."scheduledEnd", a."opensAt", a."softCloseWindowSeconds",
-            a."maxExtensionSeconds", a."buyerPremiumBps", s."priceCents", s."leaderBidderId", s."leaderMaxCents", s."leaderSeq",
+            a."maxExtensionSeconds", a."buyerPremiumBps", a."incrementTable", a."premiumBands", s."priceCents", s."leaderBidderId", s."leaderMaxCents", s."leaderSeq",
             s."bidCount", s."acceptedCount", s."closesAt", s."extensionCount", w."withdrawnAt"
        FROM "Lot" l JOIN "Auction" a ON a."id" = l."auctionId" LEFT JOIN "LotState" s ON s."lotId" = l."id"
             LEFT JOIN "LotWithdrawal" w ON w."lotId" = l."id"
@@ -49,14 +50,14 @@ export async function loadLot(q: Tx, lotId: string): Promise<LoadedLot> {
     [lotId],
   );
   const sts = await q.query<SettlementRow>(
-    `SELECT "id"::text, "supersedesId"::text, "reason", "correctedByUserId"::text, "consignorApprovalRef", "premiumBps", "outcome", "winnerBidderId"::text, "winningSeq",
+    `SELECT "id"::text, "supersedesId"::text, "reason", "correctedByUserId"::text, "consignorApprovalRef", "premiumBps", "premiumBands", "outcome", "winnerBidderId"::text, "winningSeq",
             "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash"
        FROM "Settlement" WHERE "lotId" = $1::uuid`,
     [lotId],
   );
   const asSettlement = (r: SettlementRow) => ({
     outcome: r.outcome as CorrectedSettlement['outcome'], winner: r.winnerBidderId, winningSeq: r.winningSeq, hammerCents: r.hammerCents,
-    premiumCents: r.premiumCents, totalCents: r.totalCents, closedAtMs: r.closedAt.getTime(), rulesHash: r.rulesHash, premiumBps: r.premiumBps,
+    premiumCents: r.premiumCents, totalCents: r.totalCents, closedAtMs: r.closedAt.getTime(), rulesHash: r.rulesHash, premiumBps: r.premiumBps, premiumBands: r.premiumBands,
   });
   const st = sts.find((r) => r.supersedesId === null);
   const next = new Map(sts.filter((r) => r.supersedesId !== null).map((r) => [r.supersedesId!, r]));
@@ -71,7 +72,7 @@ export async function loadLot(q: Tx, lotId: string): Promise<LoadedLot> {
     lot: {
       startCents: l.startCents, reserveCents: l.reserveCents, opensAtMs: l.opensAt.getTime(), scheduledEndMs: l.scheduledEnd.getTime(),
       softCloseWindowMs: l.softCloseWindowSeconds * 1000, maxExtensionMs: l.maxExtensionSeconds * 1000, buyerPremiumBps: l.buyerPremiumBps,
-      withdrawnAtMs: l.withdrawnAt?.getTime() ?? null,
+      withdrawnAtMs: l.withdrawnAt?.getTime() ?? null, incrementTable: l.incrementTable, premiumBands: l.premiumBands,
     },
     state: l.closesAt === null ? null : {
       priceCents: l.priceCents!, leader: l.leaderBidderId, leaderMaxCents: l.leaderMaxCents!, leaderSeq: l.leaderSeq,
@@ -137,6 +138,10 @@ const SQL_CHECKS: Record<'V2' | 'V3' | 'V4' | 'V5' | 'V6' | 'V7', string[]> = {
   ],
 };
 
+/** Band lists compared field by field, in order; jsonb does not keep key order, so no string comparison. */
+export const sameBands = (a?: readonly PremiumBand[] | null, b?: readonly PremiumBand[] | null) =>
+  (a ?? null) === null || (b ?? null) === null ? (a ?? null) === (b ?? null) : a!.length === b!.length && a!.every((x, i) => x.loCents === b![i]!.loCents && x.hiCents === b![i]!.hiCents && x.bps === b![i]!.bps);
+
 const STATE_COLS = ['priceCents', 'leader', 'leaderMaxCents', 'leaderSeq', 'bidCount', 'acceptedCount', 'closesAtMs', 'extensionCount'] as const;
 const SETTLEMENT_COLS = ['outcome', 'winner', 'winningSeq', 'hammerCents', 'premiumCents', 'totalCents', 'closedAtMs'] as const;
 
@@ -180,13 +185,15 @@ export async function verifyLot(q: Tx, lotId: string, rules: Rules): Promise<Fai
     const c = SETTLEMENT_COLS.find((k) => l.settlement![k] !== expected[k]);
     if (c) return fail('V8', `Settlement.${c} is ${l.settlement[c]}, settle(fold(ledger)) says ${expected[c]}`);
     if (l.settlement.premiumBps !== l.lot.buyerPremiumBps) return fail('V8', `Settlement.premiumBps is ${l.settlement.premiumBps}, the auction says ${l.lot.buyerPremiumBps}`);
+    if (!sameBands(l.settlement.premiumBands, l.lot.premiumBands)) return fail('V8', `Settlement.premiumBands is ${JSON.stringify(l.settlement.premiumBands)}, the auction says ${JSON.stringify(l.lot.premiumBands)}`);
     // D-44: every correction is recomputable from the ledger and its own winner and rate. The schema already
     // refuses a fork (unique supersedesId), a predecessor in another lot (composite FK) and a missing reason (CHECK).
     for (const r of l.corrections) {
-      const want = resettle(l.lot, l.rows, rules, { winner: r.winner, premiumBps: r.premiumBps, consignorApprovalRef: r.consignorApprovalRef });
+      const want = resettle(l.lot, l.rows, rules, { winner: r.winner, premiumBps: r.premiumBps, premiumBands: r.premiumBands, consignorApprovalRef: r.consignorApprovalRef });
       if ('refused' in want) return fail('V8', `correction ${r.id}: resettle refuses it (${want.refused})`);
       const k = ([...SETTLEMENT_COLS, 'premiumBps'] as const).find((x) => r[x] !== want[x]);
       if (k) return fail('V8', `correction ${r.id}: ${k} is ${r[k]}, resettle(ledger) says ${want[k]}`);
+      if (!sameBands(r.premiumBands, want.premiumBands)) return fail('V8', `correction ${r.id}: premiumBands is ${JSON.stringify(r.premiumBands)}, resettle says ${JSON.stringify(want.premiumBands)}`);
     }
     for (const r of [l.settlement, ...l.corrections]) {
       if (!(RULES_HASHES_D23 as readonly string[]).includes(r.rulesHash)) return fail('V9', `rulesHash ${r.rulesHash}, D-23 lists ${RULES_HASHES_D23.join(', ')}`);

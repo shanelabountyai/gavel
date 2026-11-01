@@ -20,15 +20,15 @@ describe('sale recap and ledger CSV on the frozen fixtures (brief §10)', () => 
     expect((await runDb()).ok).toBe(true);
   }, 120_000);
 
-  it('the three sales sum to brief §10: 39 offered, 31 sold, 3 + 2 + 3 unsold, hammer 10,730,200, premium 1,248,403, 8 lots extended, 46 extensions', async () => {
+  it('the five sales sum to brief §10: 49 offered, 41 sold, 3 + 2 + 3 unsold, hammer 15,496,705, premium 1,836,567, 10 lots extended, 56 extensions', async () => {
     const org = await db.org.findUniqueOrThrow({ where: { slug: 'gavel-fixtures' } });
     const sales = await db.auction.findMany({ where: { orgId: org.id }, orderBy: { opensAt: 'asc' } });
-    expect(sales).toHaveLength(3);
+    expect(sales).toHaveLength(5);
     const per = await Promise.all(sales.map((a) => recapForAuction(org.id, a.id)));
     const all = recap(per.flatMap((p) => p.lots));
-    expect(all).toEqual({ offered: 39, settled: 39, sold: 31, unsold: [['UNSOLD_NO_BIDS', 3], ['UNSOLD_RESERVE_NOT_MET', 2], ['UNSOLD_WITHDRAWN', 3]], unsettled: 0, sellThroughBps: 7949, hammerCents: 10_730_200, premiumCents: 1_248_403, totalCents: 11_978_603, lotsExtended: 8, extensions: 46 });
-    for (const p of per) expect(p.recap.offered).toBe(13); // 12 kickoff lots + 1 withdrawn per sale (D-73)
-    expect(per.map((p) => p.consignors)).toEqual([[], [], []]); // the fixtures carry no consignor contract
+    expect(all).toEqual({ offered: 49, settled: 49, sold: 41, unsold: [['UNSOLD_NO_BIDS', 3], ['UNSOLD_RESERVE_NOT_MET', 2], ['UNSOLD_WITHDRAWN', 3]], unsettled: 0, sellThroughBps: 8367, hammerCents: 15_496_705, premiumCents: 1_836_567, totalCents: 17_333_272, lotsExtended: 10, extensions: 56 });
+    expect(per.map((p) => p.recap.offered)).toEqual([13, 13, 5, 5, 13]); // by opensAt: A1, A2, A4, A5, A3; 12 kickoff lots + 1 withdrawn (D-73), 5 per v2 sale (D-90)
+    expect(per.map((p) => p.consignors)).toEqual([[], [], [], [], []]); // the fixtures carry no consignor contract
   });
 
   it("L006's CSV has its 7 rows with the D-45 columns, cents as integers, paddles for bidders, nothing a bidder could not see on the history page", async () => {

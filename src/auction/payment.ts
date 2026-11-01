@@ -107,7 +107,7 @@ export async function declareDefault(actor: Actor, input: { auctionId: string; b
       const l = await loadLot(q, line.lotId);
       const tip = [l.settlement, ...l.corrections].at(-1)!;
       if (tip.winner !== input.bidderId) continue; // corrected away since the page was read
-      const o = secondChance(l.lot, l.rows, rules, input.bidderId, tip.premiumBps);
+      const o = secondChance(l.lot, l.rows, rules, input.bidderId, tip.premiumBps, [], tip.premiumBands);
       if (!o) continue;
       const row = await ptx.secondChanceOffer.create({ data: { orgId: actor.orgId, defaultId: d.id, lotId: line.lotId, bidderId: o.bidderId, priceCents: o.settlement.hammerCents, premiumBps: tip.premiumBps, expiresAt: new Date(at.getTime() + input.replyDays * DAY_MS), createdAt: at } });
       offers.push({ id: row.id, lotId: row.lotId, bidderId: row.bidderId, priceCents: row.priceCents, expiresAt: row.expiresAt });

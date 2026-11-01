@@ -21,10 +21,10 @@ export async function closeLots(asOf: Date, q: Tx, deps: { run?: Runner; rules?:
       const st = settle(l.lot, fold(l.lot, l.rows, rules), asOf.getTime());
       if (!st) return 0;
       const inserted = await tx.query(
-        `INSERT INTO "Settlement" ("id", "orgId", "lotId", "outcome", "winnerBidderId", "winningSeq", "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash", "premiumBps")
-         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7, $8, $9::timestamptz, $10, $11)
+        `INSERT INTO "Settlement" ("id", "orgId", "lotId", "outcome", "winnerBidderId", "winningSeq", "hammerCents", "premiumCents", "totalCents", "closedAt", "rulesHash", "premiumBps", "premiumBands")
+         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7, $8, $9::timestamptz, $10, $11, $12::jsonb)
          ON CONFLICT ("lotId") WHERE "supersedesId" IS NULL DO NOTHING RETURNING "id"`,
-        [l.orgId, id, st.outcome, st.winner, st.winningSeq, st.hammerCents, st.premiumCents, st.totalCents, new Date(st.closedAtMs).toISOString(), hash, l.lot.buyerPremiumBps],
+        [l.orgId, id, st.outcome, st.winner, st.winningSeq, st.hammerCents, st.premiumCents, st.totalCents, new Date(st.closedAtMs).toISOString(), hash, l.lot.buyerPremiumBps, l.lot.premiumBands ? JSON.stringify(l.lot.premiumBands) : null],
       );
       // Task 3.6 (D-53): the won notice rides the settlement row's transaction; ON CONFLICT's no-op writes none.
       if (inserted.length && st.winner !== null) {
