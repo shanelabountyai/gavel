@@ -70,4 +70,11 @@ test('consignor, contract, statement', async ({ page }) => {
   await page.getByRole('button', { name: 'Link bidder' }).click();
   await expect(page.getByTestId('links').getByRole('row', { name: new RegExp(code) })).toContainText('Consignor’s nephew');
   await expect(page.getByTestId('linked-bids').getByRole('row', { name: new RegExp(code) })).toContainText(/Lot 11\$100\.20\$100\.20Yes/);
+
+  // D-94: retract it; the row leaves the report and the link shows the retraction
+  const linkRow = page.getByTestId('links').getByRole('row', { name: new RegExp(code) });
+  await linkRow.getByLabel('Why retract').fill('Wrong paddle');
+  await linkRow.getByRole('button', { name: 'Retract' }).click();
+  await expect(linkRow).toContainText('Retracted: Wrong paddle');
+  await expect(page.getByTestId('linked-bids').getByRole('row', { name: new RegExp(code) })).toHaveCount(0);
 });

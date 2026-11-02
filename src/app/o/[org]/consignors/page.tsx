@@ -4,7 +4,7 @@ import { formatCents } from '@/auction/engine/money';
 import { requireOrg } from '@/core/authz/guards';
 import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
-import { createConsignorAction, linkBidderAction } from '../auctions/actions';
+import { createConsignorAction, linkBidderAction, retractLinkAction } from '../auctions/actions';
 
 export const metadata = { title: 'Consignors' };
 
@@ -13,7 +13,7 @@ export default async function Consignors({ params }: { params: Promise<{ org: st
   const ctx = await requireOrg((await params).org, 'results.write');
   const [consignors, links, bids] = await Promise.all([
     db.consignor.findMany({ where: { orgId: ctx.orgId }, orderBy: { code: 'asc' }, include: { _count: { select: { lots: true, contracts: true } } } }),
-    db.consignorBidderLink.findMany({ where: { orgId: ctx.orgId }, orderBy: { createdAt: 'asc' }, include: { consignor: { select: { code: true } }, bidder: { select: { paddle: true } } } }),
+    db.consignorBidderLink.findMany({ where: { orgId: ctx.orgId }, orderBy: { createdAt: 'asc' }, include: { consignor: { select: { code: true } }, bidder: { select: { paddle: true } }, retraction: true } }),
     linkedBids(ctx.orgId),
   ]);
   return (
@@ -36,12 +36,24 @@ export default async function Consignors({ params }: { params: Promise<{ org: st
       </ActionForm>
       {/* D-93 (AX-22): a report a person reads. Nothing here blocks or flags a bid. */}
       <h2>Linked bidders</h2>
-      <p className="muted">Record a bidder who is linked to a consignor (family, staff, agent). The report below lists that bidder&apos;s accepted bids on that consignor&apos;s lots. Whether such bidding is allowed varies by place and is for counsel. A link cannot be edited or removed. Lots with only a free-text consignor are not covered.</p>
+      <p className="muted">Record a bidder who is linked to a consignor (family, staff, agent). The report below lists that bidder&apos;s accepted bids on that consignor&apos;s lots. Whether such bidding is allowed varies by place and is for counsel. A link entered by mistake can be retracted with a reason; it then leaves the report but stays listed here. Nothing is deleted. Lots with only a free-text consignor are not covered.</p>
       {links.length > 0 && (
         <table data-testid="links">
-          <thead><tr><th scope="col">Consignor</th><th scope="col" className="num">Paddle</th><th scope="col">Reason</th><th scope="col">Recorded</th></tr></thead>
+          <thead><tr><th scope="col">Consignor</th><th scope="col" className="num">Paddle</th><th scope="col">Reason</th><th scope="col">Recorded</th><th scope="col">Retraction</th></tr></thead>
           <tbody>
-            {links.map((k) => <tr key={k.id}><td><code>{k.consignor.code}</code></td><td className="num">{k.bidder.paddle}</td><td>{k.reason}</td><td>{k.createdAt.toISOString().slice(0, 16).replace('T', ' ')} UTC</td></tr>)}
+            {links.map((k) => (
+              <tr key={k.id}>
+                <td><code>{k.consignor.code}</code></td><td className="num">{k.bidder.paddle}</td><td>{k.reason}</td><td>{k.createdAt.toISOString().slice(0, 16).replace('T', ' ')} UTC</td>
+                <td>{k.retraction ? <>Retracted: {k.retraction.reason} ({k.retraction.createdAt.toISOString().slice(0, 16).replace('T', ' ')} UTC)</> : (
+                  <ActionForm action={retractLinkAction.bind(null, ctx.slug)}>
+                    <input type="hidden" name="linkId" value={k.id} />
+                    <label htmlFor={`retract-${k.id}`}>Why retract</label>
+                    <input id={`retract-${k.id}`} name="reason" required maxLength={200} placeholder="e.g. wrong paddle" />
+                    <button type="submit">Retract</button>
+                  </ActionForm>
+                )}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

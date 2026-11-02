@@ -268,10 +268,25 @@ model ConsignorBidderLink {
   reason      String
   byUserId    String    @db.Uuid // no FK, as AuditEvent's actor
   createdAt   DateTime  @db.Timestamptz(6) // now() from @/core/clock
+  retraction  ConsignorBidderLinkRetraction?
 
   @@unique([consignorId, bidderId])
   @@index([orgId])
   @@index([bidderId])
+}
+
+/// D-94: a link entered by mistake, retracted with a reason. Insert-only, one per link, same house by trigger. The
+/// report leaves retracted links out; nothing is deleted.
+model ConsignorBidderLinkRetraction {
+  id        String              @id @default(uuid()) @db.Uuid
+  orgId     String              @db.Uuid
+  linkId    String              @unique @db.Uuid
+  link      ConsignorBidderLink @relation(fields: [linkId], references: [id], onDelete: Restrict)
+  reason    String // CHECK not blank
+  byUserId  String              @db.Uuid // no FK, as AuditEvent's actor
+  createdAt DateTime            @db.Timestamptz(6) // now() from @/core/clock
+
+  @@index([orgId])
 }
 
 /// D-70 (AX-05): suspend / reinstate history, insert-only by trigger. `Bidder.status` is its projection:

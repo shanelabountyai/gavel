@@ -1,7 +1,7 @@
 // D-93 (AX-22, R-22): staff link a bidder to a consignor; the report lists that bidder's accepted bids on that
 // consignor's lots and nothing else. Links are insert-only and one house by trigger. Clock injected.
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createConsignor, linkBidder, linkedBids } from '@/auction/consignor';
+import { createConsignor, linkBidder, linkedBids, retractLink } from '@/auction/consignor';
 import { openState } from '@/auction/engine/engine';
 import { placeBid } from '@/auction/place-bid';
 import { db } from '@/core/db';
@@ -66,5 +66,29 @@ describe('consignor-linked bidding report (D-93)', () => {
     await expect(db.$executeRawUnsafe(`UPDATE "ConsignorBidderLink" SET "reason" = 'y' WHERE "id" = $1::uuid`, link.id)).rejects.toThrow(/append-only/i);
     await expect(db.$executeRawUnsafe(`DELETE FROM "ConsignorBidderLink" WHERE "id" = $1::uuid`, link.id)).rejects.toThrow(/append-only/i);
     await expect(db.consignorBidderLink.create({ data: { orgId: h.org.id, consignorId: est.id, bidderId: foreign, reason: 'x', byUserId: h.actor.userId, createdAt: new Date(T0) } })).rejects.toThrow(/same_house|own house/i);
+  });
+
+  it('a retracted link leaves the report, stays listed, and cannot be retracted twice or edited (D-94)', async () => {
+    const h = await house();
+    const est = await createConsignor(h.actor, { name: 'Estate', code: 'E1' });
+    const shill = await h.bidder(7);
+    const lot = await h.lot(1, est.id);
+    await h.bid(lot.id, shill, 3000, T0 + 1000);
+    const link = await linkBidder(h.actor, { consignorId: est.id, paddle: 7, reason: 'Typo: meant paddle 17' });
+    expect(await linkedBids(h.org.id)).toHaveLength(1);
+
+    await expect(retractLink(h.actor, { linkId: link.id, reason: ' ' })).rejects.toThrow(/reason/i);
+    const r = await retractLink(h.actor, { linkId: link.id, reason: 'Wrong paddle' });
+    expect(await linkedBids(h.org.id)).toEqual([]);
+    expect(await db.consignorBidderLink.count()).toBe(1); // the link stays
+    await expect(retractLink(h.actor, { linkId: link.id, reason: 'Again' })).rejects.toThrow(/already retracted/i);
+    expect(await db.auditEvent.count({ where: { action: 'consignor.bidder_link_retracted' } })).toBe(1);
+
+    const b = await house('other');
+    await expect(retractLink(b.actor, { linkId: link.id, reason: 'x' })).rejects.toThrow(/no such link/i);
+    await expect(db.$executeRawUnsafe(`DELETE FROM "ConsignorBidderLinkRetraction" WHERE "id" = $1::uuid`, r.id)).rejects.toThrow(/append-only/i);
+    await h.bidder(8);
+    const live = await linkBidder(h.actor, { consignorId: est.id, paddle: 8, reason: 'Agent' });
+    await expect(db.consignorBidderLinkRetraction.create({ data: { orgId: b.org.id, linkId: live.id, reason: 'x', byUserId: b.actor.userId, createdAt: new Date(T0) } })).rejects.toThrow(/same_house|own house/i);
   });
 });

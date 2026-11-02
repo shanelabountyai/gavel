@@ -108,7 +108,7 @@ export type LinkedBid = {
   readonly seq: number; readonly maxCents: number; readonly priceAfterCents: number; readonly ledAfter: boolean; readonly placedAt: Date;
 };
 
-/** D-93: every accepted ledger row by a linked bidder on a lot of the consignor it is linked to. Derived on read. */
+/** D-93: every accepted ledger row by a linked (and not retracted, D-94) bidder on a lot of the consignor it is linked to. Derived on read. */
 export const linkedBids = (orgId: string) =>
   db.$queryRawUnsafe<LinkedBid[]>(
     `SELECT c."code", d."paddle", k."reason", a."name" AS "auctionName", l."id"::text AS "lotId", l."number" AS "lotNumber", b."seq", b."maxCents", b."priceAfterCents",
@@ -120,6 +120,21 @@ export const linkedBids = (orgId: string) =>
        JOIN "Auction" a ON a."id" = l."auctionId"
        JOIN "Bid" b ON b."lotId" = l."id" AND b."bidderId" = k."bidderId" AND b."accepted"
       WHERE k."orgId" = $1::uuid
+        AND NOT EXISTS (SELECT 1 FROM "ConsignorBidderLinkRetraction" r WHERE r."linkId" = k."id")
       ORDER BY c."code", a."opensAt", l."number", b."seq"`,
     orgId,
   );
+
+/** D-94: staff retract a link entered by mistake. An insert-only row; the link stays, the report drops it. */
+export async function retractLink(actor: Actor, input: { linkId: string; reason: string }) {
+  const reason = input.reason.trim();
+  if (!reason) throw new Refused('Give the reason for the retraction.');
+  const link = await db.consignorBidderLink.findFirst({ where: { id: input.linkId, orgId: actor.orgId }, select: { id: true, consignorId: true, retraction: { select: { id: true } } } });
+  if (!link) throw new Refused('No such link in this house.');
+  if (link.retraction) throw new Refused('That link is already retracted.');
+  return db.$transaction(async (tx) => {
+    const row = await tx.consignorBidderLinkRetraction.create({ data: { orgId: actor.orgId, linkId: link.id, reason, byUserId: actor.userId, createdAt: now() } });
+    await audit(actor, 'consignor.bidder_link_retracted', { targetType: 'consignor', targetId: link.consignorId, data: { linkId: link.id, retractionId: row.id } }, tx);
+    return row;
+  });
+}
