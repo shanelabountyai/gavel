@@ -31,7 +31,8 @@ test('demo sign-in lands a one-org bidder on their catalog', async ({ page }) =>
 
 test('the page routes by journey: Bid as Ada to the catalog, Run the sale to the live house even with two orgs', async ({ page }) => {
   await page.goto('/demo');
-  await expect(page.getByText('another visitor may be bidding as Ada right now')).toBeVisible();
+  // The warning names the first paddle holder by email; in CI's shared database other specs' demo bidders sort before Ada.
+  await expect(page.getByText(/another visitor may be bidding as \S+ right now/)).toBeVisible();
   const other = page.locator('details');
   await expect(other.locator('form[data-email="member@globex.demo.test"] button')).toBeAttached();
   await expect(other.locator('form[data-email="member@globex.demo.test"] button')).toBeHidden(); // collapsed
