@@ -12,7 +12,7 @@ import { db } from '@/core/db';
 import { ActionForm } from '@/core/ui/action-form';
 import { relistLotAction } from '../../auctions/actions';
 import { registerBidderAction } from '../../catalog/actions';
-import { acceptTermsAction, requestApprovalAction, withdrawLotAction } from './actions';
+import { acceptTermsAction, requestApprovalAction, watchLotAction, withdrawLotAction } from './actions';
 import { LotLive, type Viewer } from './lot-live';
 
 export const metadata = { title: 'Lot' };
@@ -36,6 +36,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
     : { kind: 'staff', historyHref: can(ctx.role, 'audit.read') ? `/o/${ctx.slug}/lots/${id}/history` : null, canWithdraw: can(ctx.role, 'results.write') && v.status !== 'CLOSED' }; // D-73
   // R-11 (D-83): rendered with the page, not polled. ponytail: a bidder watching a live lot reloads to see new rows; fold it
   // into the state poll if anyone asks for it live.
+  const watching = bidder ? !!(await db.watch.findUnique({ where: { bidderId_lotId: { bidderId: bidder.id, lotId: id } }, select: { id: true } })) : false; // D-92
   const history = await publicHistory(id, bidder?.id ?? null);
   const at = (iso: string) => inZone(Date.parse(iso), lot.auction.timeZone); // R-12
   // D-89 (AX-17): staff relist a lot whose current settlement is unsold into a sale that has not opened. ponytail: only
@@ -58,6 +59,14 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
         <p className="muted" data-testid="lot-catalogue">{[lot.category, lot.estimateLowCents !== null && `Estimate ${formatCents(lot.estimateLowCents)}–${formatCents(lot.estimateHighCents!)}`, lot.asIs ? 'Sold as is' : 'Not sold as is'].filter(Boolean).join(' · ')}</p>
         {lot.conditionText && <p data-testid="lot-condition">Condition: {lot.conditionText}</p>}
         {lot.relistOf && <p className="muted" data-testid="relist-of">Relisted from <Link href={`/o/${ctx.slug}/lots/${lot.relistOf.id}`}>lot {lot.relistOf.number} of {lot.relistOf.auction.name}</Link></p>}
+        {bidder && v.status !== 'CLOSED' && (
+          <ActionForm action={watchLotAction.bind(null, ctx.slug)}>
+            <input type="hidden" name="lotId" value={id} />
+            <input type="hidden" name="on" value={watching ? '0' : '1'} />
+            <button type="submit">{watching ? 'Stop watching' : 'Watch this lot'}</button>
+            {watching && <span className="muted"> On your watchlist: you are told once when it closes within a day.</span>}
+          </ActionForm>
+        )}
         {lot.relistedAs && <p data-testid="relisted-as">Unsold here; relisted as <Link href={`/o/${ctx.slug}/lots/${lot.relistedAs.id}`}>lot {lot.relistedAs.number} in {lot.relistedAs.auction.name}</Link></p>}
       </header>
       <LotLive slug={ctx.slug} lotId={id} initial={view as Omit<typeof v, 'etag'>} etag={etag} serverNowMs={now().getTime()} viewer={viewer} timeZone={lot.auction.timeZone}>

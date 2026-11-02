@@ -8,6 +8,7 @@ import { BidError } from '@/auction/errors';
 import { bidErrorText } from '@/auction/outcome-labels';
 import { requestApproval } from '@/auction/registration';
 import { acceptTerms } from '@/auction/terms';
+import { setWatch } from '@/auction/watch';
 import { withdrawLot } from '@/auction/withdraw';
 import { orgAction, ref } from '@/core/authz/action';
 import { db } from '@/core/db';
@@ -67,4 +68,14 @@ export const requestApprovalAction = orgAction(null, z.object({ lotId: ref('lot'
   await requestApproval(ctx, bidder.id, lot.auctionId);
   revalidatePath(`/o/${ctx.slug}`, 'layout'); // every lot of the sale shows the request as awaiting approval
   return { requested: true };
+});
+
+// D-92 (AX-23): a bidder watches or stops watching a lot. Idempotent; the closing-soon notice is the cron's.
+export const watchLotAction = orgAction(null, z.object({ lotId: ref('lot'), on: z.enum(['1', '0']) }), async (ctx, i) => {
+  if (!(await db.lot.findFirst({ where: { id: i.lotId, orgId: ctx.orgId }, select: { id: true } }))) notFound(); // INV-02
+  const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true } });
+  if (!bidder) throw new Refused('Register to bid first.');
+  await setWatch(ctx.orgId, bidder.id, i.lotId, i.on === '1');
+  revalidatePath(`/o/${ctx.slug}`, 'layout'); // the lot page and Your bids
+  return { watching: i.on === '1' };
 });

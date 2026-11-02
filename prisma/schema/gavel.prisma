@@ -129,6 +129,7 @@ model Lot {
   bids         Bid[]
   settlements  Settlement[]
   offers       SecondChanceOffer[]
+  watches      Watch[]
 
   @@unique([auctionId, number])
   @@index([orgId])
@@ -230,9 +231,27 @@ model Bidder {
   defaults      BuyerDefault[]
   offers        SecondChanceOffer[]
   registrations AuctionRegistration[]
+  watches       Watch[]
 
   @@unique([orgId, userId])
   @@unique([orgId, paddle])
+}
+
+/// D-92 (AX-23): a bidder watches a lot. `notifiedClosesAt` is the close the closing-soon notice went out for, so the
+/// cron writes one notice per (lot, bidder, closesAt); a soft-close extension is a new close. Same house by trigger.
+model Watch {
+  id               String    @id @default(uuid()) @db.Uuid
+  orgId            String    @db.Uuid
+  bidderId         String    @db.Uuid
+  bidder           Bidder    @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+  lotId            String    @db.Uuid
+  lot              Lot       @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  notifiedClosesAt DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([bidderId, lotId])
+  @@index([lotId])
+  @@index([orgId])
 }
 
 /// D-70 (AX-05): suspend / reinstate history, insert-only by trigger. `Bidder.status` is its projection:

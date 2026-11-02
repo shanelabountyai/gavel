@@ -16,6 +16,10 @@ export default async function YourBids({ params }: { params: Promise<{ org: stri
   const bids = me ? await myBids(ctx.orgId, me.id) : [];
   bids.sort((a, b) => Number(a.closed) - Number(b.closed)); // open lots first; stable, so close order holds within each
   const t = now().getTime();
+  // D-92 (AX-23): the lots this bidder watches, open first. Closed means the LotState close has passed (a withdrawal too).
+  const watched = me ? await db.watch.findMany({ where: { bidderId: me.id }, select: { lot: { select: { id: true, number: true, title: true, withdrawal: { select: { id: true } }, state: { select: { closesAt: true } }, auction: { select: { name: true, timeZone: true } } } } } }) : [];
+  const watching = watched.map(({ lot: l }) => ({ ...l, closed: !!l.withdrawal || !l.state || l.state.closesAt.getTime() <= t }))
+    .sort((a, b) => Number(a.closed) - Number(b.closed) || (a.state?.closesAt.getTime() ?? 0) - (b.state?.closesAt.getTime() ?? 0));
   return (
     <main>
       <h1>Your bids</h1>
@@ -40,6 +44,28 @@ export default async function YourBids({ params }: { params: Promise<{ org: stri
             </tbody>
           </table>
         </div>
+      )}
+      {me && (
+        <section aria-labelledby="watching-h">
+          <h2 id="watching-h">Watching</h2>
+          {watching.length === 0 ? <p className="muted">No lots on your watchlist. Watch a lot from its page to be told once when it closes within a day.</p> : (
+            <div className="table-scroll catalog">
+              <table data-testid="watching">
+                <thead><tr><th scope="col">Lot</th><th scope="col">Title</th><th scope="col">Auction</th><th scope="col">Closes</th></tr></thead>
+                <tbody>
+                  {watching.map((w) => (
+                    <tr key={w.id}>
+                      <td className="cat-num">{w.number}</td>
+                      <td className="cat-title"><Link href={`/o/${ctx.slug}/lots/${w.id}`}>{w.title}</Link></td>
+                      <td className="muted cat-auction">{w.auction.name}</td>
+                      <td className="cat-time">{w.closed || !w.state ? <span className="badge">Closed</span> : <ClosesAt at={w.state.closesAt} nowMs={t} tz={w.auction.timeZone} />}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
     </main>
   );

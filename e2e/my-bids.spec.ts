@@ -61,3 +61,20 @@ test('your bids and the catalog badge show lead, outbid and won without opening 
   await expect(page.getByRole('row', { name: new RegExp(`Outbid lot ${T}`) })).toContainText('Leading');
   expect(await page.getByRole('row').count()).toBe(2);
 });
+
+test('a bidder watches a lot from its page and finds it under Watching (D-92)', async ({ page }) => {
+  const cy = await user(`cy-mb-${T}@acme.demo.test`);
+  await registerBidder(org.id, cy.id, 'member');
+  const lot = await makeLot(7, `Watched lot ${T}`, new Date(T + 3_600_000));
+  await signIn(page, cy.email);
+  await page.goto('/o/acme/my-bids');
+  await expect(page.getByText('No lots on your watchlist.')).toBeVisible();
+  await page.goto(`/o/acme/lots/${lot.id}`);
+  await page.getByRole('button', { name: 'Watch this lot' }).click();
+  await expect(page.getByRole('button', { name: 'Stop watching' })).toBeVisible();
+  await page.goto('/o/acme/my-bids');
+  await expect(page.getByTestId('watching').getByRole('row', { name: new RegExp(`Watched lot ${T}`) })).toContainText(/Closes in/);
+  await page.goto(`/o/acme/lots/${lot.id}`);
+  await page.getByRole('button', { name: 'Stop watching' }).click();
+  await expect(page.getByRole('button', { name: 'Watch this lot' })).toBeVisible();
+});

@@ -235,7 +235,7 @@ Each requirement lists what it changes, using these labels:
 
 **R-22 Consignor-linked bidding report (AX-22).** Depends on R-07. Staff record a link between a consignor and a bidder. The report lists accepted rows on that consignor's lots by linked bidders. It is a report only, with no automatic action. **Whether any of this is prohibited is for counsel.** D.
 
-**R-23 Watchlist and closing-soon notices (AX-23).** New `Watch` table (`bidderId`, `lotId`). An outbox notice goes out N minutes before `closesAt`, written by the cron, deduplicated per (lot, bidder, closesAt). It is still never sent (O-11). D.
+**R-23 Watchlist and closing-soon notices (AX-23).** **Built 2026-11-02 (D-92).** New `Watch` table (`bidderId`, `lotId`). An outbox notice goes out N minutes before `closesAt`, written by the cron, deduplicated per (lot, bidder, closesAt). It is still never sent (O-11). D.
 
 ## Success Metrics
 

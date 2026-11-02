@@ -1,4 +1,4 @@
-// Task 3.6 (O-11, D-47 Q3, D-53): outbid, won and (D-73) withdrawn notices, terse, through the foundation outbox; nothing is ever
+// Task 3.6 (O-11, D-47 Q3, D-53): outbid, won, (D-73) withdrawn and (D-92) closing-soon notices, terse, through the foundation outbox; nothing is ever
 // sent (the transport captures outside production). Templates are registered into the notifications module at
 // import, Callboard's pattern, so the drain can render them wherever this file is loaded (cron-jobs.ts imports it).
 // The row is written through the bid path's own Tx, not `enqueue`, so Prisma and raw pg share one implementation
@@ -15,12 +15,15 @@ Object.assign(templates, {
     return { subject: `You won ${s(d.lot)}`, body: `You won ${s(d.lot)} at ${s(d.hammer)}, ${s(d.total)} with the buyer's premium; closed at ${s(d.closedAt)}.${d.due ? ` Payment is due by ${s(d.due)}.` : ''}${pickup ? ` Pickup: ${pickup}.` : ''}` };
   },
   // D-73: to the leader at the moment of withdrawal. The reason stays on the house's record (PRD question 9 is open).
+  // D-92 (AX-23): to each watcher, once per close. No price while nothing is accepted (R-01: never $0.00).
+  closing_soon: (d) => ({ subject: `${s(d.lot)} closes soon`, body: `${s(d.lot)}, on your watchlist, closes at ${s(d.closesAt)}. ${d.price ? `The price is now ${s(d.price)}.` : 'No bids yet.'}` }),
   withdrawn: (d) => ({ subject: `${s(d.lot)} withdrawn`, body: `${s(d.lot)} has been withdrawn from the sale by the auction house. Your bids on it are void and nothing is owed.` }),
 } satisfies typeof templates);
 
 export type Notice =
   | { template: 'outbid'; priceCents: number; closesAt: Date }
   | { template: 'won'; hammerCents: number; totalCents: number; closedAt: Date }
+  | { template: 'closing_soon'; priceCents: number | null; closesAt: Date }
   | { template: 'withdrawn' };
 
 /** One Outbox row to the bidder's user email, the lot title (and for won, the sale's due date and pickup) read from the rows, inside the caller's transaction. */
@@ -30,7 +33,9 @@ export async function enqueueNotice(tx: Tx, orgId: string, lotId: string, bidder
       ? { price: formatCents(n.priceCents), closesAt: n.closesAt.toISOString() }
       : n.template === 'won'
         ? { hammer: formatCents(n.hammerCents), total: formatCents(n.totalCents), closedAt: n.closedAt.toISOString() }
-        : {};
+        : n.template === 'closing_soon'
+          ? { ...(n.priceCents === null ? {} : { price: formatCents(n.priceCents) }), closesAt: n.closesAt.toISOString() }
+          : {};
   await tx.query(
     `INSERT INTO "Outbox" ("id", "orgId", "channel", "to", "template", "data")
      SELECT gen_random_uuid(), $1::uuid, 'email', u."email", $4, jsonb_build_object('lot', l."title") || $5::jsonb
