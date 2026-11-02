@@ -61,4 +61,13 @@ test('consignor, contract, statement', async ({ page }) => {
 
   await page.goto(`/o/acme/lots/${unsold.id}`);
   await expect(page.getByText(`Consigned by Estate ${T}`)).toBeVisible();
+
+  // D-93 (AX-22): link the buyer's paddle to the consignor; the report shows their accepted bid on lot 1
+  await page.goto('/o/acme/consignors');
+  await page.getByLabel('Consignor', { exact: true }).selectOption({ value: consignor.id });
+  await page.getByLabel('Paddle').fill(String(b.paddle));
+  await page.getByLabel('Reason').fill('Consignor’s nephew');
+  await page.getByRole('button', { name: 'Link bidder' }).click();
+  await expect(page.getByTestId('links').getByRole('row', { name: new RegExp(code) })).toContainText('Consignor’s nephew');
+  await expect(page.getByTestId('linked-bids').getByRole('row', { name: new RegExp(code) })).toContainText(/Lot 11\$100\.20\$100\.20Yes/);
 });

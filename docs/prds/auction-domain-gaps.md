@@ -233,7 +233,7 @@ Each requirement lists what it changes, using these labels:
 
 **R-21 Estimates, condition and category (AX-21).** **Built 2026-11-02 (D-91).** `Lot` gains `estimateLowCents` and `estimateHighCents` (CHECK low ≤ high), `conditionText`, `category`, and `asIs` (default true). They appear in the catalog and on the lot page, and no rule reads them. *Changes:* schema. D. G/F: none.
 
-**R-22 Consignor-linked bidding report (AX-22).** Depends on R-07. Staff record a link between a consignor and a bidder. The report lists accepted rows on that consignor's lots by linked bidders. It is a report only, with no automatic action. **Whether any of this is prohibited is for counsel.** D.
+**R-22 Consignor-linked bidding report (AX-22).** **Built 2026-11-02 (D-93).** Depends on R-07. Staff record a link between a consignor and a bidder. The report lists accepted rows on that consignor's lots by linked bidders. It is a report only, with no automatic action. **Whether any of this is prohibited is for counsel.** D.
 
 **R-23 Watchlist and closing-soon notices (AX-23).** **Built 2026-11-02 (D-92).** New `Watch` table (`bidderId`, `lotId`). An outbox notice goes out N minutes before `closesAt`, written by the cron, deduplicated per (lot, bidder, closesAt). It is still never sent (O-11). D.
 

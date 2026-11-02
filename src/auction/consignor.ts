@@ -84,3 +84,42 @@ export async function statementsForAuction(q: Tx, orgId: string, auctionId: stri
     return { consignorId: c.id, name: c.name, code: c.code, contract: terms, statement: terms ? consignorStatement(lots, terms) : null, lots, unsettled: unsettled.get(c.id) ?? 0 };
   });
 }
+
+/** D-93 (AX-22): staff record that the bidder with `paddle` is linked to a consignor, with the reason. Insert-only. */
+export async function linkBidder(actor: Actor, input: { consignorId: string; paddle: number; reason: string }) {
+  const reason = input.reason.trim();
+  if (!reason) throw new Refused('Give the reason for the link.');
+  const [consignor, bidder] = await Promise.all([
+    db.consignor.findFirst({ where: { id: input.consignorId, orgId: actor.orgId }, select: { id: true, code: true } }),
+    db.bidder.findUnique({ where: { orgId_paddle: { orgId: actor.orgId, paddle: input.paddle } }, select: { id: true } }),
+  ]);
+  if (!consignor) throw new Refused('No such consignor in this house.');
+  if (!bidder) throw new Refused(`No bidder holds paddle ${input.paddle}.`);
+  if (await db.consignorBidderLink.findUnique({ where: { consignorId_bidderId: { consignorId: consignor.id, bidderId: bidder.id } } })) throw new Refused(`Paddle ${input.paddle} is already linked to ${consignor.code}.`);
+  return db.$transaction(async (tx) => {
+    const row = await tx.consignorBidderLink.create({ data: { orgId: actor.orgId, consignorId: consignor.id, bidderId: bidder.id, reason, byUserId: actor.userId, createdAt: now() } });
+    await audit(actor, 'consignor.bidder_linked', { targetType: 'consignor', targetId: consignor.id, data: { bidderId: bidder.id, paddle: input.paddle, linkId: row.id } }, tx);
+    return row;
+  });
+}
+
+export type LinkedBid = {
+  readonly code: string; readonly paddle: number; readonly reason: string; readonly auctionName: string; readonly lotId: string; readonly lotNumber: number;
+  readonly seq: number; readonly maxCents: number; readonly priceAfterCents: number; readonly ledAfter: boolean; readonly placedAt: Date;
+};
+
+/** D-93: every accepted ledger row by a linked bidder on a lot of the consignor it is linked to. Derived on read. */
+export const linkedBids = (orgId: string) =>
+  db.$queryRawUnsafe<LinkedBid[]>(
+    `SELECT c."code", d."paddle", k."reason", a."name" AS "auctionName", l."id"::text AS "lotId", l."number" AS "lotNumber", b."seq", b."maxCents", b."priceAfterCents",
+            (b."leaderAfterId" = b."bidderId") AS "ledAfter", b."placedAt"
+       FROM "ConsignorBidderLink" k
+       JOIN "Consignor" c ON c."id" = k."consignorId"
+       JOIN "Bidder" d ON d."id" = k."bidderId"
+       JOIN "Lot" l ON l."consignorId" = k."consignorId" AND l."orgId" = k."orgId"
+       JOIN "Auction" a ON a."id" = l."auctionId"
+       JOIN "Bid" b ON b."lotId" = l."id" AND b."bidderId" = k."bidderId" AND b."accepted"
+      WHERE k."orgId" = $1::uuid
+      ORDER BY c."code", a."opensAt", l."number", b."seq"`,
+    orgId,
+  );

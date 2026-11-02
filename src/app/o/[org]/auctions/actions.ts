@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { dollars } from '@/auction/dollars';
 import { fromLocalInput, isTimeZone } from '@/auction/house-time';
 import { loadRules } from '@/auction/load-rules';
-import { createConsignor, setContract } from '@/auction/consignor';
+import { createConsignor, linkBidder, setContract } from '@/auction/consignor';
 import { decideRegistration } from '@/auction/registration';
 import { checkLotFields, insertLot, relistLot } from '@/auction/relist';
 import { parsePremium } from '@/auction/premium-text';
@@ -163,6 +163,18 @@ export const createConsignorAction = orgAction(
   z.object({ name: z.string().max(200, 'Keep the name under 200 characters.'), code: z.string().max(40, 'Keep the code under 40 characters.') }),
   async (ctx, i) => {
     await createConsignor(ctx, i);
+    redirect(`/o/${ctx.slug}/consignors`);
+  },
+);
+
+// D-93 (AX-22): staff link a paddle to a consignor for the linked-bidding report.
+export const linkBidderAction = orgAction(
+  'results.write',
+  z.object({ consignorId: ref('consignor'), paddle: z.string(), reason: z.string().max(200, 'Keep the reason under 200 characters.') }),
+  async (ctx, i) => {
+    if (!(await db.consignor.findFirst({ where: { id: i.consignorId, ...inOrg(ctx) }, select: { id: true } }))) notFound(); // INV-02
+    if (!/^\d{1,6}$/.test(i.paddle.trim())) throw new Refused('Paddle must be a whole number.');
+    await linkBidder(ctx, { ...i, paddle: Number(i.paddle.trim()) });
     redirect(`/o/${ctx.slug}/consignors`);
   },
 );
