@@ -95,7 +95,8 @@ export async function linkBidder(actor: Actor, input: { consignorId: string; pad
   ]);
   if (!consignor) throw new Refused('No such consignor in this house.');
   if (!bidder) throw new Refused(`No bidder holds paddle ${input.paddle}.`);
-  if (await db.consignorBidderLink.findUnique({ where: { consignorId_bidderId: { consignorId: consignor.id, bidderId: bidder.id } } })) throw new Refused(`Paddle ${input.paddle} is already linked to ${consignor.code}.`);
+  // D-95: one live link per pair; a retracted link does not block a new one (the trigger is the guard).
+  if (await db.consignorBidderLink.findFirst({ where: { consignorId: consignor.id, bidderId: bidder.id, retraction: null }, select: { id: true } })) throw new Refused(`Paddle ${input.paddle} is already linked to ${consignor.code}.`);
   return db.$transaction(async (tx) => {
     const row = await tx.consignorBidderLink.create({ data: { orgId: actor.orgId, consignorId: consignor.id, bidderId: bidder.id, reason, byUserId: actor.userId, createdAt: now() } });
     await audit(actor, 'consignor.bidder_linked', { targetType: 'consignor', targetId: consignor.id, data: { bidderId: bidder.id, paddle: input.paddle, linkId: row.id } }, tx);

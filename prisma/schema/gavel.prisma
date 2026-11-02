@@ -270,7 +270,7 @@ model ConsignorBidderLink {
   createdAt   DateTime  @db.Timestamptz(6) // now() from @/core/clock
   retraction  ConsignorBidderLinkRetraction?
 
-  @@unique([consignorId, bidderId])
+  @@index([consignorId, bidderId]) // D-95: one *live* link per pair, by trigger; retracted ones stay as history
   @@index([orgId])
   @@index([bidderId])
 }

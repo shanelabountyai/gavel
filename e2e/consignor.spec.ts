@@ -77,4 +77,12 @@ test('consignor, contract, statement', async ({ page }) => {
   await linkRow.getByRole('button', { name: 'Retract' }).click();
   await expect(linkRow).toContainText('Retracted: Wrong paddle');
   await expect(page.getByTestId('linked-bids').getByRole('row', { name: new RegExp(code) })).toHaveCount(0);
+
+  // D-95: the same pair can be linked again; the report row is back and both links are listed
+  await page.getByLabel('Consignor', { exact: true }).selectOption({ value: consignor.id });
+  await page.getByLabel('Paddle').fill(String(b.paddle));
+  await page.getByLabel('Reason').fill('Consignor’s nephew, re-linked');
+  await page.getByRole('button', { name: 'Link bidder' }).click();
+  await expect(page.getByTestId('links').getByRole('row', { name: new RegExp(code) })).toHaveCount(2);
+  await expect(page.getByTestId('linked-bids').getByRole('row', { name: new RegExp(code) })).toContainText(/Lot 11\$100\.20\$100\.20Yes/);
 });

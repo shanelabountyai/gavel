@@ -91,4 +91,23 @@ describe('consignor-linked bidding report (D-93)', () => {
     const live = await linkBidder(h.actor, { consignorId: est.id, paddle: 8, reason: 'Agent' });
     await expect(db.consignorBidderLinkRetraction.create({ data: { orgId: b.org.id, linkId: live.id, reason: 'x', byUserId: b.actor.userId, createdAt: new Date(T0) } })).rejects.toThrow(/same_house|own house/i);
   });
+
+  it('a retracted pair can be linked again; a second live link for a pair is refused (D-95)', async () => {
+    const h = await house();
+    const est = await createConsignor(h.actor, { name: 'Estate', code: 'E1' });
+    const shill = await h.bidder(7);
+    const lot = await h.lot(1, est.id);
+    await h.bid(lot.id, shill, 3000, T0 + 1000);
+    const first = await linkBidder(h.actor, { consignorId: est.id, paddle: 7, reason: 'Nephew' });
+    await expect(linkBidder(h.actor, { consignorId: est.id, paddle: 7, reason: 'Again' })).rejects.toThrow(/already linked/i);
+    await retractLink(h.actor, { linkId: first.id, reason: 'Retracted by mistake' });
+    expect(await linkedBids(h.org.id)).toEqual([]);
+
+    const second = await linkBidder(h.actor, { consignorId: est.id, paddle: 7, reason: 'Nephew, re-linked' });
+    expect(second.id).not.toBe(first.id);
+    expect(await linkedBids(h.org.id)).toHaveLength(1); // the bid is back in the report
+    expect(await db.consignorBidderLink.count()).toBe(2); // both rows stay
+    await expect(linkBidder(h.actor, { consignorId: est.id, paddle: 7, reason: 'Third' })).rejects.toThrow(/already linked/i);
+    await expect(db.consignorBidderLink.create({ data: { orgId: h.org.id, consignorId: est.id, bidderId: shill, reason: 'raw', byUserId: h.actor.userId, createdAt: new Date(T0) } })).rejects.toThrow(/already linked|one_live/i);
+  });
 });
