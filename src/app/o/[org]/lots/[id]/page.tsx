@@ -24,7 +24,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
   const { id } = await params;
   const v = await lotView(ctx.userId, id);
   const { etag, ...view } = v ?? { etag: '' };
-  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, consignor: true, consignorRef: { select: { name: true } }, auctionId: true, startCents: true, reserveCents: true, auction: { select: { name: true, timeZone: true, requiresApproval: true } }, relistOf: { select: { id: true, number: true, auction: { select: { name: true } } } }, relistedAs: { select: { id: true, number: true, auction: { select: { name: true } } } }, settlements: { select: { id: true, supersedesId: true, outcome: true } } } }));
+  const lot = v && (await db.lot.findFirst({ where: { id, orgId: ctx.orgId }, select: { number: true, title: true, category: true, estimateLowCents: true, estimateHighCents: true, conditionText: true, asIs: true, consignor: true, consignorRef: { select: { name: true } }, auctionId: true, startCents: true, reserveCents: true, auction: { select: { name: true, timeZone: true, requiresApproval: true } }, relistOf: { select: { id: true, number: true, auction: { select: { name: true } } } }, relistedAs: { select: { id: true, number: true, auction: { select: { name: true } } } }, settlements: { select: { id: true, supersedesId: true, outcome: true } } } }));
   if (!v || !lot) notFound();
   const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true, paddle: true } });
   // D-72: a bidder who has not accepted the sale's current terms sees them, with one button, where the bid form would be
@@ -54,6 +54,9 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
         <p className="lot-number">Lot {lot.number} · {lot.auction.name}</p>
         <h1>{lot.title}</h1>
         {(lot.consignorRef?.name || lot.consignor) && <p className="muted">Consigned by {lot.consignorRef?.name ?? lot.consignor}</p>}
+        {/* D-91 (AX-21): shown only; no rule reads them */}
+        <p className="muted" data-testid="lot-catalogue">{[lot.category, lot.estimateLowCents !== null && `Estimate ${formatCents(lot.estimateLowCents)}–${formatCents(lot.estimateHighCents!)}`, lot.asIs ? 'Sold as is' : 'Not sold as is'].filter(Boolean).join(' · ')}</p>
+        {lot.conditionText && <p data-testid="lot-condition">Condition: {lot.conditionText}</p>}
         {lot.relistOf && <p className="muted" data-testid="relist-of">Relisted from <Link href={`/o/${ctx.slug}/lots/${lot.relistOf.id}`}>lot {lot.relistOf.number} of {lot.relistOf.auction.name}</Link></p>}
         {lot.relistedAs && <p data-testid="relisted-as">Unsold here; relisted as <Link href={`/o/${ctx.slug}/lots/${lot.relistedAs.id}`}>lot {lot.relistedAs.number} in {lot.relistedAs.auction.name}</Link></p>}
       </header>
@@ -92,7 +95,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
           {targets.length === 0 ? <p className="muted">No sale of this house is still to open with a first close set. Create the next sale, then relist from here.</p> : (
             <ActionForm action={relistLotAction.bind(null, ctx.slug)}>
               <input type="hidden" name="lotId" value={id} />
-              <p className="muted">A new lot in the chosen sale, with this title, description, image and consignor, closing at that sale&apos;s first close plus its stagger. This lot and its record stay as they are and link to it.</p>
+              <p className="muted">A new lot in the chosen sale, with this title, description, image, estimate, condition and consignor, closing at that sale&apos;s first close plus its stagger. This lot and its record stay as they are and link to it.</p>
               <label htmlFor="relist-sale">Into sale</label>
               <select id="relist-sale" name="auctionId" required>{targets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
               <label>Start price ($) <input name="startCents" inputMode="decimal" required defaultValue={usd(lot.startCents)} /></label>

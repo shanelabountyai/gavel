@@ -10,7 +10,9 @@ import { openState } from '@/auction/engine/engine';
 import type { Auction, Prisma } from '@/generated/prisma/client';
 
 type Actor = { readonly orgId: string; readonly userId: string };
-type LotFields = { title: string; description?: string; imageUrl?: string | null; consignor?: string; consignorId: string | null; startCents: number; reserveCents: number | null; scheduledEnd: Date | null; relistOfLotId?: string };
+type LotFields = { title: string; description?: string; imageUrl?: string | null; consignor?: string; consignorId: string | null; startCents: number; reserveCents: number | null; scheduledEnd: Date | null; relistOfLotId?: string } & Catalogue;
+/** D-91 (AX-21): shown in the catalog and on the lot page; no rule reads them. */
+type Catalogue = { estimateLowCents?: number | null; estimateHighCents?: number | null; conditionText?: string; category?: string; asIs?: boolean };
 
 /** The Lot and its LotState row (D-16) together, numbered next in the sale; a blank close is first close + (number − 1) × stagger (R-10). */
 export async function insertLot(tx: Prisma.TransactionClient, actor: Actor, auction: Auction, i: LotFields) {
@@ -21,6 +23,7 @@ export async function insertLot(tx: Prisma.TransactionClient, actor: Actor, auct
   const lot = await tx.lot.create({
     data: {
       orgId: actor.orgId, auctionId: auction.id, number, title: i.title, description: i.description, imageUrl: i.imageUrl, consignor: i.consignor, consignorId: i.consignorId, startCents: i.startCents, reserveCents: i.reserveCents, scheduledEnd, relistOfLotId: i.relistOfLotId,
+      estimateLowCents: i.estimateLowCents, estimateHighCents: i.estimateHighCents, conditionText: i.conditionText, category: i.category, asIs: i.asIs,
       state: { create: { orgId: actor.orgId, priceCents: s.priceCents, leaderBidderId: s.leader, leaderMaxCents: s.leaderMaxCents, leaderSeq: s.leaderSeq, bidCount: s.bidCount, acceptedCount: s.acceptedCount, closesAt: new Date(s.closesAtMs), extensionCount: s.extensionCount } },
     },
   });
@@ -29,9 +32,11 @@ export async function insertLot(tx: Prisma.TransactionClient, actor: Actor, auct
 }
 
 /** Validates a lot's price and close against its sale; the CHECKs and Lot_ends_after_open are the guard. */
-export function checkLotFields(auction: Auction, i: Pick<LotFields, 'startCents' | 'reserveCents' | 'scheduledEnd'>) {
+export function checkLotFields(auction: Auction, i: Pick<LotFields, 'startCents' | 'reserveCents' | 'scheduledEnd' | 'estimateLowCents' | 'estimateHighCents'>) {
   if (i.startCents < 1) throw new Refused('Start price must be above zero.');
   if (i.reserveCents !== null && i.reserveCents < i.startCents) throw new Refused('Reserve must be at least the start price.');
+  if ((i.estimateLowCents == null) !== (i.estimateHighCents == null)) throw new Refused('Give both ends of the estimate, or neither.');
+  if (i.estimateLowCents != null && i.estimateLowCents > i.estimateHighCents!) throw new Refused('The low estimate cannot be above the high.');
   if (i.scheduledEnd === null && auction.firstCloseAt === null) throw new Refused('Give a close time, or set a first close and stagger on the sale.');
   if (i.scheduledEnd !== null && i.scheduledEnd <= auction.opensAt) throw new Refused('The lot must close after the auction opens.');
 }
@@ -53,5 +58,5 @@ export async function relistLot(actor: Actor, input: { lotId: string; auctionId:
   if (auction.opensAt <= now()) throw new Refused(`${auction.name} has already opened. Relist into a sale that has not.`);
   checkLotFields(auction, input);
   // ponytail: two staff relisting the same lot at once both pass the check above; the unique index on relistOfLotId refuses the loser with a plain error. Not the bid path, no retry.
-  return db.$transaction((tx) => insertLot(tx, actor, auction, { title: orig.title, description: orig.description, imageUrl: orig.imageUrl, consignor: orig.consignor, consignorId: orig.consignorId, startCents: input.startCents, reserveCents: input.reserveCents, scheduledEnd: input.scheduledEnd, relistOfLotId: orig.id }));
+  return db.$transaction((tx) => insertLot(tx, actor, auction, { title: orig.title, description: orig.description, imageUrl: orig.imageUrl, consignor: orig.consignor, consignorId: orig.consignorId, estimateLowCents: orig.estimateLowCents, estimateHighCents: orig.estimateHighCents, conditionText: orig.conditionText, category: orig.category, asIs: orig.asIs, startCents: input.startCents, reserveCents: input.reserveCents, scheduledEnd: input.scheduledEnd, relistOfLotId: orig.id }));
 }

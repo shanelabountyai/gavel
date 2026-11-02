@@ -48,11 +48,23 @@ test('create auction and lots in the house zone with staggered closes, see them 
   await expect(page.locator('form [role=alert]')).toContainText('Start price: give dollars and cents');
   expect(await db.lot.count({ where: { title: 'Exponent lot' } })).toBe(0);
 
+  await page.getByLabel('Low estimate ($, optional)').fill('300');
+  await page.getByLabel('High estimate ($, optional)').fill('200');
+  await fill('Upside-down estimate lot', '100', '');
+  await expect(page.locator('form [role=alert]')).toHaveText('The low estimate cannot be above the high.');
+  expect(await db.lot.count({ where: { title: 'Upside-down estimate lot' } })).toBe(0);
+
+  // D-91 (AX-21): catalogue fields, shown only
+  await page.getByLabel('Low estimate ($, optional)').fill('200');
+  await page.getByLabel('High estimate ($, optional)').fill('300');
+  await page.getByLabel('Category (optional)').fill('Furniture');
+  await page.getByLabel('Condition (optional)').fill('Ring mark on the top.');
   await fill('Walnut desk', '100', '150'); // no close given: the first close
   await expect(page.getByTestId('published')).toHaveText('Lot 1 published.');
   await expect(page.locator('tr.row-new')).toContainText('Walnut desk');
   const lot = await db.lot.findFirstOrThrow({ where: { title: 'Walnut desk' }, include: { state: true } });
   expect([lot.startCents, lot.reserveCents, lot.scheduledEnd]).toEqual([10000, 15000, new Date('2031-01-01T17:00:00Z')]);
+  expect([lot.estimateLowCents, lot.estimateHighCents, lot.category, lot.conditionText, lot.asIs]).toEqual([20000, 30000, 'Furniture', 'Ring mark on the top.', true]);
   expect(lot.state?.closesAt).toEqual(lot.scheduledEnd);
 
   await fill('Half dollar lot', '100.5', ''); // lot 2: first close + 60 s
@@ -70,6 +82,11 @@ test('create auction and lots in the house zone with staggered closes, see them 
   // R21: relative on the page, the exact instant in the title, in the house's zone (R-12)
   await expect(desk.locator('time')).toHaveText(/^Closes in \d+ d \d+ h$/);
   await expect(desk.locator('time')).toHaveAttribute('title', '2031-01-01 12:00 EST');
+  await expect(desk.getByTestId('cat-meta')).toHaveText('Furniture · Est. $200.00–$300.00');
+  await desk.getByRole('link', { name: 'Walnut desk' }).click();
+  await expect(page.getByTestId('lot-catalogue')).toHaveText('Furniture · Estimate $200.00–$300.00 · Sold as is');
+  await expect(page.getByTestId('lot-condition')).toHaveText('Condition: Ring mark on the top.');
+  await page.goto('/o/gavel-fixtures/catalog');
   // The $150.00 reserve is never shown. Scoped to this lot's row: the catalog now shows current prices, and other lots may stand at $150.00.
   await expect(page.getByRole('row', { name: /Walnut desk/ })).not.toContainText('150.00');
 });

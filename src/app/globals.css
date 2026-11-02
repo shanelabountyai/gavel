@@ -79,6 +79,7 @@ a { color: var(--baize); text-underline-offset: 0.18em; }
 a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
 .muted { color: var(--muted); }
+.cat-meta { display: block; font-size: 0.875rem; font-weight: 400; } /* D-91: category and estimate under the catalog title */
 
 /* Tables: the catalog, invoices and the ledger. Money and counts align right on tabular figures. */
 table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }

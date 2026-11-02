@@ -14,7 +14,7 @@ export const metadata = { title: 'Catalog' };
 // Any member of the house. Shows the catalog only: no reserve, no max (brief §4).
 export default async function Catalog({ params }: { params: Promise<{ org: string }> }) {
   const ctx = await requireOrg((await params).org);
-  const lots = await db.lot.findMany({ where: inOrg(ctx), orderBy: [{ auction: { opensAt: 'asc' } }, { number: 'asc' }], select: { id: true, number: true, title: true, startCents: true, scheduledEnd: true, auction: { select: { name: true, timeZone: true } }, state: { select: { priceCents: true, acceptedCount: true, closesAt: true } }, withdrawal: { select: { withdrawnAt: true } } } });
+  const lots = await db.lot.findMany({ where: inOrg(ctx), orderBy: [{ auction: { opensAt: 'asc' } }, { number: 'asc' }], select: { id: true, number: true, title: true, category: true, estimateLowCents: true, estimateHighCents: true, startCents: true, scheduledEnd: true, auction: { select: { name: true, timeZone: true } }, state: { select: { priceCents: true, acceptedCount: true, closesAt: true } }, withdrawal: { select: { withdrawnAt: true } } } });
   const t = now().getTime();
   const isWithdrawn = (l: (typeof lots)[number]) => !!l.withdrawal && l.withdrawal.withdrawnAt.getTime() <= t; // D-73
   const isClosed = (l: (typeof lots)[number]) => !l.state || l.state.closesAt.getTime() <= t || isWithdrawn(l);
@@ -34,7 +34,7 @@ export default async function Catalog({ params }: { params: Promise<{ org: strin
               return (
                 <tr key={l.id}>
                   <td className="cat-num">{l.number}</td>
-                  <td className="cat-title"><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link></td>
+                  <td className="cat-title"><Link href={`/o/${ctx.slug}/lots/${l.id}`}>{l.title}</Link>{(l.category || l.estimateLowCents !== null) && <span className="muted cat-meta" data-testid="cat-meta">{[l.category, l.estimateLowCents !== null && `Est. ${formatCents(l.estimateLowCents)}–${formatCents(l.estimateHighCents!)}`].filter(Boolean).join(' · ')}</span>}</td>
                   <td className="muted cat-auction">{l.auction.name}</td>
                   <td className="num cat-start">{formatCents(l.startCents)}</td>
                   {/* AX-01: accepted bids only; a refused attempt is a ledger row, not a bid on the lot */}

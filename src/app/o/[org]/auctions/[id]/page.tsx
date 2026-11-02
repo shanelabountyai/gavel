@@ -172,6 +172,11 @@ export default async function Auction({ params, searchParams }: { params: Promis
         <label>Consignor (optional) <select name="consignorId" defaultValue=""><option value="">None</option>{consignors.map((c) => <option key={c.id} value={c.id}>{c.code} {c.name}</option>)}</select></label>
         <label>Start price ($) <input name="startCents" inputMode="decimal" required placeholder="150 or 150.50" /></label>
         <label>Reserve ($, optional) <input name="reserveCents" inputMode="decimal" placeholder="blank = no reserve" /></label>
+        <label>Low estimate ($, optional) <input name="estimateLowCents" inputMode="decimal" /></label>
+        <label>High estimate ($, optional) <input name="estimateHighCents" inputMode="decimal" /></label>
+        <label>Category (optional) <input name="category" maxLength={80} placeholder="e.g. Furniture" /></label>
+        <label>Condition (optional) <textarea name="conditionText" maxLength={2000} rows={2} /></label>
+        <label><input type="checkbox" name="asIs" defaultChecked /> Sold as is</label>
         <DateTimeField name="scheduledEnd" label={auction.firstCloseAt ? 'Closes (optional; blank = first close + stagger)' : 'Closes'} tz={tz} serverNowMs={t} required={!auction.firstCloseAt} future="closes in" past="closed" />
         <button type="submit">Create and publish lot</button>
       </ActionForm>

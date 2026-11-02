@@ -231,7 +231,7 @@ Each requirement lists what it changes, using these labels:
 
 **R-20 Bidder credit limit (AX-20).** A cap on Σ the bidder's leading prices across open lots. Enforcing it exactly needs a second lock (the bidder row, with a fixed lock order of bidder then lot). **That contradicts non-negotiable 2.** A boundary check without a lock would be approximate and racy, and must be labelled that way. Propose it only as a Phase 4-style measured experiment. D.
 
-**R-21 Estimates, condition and category (AX-21).** `Lot` gains `estimateLowCents` and `estimateHighCents` (CHECK low ≤ high), `conditionText`, `category`, and `asIs` (default true). They appear in the catalog and on the lot page, and no rule reads them. *Changes:* schema. D. G/F: none.
+**R-21 Estimates, condition and category (AX-21).** **Built 2026-11-02 (D-91).** `Lot` gains `estimateLowCents` and `estimateHighCents` (CHECK low ≤ high), `conditionText`, `category`, and `asIs` (default true). They appear in the catalog and on the lot page, and no rule reads them. *Changes:* schema. D. G/F: none.
 
 **R-22 Consignor-linked bidding report (AX-22).** Depends on R-07. Staff record a link between a consignor and a bidder. The report lists accepted rows on that consignor's lots by linked bidders. It is a report only, with no automatic action. **Whether any of this is prohibited is for counsel.** D.
 

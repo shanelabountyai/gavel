@@ -53,11 +53,16 @@ const lotFields = (tz: string) => z.object({
   startCents: dollars('Start price'),
   reserveCents: z.union([z.literal('').transform(() => null), dollars('Reserve')]).default(null),
   scheduledEnd: optionalAt(tz), // R-10: blank = the sale's first close + (number - 1) × stagger
+  estimateLowCents: z.union([z.literal('').transform(() => null), dollars('Low estimate')]).default(null), // D-91 (AX-21)
+  estimateHighCents: z.union([z.literal('').transform(() => null), dollars('High estimate')]).default(null),
+  category: z.string().trim().max(80).default(''),
+  conditionText: z.string().trim().max(2000).default(''),
+  asIs: z.string().optional().transform((v) => v === 'on'), // an unticked box sends nothing
 });
 
 export const createLot = orgAction(
   'results.write',
-  z.object({ auctionId: ref('auction'), title: z.string(), consignorId: z.union([z.literal(''), ref('consignor')]).optional(), startCents: z.string(), reserveCents: z.string().optional(), scheduledEnd: z.string().default('') }),
+  z.object({ auctionId: ref('auction'), title: z.string(), consignorId: z.union([z.literal(''), ref('consignor')]).optional(), startCents: z.string(), reserveCents: z.string().optional(), scheduledEnd: z.string().default(''), estimateLowCents: z.string().optional(), estimateHighCents: z.string().optional(), category: z.string().optional(), conditionText: z.string().optional(), asIs: z.string().optional() }),
   async (ctx, raw) => {
     const auction = await db.auction.findFirst({ where: { id: raw.auctionId, ...inOrg(ctx) } });
     if (!auction) notFound();

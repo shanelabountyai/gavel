@@ -96,6 +96,8 @@ describe('CHECKs refuse what the engine never produces', () => {
   const cases: [string, (l: L) => Promise<unknown>, RegExp][] = [
     ['startCents 0', (l) => db.lot.create({ data: { orgId: l.org.id, auctionId: l.auction.id, number: 2, title: 'x', startCents: 0, scheduledEnd: T0 } }), /Lot_startCents_positive/],
     ['reserve under start', (l) => db.lot.create({ data: { orgId: l.org.id, auctionId: l.auction.id, number: 2, title: 'x', startCents: 2500, reserveCents: 2499, scheduledEnd: T0 } }), /Lot_reserve_at_least_start/],
+    ['estimate low above high', (l) => db.lot.create({ data: { orgId: l.org.id, auctionId: l.auction.id, number: 2, title: 'x', startCents: 2500, estimateLowCents: 3001, estimateHighCents: 3000, scheduledEnd: T0 } }), /Lot_estimate_range/],
+    ['estimate with one end', (l) => db.lot.create({ data: { orgId: l.org.id, auctionId: l.auction.id, number: 2, title: 'x', startCents: 2500, estimateLowCents: 3000, scheduledEnd: T0 } }), /Lot_estimate_range/],
     ['lot closing at open', (l) => db.lot.create({ data: { orgId: l.org.id, auctionId: l.auction.id, number: 2, title: 'x', startCents: 2500, scheduledEnd: hoursBefore(72) } }), /closes at or before its auction opens/],
     ['auction opening after a lot closes', (l) => db.auction.update({ where: { id: l.auction.id }, data: { opensAt: T0 } }), /would open at or after one of its lots closes/],
     ['stagger negative', (l) => db.auction.update({ where: { id: l.auction.id }, data: { staggerSeconds: -1 } }), /Auction_staggerSeconds_nonneg/],
