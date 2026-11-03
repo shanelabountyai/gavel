@@ -1,6 +1,6 @@
 import { db } from '@/core/db';
 import { now } from '@/core/clock';
-import { type Lot, type LotState, bidderAliases, lotStatus, minNextBid, reserveMet, settle } from '@/auction/engine/engine';
+import { type Lot, type LotState, bidderAliases, liveRows, lotStatus, minNextBid, reserveMet, settle } from '@/auction/engine/engine';
 import { loadRules } from '@/auction/load-rules';
 import { toLot, toState } from '@/auction/place-bid';
 
@@ -48,9 +48,15 @@ export function standing(lot: Lot, state: LotState, bidderId: string, tip: { out
   return s.outcome !== 'SOLD' ? 'UNSOLD' : s.winner === bidderId ? 'WON' : 'NOT_WON';
 }
 
-/** R9: every lot in the house the bidder holds an accepted bid on, with their standing. One query for the lot ids, one for the lots. */
+/** The rows that decide whether a bidder's bid counts (D-96): their accepted rows and their voids. */
+const COUNTING = (bidderId: string) => ({ bidderId, OR: [{ accepted: true }, { outcome: 'VOIDED' }] });
+
+/** R9: every lot in the house the bidder holds a live accepted bid on (D-96: a voided bid is not held), with their standing. */
 export async function myBids(orgId: string, bidderId: string) {
-  const lotIds = (await db.bid.findMany({ where: { orgId, bidderId, accepted: true }, distinct: ['lotId'], select: { lotId: true } })).map((b) => b.lotId);
+  const rows0 = await db.bid.findMany({ where: { orgId, ...COUNTING(bidderId) }, select: { lotId: true, seq: true, bidderId: true, outcome: true } });
+  const byLot = new Map<string, typeof rows0>();
+  for (const r of rows0) (byLot.get(r.lotId) ?? byLot.set(r.lotId, []).get(r.lotId)!).push(r);
+  const lotIds = [...byLot].filter(([, rs]) => liveRows(rs).length > 0).map(([id]) => id);
   const rows = await db.lot.findMany({ where: { id: { in: lotIds }, orgId }, include: { auction: true, state: true, withdrawal: true, settlements: true }, orderBy: [{ state: { closesAt: 'asc' } }, { number: 'asc' }] });
   const nowMs = now().getTime();
   return rows.flatMap((r) => {
@@ -61,9 +67,11 @@ export async function myBids(orgId: string, bidderId: string) {
   });
 }
 
-/** A bidder's own maximum on a lot: their highest accepted maxCents. A refused attempt is a ledger row, not a maximum. */
+/** A bidder's own maximum on a lot: their highest live accepted maxCents. A refused attempt is a ledger row, not a maximum;
+ * a voided bid is not one either (D-96). */
 export async function ownMaxCents(lotId: string, bidderId: string): Promise<number | null> {
-  return (await db.bid.aggregate({ where: { lotId, bidderId, accepted: true }, _max: { maxCents: true } }))._max.maxCents;
+  const live = liveRows(await db.bid.findMany({ where: { lotId, ...COUNTING(bidderId) }, select: { seq: true, bidderId: true, outcome: true, maxCents: true } }));
+  return live.length ? Math.max(...live.map((r) => r.maxCents)) : null;
 }
 
 /** null = not found or not yours (a lot in another house is a 404, INV-02). */
@@ -108,9 +116,15 @@ export async function lotView(userId: string, lotId: string): Promise<LotView | 
 /** R-11 (D-83): what any member may see of a lot's ledger. Accepted rows only, in seq order, the price each one set, whether it
  * extended the close, and a per-lot alias (GB-28); the caller's own rows say "you". Never a maximum, a refused row, a paddle or
  * an id. Read-only, no lock. */
-export type PublicBid = { readonly seq: number; readonly placedAt: string; readonly priceAfterCents: number; readonly extended: boolean; readonly who: string };
+/** D-96 (g): a voided bidder's rows leave the list, and each void is a line of its own naming the alias and the price it left. */
+export type PublicBid = { readonly seq: number; readonly placedAt: string; readonly priceAfterCents: number; readonly extended: boolean; readonly who: string; readonly voided: boolean };
 export async function publicHistory(lotId: string, callerBidderId: string | null): Promise<PublicBid[]> {
-  const rows = await db.bid.findMany({ where: { lotId, accepted: true }, orderBy: { seq: 'asc' }, select: { seq: true, bidderId: true, priceAfterCents: true, placedAt: true, extended: true } });
-  const alias = bidderAliases(rows.map((r) => ({ seq: r.seq, bidderId: r.bidderId, accepted: true })));
-  return rows.map((r) => ({ seq: r.seq, placedAt: r.placedAt.toISOString(), priceAfterCents: r.priceAfterCents, extended: r.extended, who: r.bidderId === callerBidderId ? 'you' : `Bidder ${alias.get(r.bidderId)}` }));
+  const rows = await db.bid.findMany({ where: { lotId, OR: [{ accepted: true }, { outcome: 'VOIDED' }] }, orderBy: { seq: 'asc' }, select: { seq: true, bidderId: true, outcome: true, priceAfterCents: true, placedAt: true, extended: true } });
+  // Aliases come from every accepted row, dead ones too, so a bidder keeps one number for the life of the lot.
+  const alias = bidderAliases(rows.filter((r) => r.outcome !== 'VOIDED').map((r) => ({ seq: r.seq, bidderId: r.bidderId, accepted: true })));
+  const shown = new Set(liveRows(rows).map((r) => r.seq));
+  return rows.filter((r) => r.outcome === 'VOIDED' || shown.has(r.seq)).map((r) => ({
+    seq: r.seq, placedAt: r.placedAt.toISOString(), priceAfterCents: r.priceAfterCents, extended: r.extended, voided: r.outcome === 'VOIDED',
+    who: r.bidderId === callerBidderId ? 'you' : `Bidder ${alias.get(r.bidderId)}`,
+  }));
 }

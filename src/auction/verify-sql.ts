@@ -103,18 +103,19 @@ const SQL_CHECKS: Record<'V2' | 'V3' | 'V4' | 'V5' | 'V6' | 'V7', string[]> = {
     `SELECT format('seq %s (%s): price %s -> %s, previous row ended at %s', "seq", "outcome", pb, pa, prev) AS detail FROM (
        SELECT "seq", "outcome", "accepted", "priceBeforeCents" AS pb, "priceAfterCents" AS pa, lag("priceAfterCents") OVER (ORDER BY "seq") AS prev
          FROM "Bid" WHERE "lotId" = $1::uuid) x
-      WHERE pa < pb
+      WHERE (pa < pb AND "outcome" <> 'VOIDED')
          OR (prev IS NOT NULL AND pb <> prev)
-         OR ((NOT "accepted" OR "outcome" = 'ACCEPTED_RAISE') AND pa <> pb)
+         OR ((NOT "accepted" OR "outcome" = 'ACCEPTED_RAISE') AND "outcome" <> 'VOIDED' AND pa <> pb)
          OR ("accepted" AND "outcome" <> 'ACCEPTED_RAISE' AND pa <= pb)
+         OR ("outcome" = 'VOIDED' AND pa > pb) -- D-96: a void is the one row that may lower the price, and never raises it
       ORDER BY "seq" LIMIT 1`,
   ],
   V5: [
     `SELECT format('seq %s: close %s -> %s, previous row ended at %s, hard close %s, extended %s', "seq", cb, ca, prev, hard, "extended") AS detail FROM (
-       SELECT b."seq", b."extended", b."closesAtBefore" AS cb, b."closesAtAfter" AS ca, lag(b."closesAtAfter") OVER (ORDER BY b."seq") AS prev,
+       SELECT b."seq", b."outcome", b."extended", b."closesAtBefore" AS cb, b."closesAtAfter" AS ca, lag(b."closesAtAfter") OVER (ORDER BY b."seq") AS prev,
               l."scheduledEnd" + a."maxExtensionSeconds" * interval '1 second' AS hard
          FROM "Bid" b JOIN "Lot" l ON l."id" = b."lotId" JOIN "Auction" a ON a."id" = l."auctionId" WHERE b."lotId" = $1::uuid) x
-      WHERE ca < cb OR (prev IS NOT NULL AND cb <> prev) OR ca > hard OR "extended" <> (ca <> cb)
+      WHERE ca < cb OR (prev IS NOT NULL AND cb <> prev) OR ca > hard OR "extended" <> (ca <> cb) OR ("outcome" = 'VOIDED' AND ca <> cb)
       ORDER BY "seq" LIMIT 1`,
     `SELECT format('extensionCount %s, extended rows %s', s."extensionCount", (SELECT count(*) FROM "Bid" b WHERE b."lotId" = s."lotId" AND b."extended")) AS detail
        FROM "LotState" s WHERE s."lotId" = $1::uuid
@@ -126,8 +127,8 @@ const SQL_CHECKS: Record<'V2' | 'V3' | 'V4' | 'V5' | 'V6' | 'V7', string[]> = {
        SELECT b."seq", b."outcome", b."accepted", b."placedAt" AS t, lag(b."placedAt") OVER (ORDER BY b."seq") AS prev, a."opensAt" AS opens, b."closesAtBefore" AS cb, w."withdrawnAt" AS wd
          FROM "Bid" b JOIN "Lot" l ON l."id" = b."lotId" JOIN "Auction" a ON a."id" = l."auctionId" LEFT JOIN "LotWithdrawal" w ON w."lotId" = b."lotId" WHERE b."lotId" = $1::uuid) x
       WHERE (prev IS NOT NULL AND t < prev)
-         OR ("accepted" AND NOT (opens <= t AND t < cb))
-         OR ("accepted" AND wd IS NOT NULL AND t >= wd)
+         OR (("accepted" OR "outcome" = 'VOIDED') AND NOT (opens <= t AND t < cb)) -- D-96: a void only while OPEN
+         OR (("accepted" OR "outcome" = 'VOIDED') AND wd IS NOT NULL AND t >= wd)
          OR ("outcome" = 'REJECTED_LOT_CLOSED' AND t < cb)
          OR ("outcome" = 'REJECTED_LOT_WITHDRAWN' AND (wd IS NULL OR t < wd))
       ORDER BY "seq" LIMIT 1`,

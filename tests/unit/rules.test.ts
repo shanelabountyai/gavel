@@ -31,10 +31,10 @@ const code = (fn: () => unknown) => {
 };
 
 describe('loadRules (D-7, D-23)', () => {
-  it('loads rules/auction.v2.json with the D-23 hash (D-90)', () => {
+  it('loads rules/auction.v2.json with the D-23 hash (D-96)', () => {
     const { rules, hash } = loadRules();
     expect(hash).toBe(RULES_HASH);
-    expect(RULES_HASHES_D23).toHaveLength(3); // kickoff, D-73, D-90: every one still verifies (V9)
+    expect(RULES_HASHES_D23).toHaveLength(4); // kickoff, D-73, D-90, D-96: every one still verifies (V9)
     expect(Object.keys(rules.tables)).toEqual(['standard', 'equipment', 'estate']);
     expect(rules.defaultTable).toBe('standard');
     expect(rules.bands).toBe(rules.tables.standard);

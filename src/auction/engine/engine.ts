@@ -2,7 +2,7 @@
 // Written from docs/domain-brief.md §5–§6 (D-8..D-12, D-21); tools/auctionlib.py is the oracle it must agree
 // with, not its source. Integers only: cents and epoch ms. No clock, no I/O, no float, no `/` (rules:lint).
 import { MoneyError, assertBps, assertCents, roundHalfUp } from './money';
-import type { BidOutcome, NotWrittenOutcome, PremiumBand, Rules, SettlementOutcome } from './rules';
+import type { BidOutcome, NotWrittenOutcome, PremiumBand, Rules, SettlementOutcome, VoidRefusal } from './rules';
 
 /** Catalog data plus the auction's settings, flattened: nothing here changes once the lot has a bid, except that
  * `withdrawnAtMs` is set once if staff withdraw the lot (D-73). It is the lot's one input beside the ledger: the lot is
@@ -151,13 +151,15 @@ export function applyBid(lot: Lot, state: LotState, bidderId: string, maxCents: 
 
 // ---- Replay, fold, status, settlement (task 1.6; brief §6–§7, D-17, D-21, D-22) ----
 
-/** One attempt as the client sent it. `placedAtMs` is the instant the server read under the lock (D-15). */
+/** One attempt as the client sent it. `placedAtMs` is the instant the server read under the lock (D-15). `void` (D-96):
+ * a staff void of `bidderId`'s live bids, with `maxCents` 0, not a bid. */
 export type Submission = {
   readonly submissionId: string;
   readonly bidderId: string;
   readonly maxCents: number;
   readonly placedAtMs: number;
   readonly idempotencyKey: string;
+  readonly void?: boolean;
 };
 
 /** One Bid row (D-14): the attempt, its seq, and the state before and after it. */
@@ -178,6 +180,54 @@ export type ReplayOutcome = {
 
 export const lotStatus = (lot: Lot, state: LotState, nowMs: number): 'SCHEDULED' | 'OPEN' | 'CLOSED' =>
   withdrawn(lot, nowMs) ? 'CLOSED' : nowMs < lot.opensAtMs ? 'SCHEDULED' : nowMs < state.closesAtMs ? 'OPEN' : 'CLOSED';
+
+// ---- Staff void (R-19, D-96) ----
+
+type RowKey = { readonly seq: number; readonly bidderId: string; readonly outcome: string };
+
+/** D-96 (c): the accepted rows that still count, in seq order. A row is dead when a VOIDED row for the same bidder has a
+ * higher seq; a voided bidder's rows after their void are live. Every reader that means "this bid counts" reads these. */
+export function liveRows<R extends RowKey>(rows: readonly R[]): R[] {
+  const lastVoid = new Map<string, number>();
+  for (const r of rows) if (r.outcome === 'VOIDED') lastVoid.set(r.bidderId, Math.max(lastVoid.get(r.bidderId) ?? 0, r.seq));
+  return rows.filter((r) => r.outcome.startsWith('ACCEPTED_') && r.seq > (lastVoid.get(r.bidderId) ?? 0)).sort((a, b) => a.seq - b.seq);
+}
+
+/** Price, leader, leader max and leader seq from re-applying `live` (accepted rows, in seq order) at their own seq and
+ * instant, from the open state with the close held at `closesAtMs`. Only those four fields are meaningful. */
+function rebuild(lot: Lot, live: readonly FoldRow[], closesAtMs: number, rules: Rules): LotState {
+  let s: LotState = { ...openState(lot), closesAtMs };
+  for (const r of live) s = applyBid(lot, { ...s, bidCount: r.seq - 1 }, r.bidderId, r.maxCents, r.placedAtMs, rules).state;
+  return s;
+}
+
+/**
+ * D-96 (b), (d): void every live accepted row of `bidderId`. Only while OPEN and only with a live row, else a refusal that
+ * writes nothing. Price, leader, leader max and leader seq become the re-application of the other live rows; `bidCount`
+ * + 1; the accepted count, the close and its extension count never move back. Pure, like applyBid: the caller holds the
+ * lot's lock and read `nowMs` under it.
+ */
+export function applyVoid(lot: Lot, state: LotState, rows: readonly FoldRow[], bidderId: string, nowMs: number, rules: Rules): BidResult | { readonly refused: VoidRefusal } {
+  assertCents(nowMs);
+  if (lotStatus(lot, state, nowMs) !== 'OPEN') return { refused: 'VOID_LOT_NOT_OPEN' };
+  const live = liveRows(rows);
+  if (!live.some((r) => r.bidderId === bidderId)) return { refused: 'VOID_NO_LIVE_BIDS' };
+  const rb = rebuild(lot, live.filter((r) => r.bidderId !== bidderId), state.closesAtMs, rules);
+  const s: LotState = { ...state, priceCents: rb.priceCents, leader: rb.leader, leaderMaxCents: rb.leaderMaxCents, leaderSeq: rb.leaderSeq, bidCount: state.bidCount + 1 };
+  return {
+    outcome: 'VOIDED',
+    accepted: false,
+    state: s,
+    priceBefore: state.priceCents,
+    priceAfter: s.priceCents,
+    leaderBefore: state.leader,
+    leaderAfter: s.leader,
+    closesBeforeMs: state.closesAtMs,
+    closesAfterMs: s.closesAtMs,
+    extended: false,
+    minNextBefore: minNextBid(lot, state, rules),
+  };
+}
 
 /**
  * Submissions in arrival order through the D-17 idempotency check, then applyBid. A prior row with the same
@@ -205,7 +255,11 @@ export function replay(lot: Lot, submissions: readonly Submission[], rules: Rule
       });
       continue;
     }
-    const r = applyBid(lot, state, sub.bidderId, sub.maxCents, sub.placedAtMs, rules);
+    const r = sub.void ? applyVoid(lot, state, rows, sub.bidderId, sub.placedAtMs, rules) : applyBid(lot, state, sub.bidderId, sub.maxCents, sub.placedAtMs, rules);
+    if ('refused' in r) {
+      outcomes.push({ submissionId: sub.submissionId, outcome: r.refused, seq: null, row: null, priceAfter: state.priceCents, leaderAfter: state.leader, closesAfterMs: state.closesAtMs });
+      continue;
+    }
     const row: LedgerRow = {
       ...sub,
       seq: r.state.bidCount,
@@ -230,11 +284,15 @@ export function replay(lot: Lot, submissions: readonly Submission[], rules: Rule
 /** Rebuild the projection from the ledger alone (V1). Refuses a seq gap or a row whose outcome re-applying it disagrees with. */
 export function fold(lot: Lot, rows: readonly FoldRow[], rules: Rules): LotState {
   let state = openState(lot);
+  const done: FoldRow[] = [];
   for (const row of [...rows].sort((a, b) => a.seq - b.seq)) {
     if (row.seq !== state.bidCount + 1) throw new RangeError(`seq gap at ${row.seq}`);
-    const r = applyBid(lot, state, row.bidderId, row.maxCents, row.placedAtMs, rules);
-    if (r.outcome !== row.outcome) throw new RangeError(`ledger row ${row.seq} says ${row.outcome}, fold says ${r.outcome}`);
+    // D-96 (e): a VOIDED row re-derives the state from the live rows before it, and is refused where a void would be.
+    const r = row.outcome === 'VOIDED' ? applyVoid(lot, state, done, row.bidderId, row.placedAtMs, rules) : applyBid(lot, state, row.bidderId, row.maxCents, row.placedAtMs, rules);
+    const got = 'refused' in r ? r.refused : r.outcome;
+    if ('refused' in r || got !== row.outcome) throw new RangeError(`ledger row ${row.seq} says ${row.outcome}, fold says ${got}`);
     state = r.state;
+    done.push(row);
   }
   return state;
 }
@@ -328,9 +386,12 @@ export function resettle(lot: Lot, rows: readonly FoldRow[], rules: Rules, targe
     if (original.outcome !== 'SOLD') return { refused: 'RESERVE_NOT_MET' };
     return sale(target.winner, original.winningSeq!, original.hammerCents);
   }
-  const own = rows.filter((r) => r.bidderId === target.winner && !r.outcome.startsWith('REJECTED_')).sort((a, b) => b.seq - a.seq)[0];
+  // D-96 (g): live rows only. The price "reached" is re-derived from the live rows up to the bidder's own, so a voided
+  // bidder's bids never raise it; with no void in the ledger this is the fold's price at that row, as before.
+  const live = liveRows(rows);
+  const own = live.filter((r) => r.bidderId === target.winner).at(-1);
   if (!own) return { refused: 'NOT_AN_ACCEPTED_BIDDER' };
-  const hammerCents = Math.min(fold(lot, rows.filter((r) => r.seq <= own.seq), rules).priceCents, own.maxCents);
+  const hammerCents = Math.min(rebuild(lot, live.filter((r) => r.seq <= own.seq), folded.closesAtMs, rules).priceCents, own.maxCents);
   if (lot.reserveCents !== null && hammerCents < lot.reserveCents) return { refused: 'RESERVE_NOT_MET' };
   return sale(target.winner, own.seq, hammerCents);
 }
@@ -466,7 +527,7 @@ export type SecondChance = { readonly bidderId: string; readonly settlement: Cor
 export function secondChance(lot: Lot, rows: readonly FoldRow[], rules: Rules, defaulter: string, premiumBps: number, exclude: readonly string[] = [], premiumBands: readonly PremiumBand[] | null = null): SecondChance | null {
   const out = new Set([defaulter, ...exclude]);
   const lastSeq = new Map<string, number>();
-  for (const r of rows) if (!out.has(r.bidderId) && !r.outcome.startsWith('REJECTED_')) lastSeq.set(r.bidderId, r.seq);
+  for (const r of liveRows(rows)) if (!out.has(r.bidderId)) lastSeq.set(r.bidderId, r.seq); // D-96 (g): live rows only
   let best: (SecondChance & { seq: number }) | null = null;
   for (const [bidderId, seq] of lastSeq) {
     const s = resettle(lot, rows, rules, { winner: bidderId, premiumBps, premiumBands });

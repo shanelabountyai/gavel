@@ -327,6 +327,8 @@ model Bid {
   closesAtBefore   DateTime @db.Timestamptz(6)
   closesAtAfter    DateTime @db.Timestamptz(6) // CHECK >= closesAtBefore
   extended         Boolean
+  voidReason       String? // D-96: set iff outcome = 'VOIDED' (CHECK Bid_void_fields), not blank
+  voidByUserId     String?  @db.Uuid // D-96: the staff member who voided; no FK, as AuditEvent's actor
 
   @@unique([lotId, seq])
   @@unique([lotId, bidderId, idempotencyKey]) // D-17

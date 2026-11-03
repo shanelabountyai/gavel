@@ -7,10 +7,12 @@ import { createHash } from 'node:crypto';
 export const RULES_V1_HASH = 'a7b214408f02a34ec1c7964ecd31d1fce6eca5b6b2aea8a5964edb8d6ef8c43f'; // D-23 (D-73: the withdrawn outcomes)
 /** The file the loader reads now (D-90): rules/auction.v2.json. Its `standard` table is v1's bands and a sale with no
  * premium bands is v1's flat rate, so a row settled under a v1 hash is still what settle(fold(ledger)) says. */
-export const RULES_HASH = '776a0a0ff24e69c08a1ae34ff6f1f0ed070f7632a72cf39a2356b827baf3789b';
+export const RULES_HASH = '6a2cb3504ae03b22acae948cf69b920f0ce2d2f85308c078c1d1e22c37b9eede'; // D-23 (4), D-96: the void outcomes
+/** D-23 (3), D-90: v2 before D-96 added the void outcomes; the rows settled under it carry it. */
+export const RULES_V2_D90_HASH = '776a0a0ff24e69c08a1ae34ff6f1f0ed070f7632a72cf39a2356b827baf3789b';
 /** Every hash D-23 has listed, oldest first. V9 accepts a settlement row computed under any of them: the rows settled
  * before a list grew were computed by the same arithmetic, and settle(fold(ledger)) still reproduces them (V8). */
-export const RULES_HASHES_D23 = ['b4cce697db2d9cd82a1b7aab9622f07b61e899f6f812ce0024829ecc111961f8', RULES_V1_HASH, RULES_HASH] as const;
+export const RULES_HASHES_D23 = ['b4cce697db2d9cd82a1b7aab9622f07b61e899f6f812ce0024829ecc111961f8', RULES_V1_HASH, RULES_V2_D90_HASH, RULES_HASH] as const;
 
 export const ACCEPTED_OUTCOMES = ['ACCEPTED_LEAD', 'ACCEPTED_OUTBID', 'ACCEPTED_RAISE'] as const;
 export const REJECTED_OUTCOMES = [
@@ -20,12 +22,18 @@ export const REJECTED_OUTCOMES = [
   'REJECTED_NOT_ABOVE_OWN_MAX',
   'REJECTED_LOT_WITHDRAWN', // D-73: at or after the lot's withdrawnAt
 ] as const;
-export const NOT_WRITTEN_OUTCOMES = ['REPLAY', 'IDEMPOTENCY_MISMATCH'] as const;
+export const NOT_WRITTEN_OUTCOMES = ['REPLAY', 'IDEMPOTENCY_MISMATCH', 'VOID_LOT_NOT_OPEN', 'VOID_NO_LIVE_BIDS'] as const;
+/** D-96: a staff void of one bidder's live bids on an open lot. A ledger row; neither accepted nor rejected. */
+export const VOIDED_OUTCOMES = ['VOIDED'] as const;
 export const SETTLEMENT_OUTCOMES = ['SOLD', 'UNSOLD_NO_BIDS', 'UNSOLD_RESERVE_NOT_MET', 'UNSOLD_WITHDRAWN'] as const;
 
 export type AcceptedOutcome = (typeof ACCEPTED_OUTCOMES)[number];
 export type RejectedOutcome = (typeof REJECTED_OUTCOMES)[number];
-export type BidOutcome = AcceptedOutcome | RejectedOutcome;
+export type VoidedOutcome = (typeof VOIDED_OUTCOMES)[number];
+/** Every outcome a written ledger row can carry. */
+export type BidOutcome = AcceptedOutcome | RejectedOutcome | VoidedOutcome;
+/** D-96 (b): a refused void writes nothing. */
+export type VoidRefusal = 'VOID_LOT_NOT_OPEN' | 'VOID_NO_LIVE_BIDS';
 export type NotWrittenOutcome = (typeof NOT_WRITTEN_OUTCOMES)[number];
 export type SettlementOutcome = (typeof SETTLEMENT_OUTCOMES)[number];
 
@@ -153,6 +161,7 @@ export function parseRules(text: string): Rules {
     !sameList(o.accepted, ACCEPTED_OUTCOMES) ||
     !sameList(o.rejected, REJECTED_OUTCOMES) ||
     !sameList(o.not_written, NOT_WRITTEN_OUTCOMES) ||
+    !sameList(o.voided, VOIDED_OUTCOMES) ||
     !sameList(raw.settlement_outcomes, SETTLEMENT_OUTCOMES)
   )
     throw new RulesError('outcomes_not_closed', 'the outcome lists must equal the engine\'s, in order');

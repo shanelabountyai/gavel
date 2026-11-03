@@ -20,15 +20,15 @@ describe('sale recap and ledger CSV on the frozen fixtures (brief §10)', () => 
     expect((await runDb()).ok).toBe(true);
   }, 120_000);
 
-  it('the five sales sum to brief §10: 49 offered, 41 sold, 3 + 2 + 3 unsold, hammer 15,496,705, premium 1,836,567, 10 lots extended, 56 extensions', async () => {
+  it('the six sales sum to brief §10: 55 offered, 46 sold, 4 + 2 + 3 unsold, hammer 15,561,105, premium 1,846,227, 11 lots extended, 58 extensions', async () => {
     const org = await db.org.findUniqueOrThrow({ where: { slug: 'gavel-fixtures' } });
     const sales = await db.auction.findMany({ where: { orgId: org.id }, orderBy: { opensAt: 'asc' } });
-    expect(sales).toHaveLength(5);
+    expect(sales).toHaveLength(6);
     const per = await Promise.all(sales.map((a) => recapForAuction(org.id, a.id)));
     const all = recap(per.flatMap((p) => p.lots));
-    expect(all).toEqual({ offered: 49, settled: 49, sold: 41, unsold: [['UNSOLD_NO_BIDS', 3], ['UNSOLD_RESERVE_NOT_MET', 2], ['UNSOLD_WITHDRAWN', 3]], unsettled: 0, sellThroughBps: 8367, hammerCents: 15_496_705, premiumCents: 1_836_567, totalCents: 17_333_272, lotsExtended: 10, extensions: 56 });
-    expect(per.map((p) => p.recap.offered)).toEqual([13, 13, 5, 5, 13]); // by opensAt: A1, A2, A4, A5, A3; 12 kickoff lots + 1 withdrawn (D-73), 5 per v2 sale (D-90)
-    expect(per.map((p) => p.consignors)).toEqual([[], [], [], [], []]); // the fixtures carry no consignor contract
+    expect(all).toEqual({ offered: 55, settled: 55, sold: 46, unsold: [['UNSOLD_NO_BIDS', 4], ['UNSOLD_RESERVE_NOT_MET', 2], ['UNSOLD_WITHDRAWN', 3]], unsettled: 0, sellThroughBps: 8364, hammerCents: 15_561_105, premiumCents: 1_846_227, totalCents: 17_407_332, lotsExtended: 11, extensions: 58 });
+    expect(per.map((p) => p.recap.offered)).toEqual([13, 13, 5, 5, 13, 6]); // by opensAt: A1, A2, A4, A5, A3, A6; 12 kickoff lots + 1 withdrawn (D-73), 5 per v2 sale (D-90), 6 voids (D-96)
+    expect(per.map((p) => p.consignors)).toEqual([[], [], [], [], [], []]); // the fixtures carry no consignor contract
   });
 
   it("L006's CSV has its 7 rows with the D-45 columns, cents as integers, paddles for bidders, nothing a bidder could not see on the history page", async () => {

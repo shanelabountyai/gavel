@@ -33,7 +33,7 @@ type AuctionsJson = {
 };
 
 type FixtureLot = { lot_id: string; auction_id: string; kind: string; lot_number: number; title: string; lot: Lot };
-type FileSub = { submission_id: string; lot_id: string; bidder_id: string; max_cents: number; placed_at_ms: number; idempotency_key: string };
+type FileSub = { submission_id: string; lot_id: string; bidder_id: string; max_cents: number; placed_at_ms: number; idempotency_key: string; void?: boolean }; // void: D-96
 
 /** D-90: a v2 sale's table and premium schedule in the engine's shape; a sale without the keys gets neither (standard, flat). */
 const v2Terms = (a: AuctionsJson['auctions'][number]) => ({
@@ -67,7 +67,7 @@ export function run(asOfArg?: number): { ok: boolean; report: string } {
   const { data, lots, subs, asOf } = loadFixtures(asOfArg);
   const results: LotResult[] = [];
   for (const f of lots) {
-    const list: Submission[] = (subs.get(f.lot_id) ?? []).map((s) => ({ submissionId: s.submission_id, bidderId: s.bidder_id, maxCents: s.max_cents, placedAtMs: s.placed_at_ms, idempotencyKey: s.idempotency_key }));
+    const list: Submission[] = (subs.get(f.lot_id) ?? []).map((s) => ({ submissionId: s.submission_id, bidderId: s.bidder_id, maxCents: s.max_cents, placedAtMs: s.placed_at_ms, idempotencyKey: s.idempotency_key, void: s.void === true }));
     const { state, rows, outcomes: outs } = replay(f.lot, list, rules);
     const folded = fold(f.lot, rows, rules);
     if (JSON.stringify(folded) !== JSON.stringify(state)) return { ok: false, report: `${f.lot_id}: fold != replay state\n${JSON.stringify(folded)}\n${JSON.stringify(state)}` };
@@ -94,6 +94,7 @@ export async function runDb(asOfArg?: number): Promise<{ ok: boolean; report: st
   const { withdrawLot } = await import('../src/auction/withdraw');
   const { loadLot } = await import('../src/auction/verify-sql');
   const { BidError } = await import('../src/auction/errors');
+  const { voidBidder, VoidRefused } = await import('../src/auction/void-bid');
   const { rules, hash } = loadRules();
   const { data, lots, fileOrder, subs, asOf } = loadFixtures(asOfArg);
   const q = prismaTx(db as unknown as Parameters<typeof prismaTx>[0]);
@@ -136,6 +137,21 @@ export async function runDb(asOfArg?: number): Promise<{ ok: boolean; report: st
     const lotId = lotUuid.get(s.lot_id)!;
     const f = lots.find((x) => x.lot_id === s.lot_id)!;
     if (f.lot.withdrawnAtMs !== null && !withdrawn.has(f.lot_id) && f.lot.withdrawnAtMs <= s.placed_at_ms) await withdraw(f);
+    if (s.void) {
+      // D-96: a staff void through the staff path, clock pinned as a bid's; a refusal writes nothing.
+      let v: Awaited<ReturnType<typeof voidBidder>> | null = null;
+      let refused: string | null = null;
+      try {
+        v = await voidBidder({ orgId: org.id, lotId, bidderId: bidderUuid.get(s.bidder_id)!, reason: `fixture kind ${f.kind}`, userId: STAFF, idempotencyKey: s.idempotency_key }, { now: () => new Date(s.placed_at_ms), rules });
+      } catch (e) {
+        if (!(e instanceof VoidRefused)) throw e;
+        refused = e.code;
+      }
+      const st = await db.lotState.findUniqueOrThrow({ where: { lotId } });
+      seen.set(s.submission_id, { outcome: refused ?? (v!.replayed ? 'REPLAY' : 'VOIDED'), seq: v?.seq ?? null, written: v !== null && !v.replayed,
+        price: st.priceCents, leader: asFid(st.leaderBidderId), closesMs: st.closesAt.getTime() });
+      continue;
+    }
     let r: Awaited<ReturnType<typeof placeBid>> | null = null;
     try {
       r = await placeBid({ orgId: org.id, lotId, bidderId: bidderUuid.get(s.bidder_id)!, maxCents: s.max_cents, idempotencyKey: s.idempotency_key }, { now: () => new Date(s.placed_at_ms), rules });
@@ -179,6 +195,7 @@ function report(half: string, data: AuctionsJson, hash: string, asOf: number, re
   const outcomes = new Map<string, number>();
   const kinds = new Map<string, number>();
   const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+  // D-96: rejected_count is bid_count less accepted and VOIDED rows; a void is neither.
   const lotRows: { lot_id: string; auction_id: string; kind: string; bid_count: number; accepted_count: number; price_cents: number; leader: string | null; extension_count: number; extension_total_ms: number; at_cap: boolean; outcome: string; hammer: number; premium: number; total: number }[] = [];
 
   for (const { f, state, bidLines: bl, outcomes: outs, st } of results) {
@@ -188,7 +205,7 @@ function report(half: string, data: AuctionsJson, hash: string, asOf: number, re
     bump(kinds, `${f.kind}/${st.outcome}`);
     const ext = state.closesAtMs - f.lot.scheduledEndMs;
     lotLines.push(line([f.lot_id, f.auction_id, f.kind, f.lot.startCents, f.lot.reserveCents, f.lot.scheduledEndMs, hardCloseMs(f.lot), state.bidCount, state.acceptedCount,
-      state.bidCount - state.acceptedCount, outs.filter((o) => o === 'REPLAY').length, outs.filter((o) => o === 'IDEMPOTENCY_MISMATCH').length,
+      state.bidCount - state.acceptedCount - outs.filter((o) => o === 'VOIDED').length, outs.filter((o) => o === 'REPLAY').length, outs.filter((o) => o === 'IDEMPOTENCY_MISMATCH').length,
       state.priceCents, state.leader, state.leaderMaxCents, state.leaderSeq, reserveMet(f.lot, state), state.closesAtMs, state.extensionCount, ext,
       st.outcome, st.winner, st.winningSeq, st.hammerCents, st.premiumCents, st.totalCents]));
     lotRows.push({ lot_id: f.lot_id, auction_id: f.auction_id, kind: f.kind, bid_count: state.bidCount, accepted_count: state.acceptedCount, price_cents: state.priceCents, leader: state.leader,

@@ -78,7 +78,7 @@ describe('GB-09, GB-21 unsold outcomes', () => {
 describe('the frozen fixtures (brief §10–§11)', () => {
   it('auction:eval reproduces expected_bids.csv and expected_lots.csv column for column', () => {
     const { ok, report } = run();
-    expect(report, report).toContain('OK: expected_bids.csv (293 rows) and expected_lots.csv (49 rows)');
+    expect(report, report).toContain('OK: expected_bids.csv (321 rows) and expected_lots.csv (55 rows)');
     expect(ok).toBe(true);
   });
   it('replays every lot twice and diffs nothing (determinism)', () => {
@@ -87,12 +87,12 @@ describe('the frozen fixtures (brief §10–§11)', () => {
         softCloseWindowMs: a.soft_close_window_seconds * 1000, maxExtensionMs: a.max_extension_seconds * 1000, buyerPremiumBps: a.buyer_premium_bps, withdrawnAtMs: l.withdrawn_at_ms ?? null } as Lot })));
     const subs = readFileSync('fixtures/submissions.jsonl', 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     for (const { id, lot } of lots) {
-      const list: Submission[] = subs.filter((s) => s.lot_id === id).map((s) => ({ submissionId: s.submission_id, bidderId: s.bidder_id, maxCents: s.max_cents, placedAtMs: s.placed_at_ms, idempotencyKey: s.idempotency_key }));
+      const list: Submission[] = subs.filter((s) => s.lot_id === id).map((s) => ({ submissionId: s.submission_id, bidderId: s.bidder_id, maxCents: s.max_cents, placedAtMs: s.placed_at_ms, idempotencyKey: s.idempotency_key, void: s.void === true }));
       const once = replay(lot, list, rules);
       const twice = replay(lot, list, rules);
       expect(twice).toEqual(once);
       expect(fold(lot, once.rows, rules)).toEqual(once.state);
     }
-    expect(lots).toHaveLength(49); // D-90 appended L040-L049 (A4, A5)
+    expect(lots).toHaveLength(55); // D-90 appended L040-L049 (A4, A5); D-96 L050-L055 (A6)
   });
 });
