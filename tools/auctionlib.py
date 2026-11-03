@@ -19,6 +19,8 @@ ROOT = os.path.dirname(HERE)
 RULES_PATH = os.path.join(ROOT, "rules", "auction.v2.json")  # D-90: v2; auction.v1.json stays for the old rows' hashes
 
 ACCEPTED = ("ACCEPTED_LEAD", "ACCEPTED_OUTBID", "ACCEPTED_RAISE")
+VOIDED = "VOIDED"  # D-96: a staff void of one bidder's standing bids; a ledger row, never accepted
+VOID_REFUSALS = ("VOID_LOT_NOT_OPEN", "VOID_NO_LIVE_BIDS")  # D-96 (b): refused voids write nothing
 
 
 def round_half_up(numerator: int, denominator: int) -> int:
@@ -254,6 +256,7 @@ class Submission:
     max_cents: int
     placed_at_ms: int
     idempotency_key: str
+    void: bool = False  # D-96: a staff void of `bidder`'s live bids (max_cents 0), not a bid
 
 
 @dataclass
@@ -287,6 +290,42 @@ class ReplayOutcome:
     extended: bool
 
 
+def live_accepted(rows: list) -> list:
+    """D-96 (c): accepted rows in seq order, less the dead ones. A row is dead when a VOIDED row for the same bidder has a
+    higher seq; a voided bidder's rows after their void are live again."""
+    last_void: dict = {}
+    for r in rows:
+        if r.outcome == VOIDED:
+            last_void[r.bidder] = max(last_void.get(r.bidder, 0), r.seq)
+    return [r for r in sorted(rows, key=lambda r: r.seq) if r.outcome in ACCEPTED and r.seq > last_void.get(r.bidder, 0)]
+
+
+def apply_void(lot: Lot, state: LotState, rows: list, bidder: str, now_ms: int, rules: Rules) -> BidResult:
+    """D-96 (b), (d): void every live accepted row of `bidder`. Only while OPEN, only with a live row; a refusal writes
+    nothing (its state is the state before, bid_count unchanged). Price, leader, leader max and leader seq become the
+    re-application of the other live rows, each at its own seq and instant, with the close held where it is now; the
+    close, its extension count and the accepted count never move back."""
+    seq = state.bid_count + 1
+    min_next = min_next_bid(lot, state, rules)
+
+    def out(code: str, s: LotState) -> BidResult:
+        return BidResult(code, False, s, state.price_cents, s.price_cents, state.leader, s.leader,
+                         state.closes_at_ms, s.closes_at_ms, False, min_next)
+
+    if lot_status(lot, state, now_ms) != "OPEN":
+        return out("VOID_LOT_NOT_OPEN", state)
+    live = live_accepted(rows)
+    if not any(r.bidder == bidder for r in live):
+        return out("VOID_NO_LIVE_BIDS", state)
+    rb = replace(open_state(lot), closes_at_ms=state.closes_at_ms)
+    for r in live:
+        if r.bidder != bidder:
+            rb = apply_bid(lot, replace(rb, bid_count=r.seq - 1), r.bidder, r.max_cents, r.placed_at_ms, rules).state
+    s = replace(state, price_cents=rb.price_cents, leader=rb.leader, leader_max_cents=rb.leader_max_cents,
+                leader_seq=rb.leader_seq, bid_count=seq)
+    return out(VOIDED, s)
+
+
 def replay(lot: Lot, submissions: list, rules: Rules) -> tuple:
     """Submissions in arrival order through the idempotency check then apply_bid. Returns (state, rows, outcomes)."""
     state = open_state(lot)
@@ -302,7 +341,13 @@ def replay(lot: Lot, submissions: list, rules: Rules) -> tuple:
             else:
                 outcomes.append(ReplayOutcome(sub.submission_id, False, "IDEMPOTENCY_MISMATCH", None, state.price_cents, state.leader, state.closes_at_ms, False))
             continue
-        r = apply_bid(lot, state, sub.bidder, sub.max_cents, sub.placed_at_ms, rules)
+        if sub.void:
+            r = apply_void(lot, state, rows, sub.bidder, sub.placed_at_ms, rules)
+            if r.outcome in VOID_REFUSALS:
+                outcomes.append(ReplayOutcome(sub.submission_id, False, r.outcome, None, state.price_cents, state.leader, state.closes_at_ms, False))
+                continue
+        else:
+            r = apply_bid(lot, state, sub.bidder, sub.max_cents, sub.placed_at_ms, rules)
         row = LedgerRow(r.state.bid_count, sub.submission_id, sub.bidder, sub.max_cents, sub.placed_at_ms, sub.idempotency_key,
                         r.outcome, r.accepted, r.price_before, r.price_after, r.leader_before, r.leader_after,
                         r.closes_before_ms, r.closes_after_ms, r.extended)
@@ -316,13 +361,18 @@ def replay(lot: Lot, submissions: list, rules: Rules) -> tuple:
 def fold(lot: Lot, rows: list, rules: Rules) -> LotState:
     """Recompute the projection from the ledger alone (what auction:verify does)."""
     state = open_state(lot)
+    done: list = []
     for row in sorted(rows, key=lambda r: r.seq):
         if row.seq != state.bid_count + 1:
             raise ValueError(f"seq gap at {row.seq}")
-        r = apply_bid(lot, state, row.bidder, row.max_cents, row.placed_at_ms, rules)
+        if row.outcome == VOIDED:  # D-96 (e): a void re-derives the state from the live rows before it
+            r = apply_void(lot, state, done, row.bidder, row.placed_at_ms, rules)
+        else:
+            r = apply_bid(lot, state, row.bidder, row.max_cents, row.placed_at_ms, rules)
         if r.outcome != row.outcome:
             raise ValueError(f"ledger row {row.seq} says {row.outcome}, fold says {r.outcome}")
         state = r.state
+        done.append(row)
     return state
 
 

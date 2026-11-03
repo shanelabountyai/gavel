@@ -622,6 +622,82 @@
     }
    ],
    "soft_close_window_seconds": 90
+  },
+  {
+   "auction_id": "A6",
+   "buyer_premium_bps": 1500,
+   "lots": [
+    {
+     "auction_id": "A6",
+     "kind": "VOID_LEADER",
+     "lot_id": "L050",
+     "lot_number": 1,
+     "opens_at_ms": 1793988000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794065880000,
+     "start_cents": 20000,
+     "title": "Pendulum wall clock"
+    },
+    {
+     "auction_id": "A6",
+     "kind": "VOID_UNDERBIDDER",
+     "lot_id": "L051",
+     "lot_number": 2,
+     "opens_at_ms": 1793988000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794066000000,
+     "start_cents": 5000,
+     "title": "Hand-stitched quilt, c. 1960"
+    },
+    {
+     "auction_id": "A6",
+     "kind": "VOID_REBID",
+     "lot_id": "L052",
+     "lot_number": 3,
+     "opens_at_ms": 1793988000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794066120000,
+     "start_cents": 5000,
+     "title": "Box lot of hand tools"
+    },
+    {
+     "auction_id": "A6",
+     "kind": "VOID_IN_EXTENSION",
+     "lot_id": "L053",
+     "lot_number": 4,
+     "opens_at_ms": 1793988000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794066240000,
+     "start_cents": 10000,
+     "title": "Brass floor lamp"
+    },
+    {
+     "auction_id": "A6",
+     "kind": "VOID_ONLY_BIDDER",
+     "lot_id": "L054",
+     "lot_number": 5,
+     "opens_at_ms": 1793988000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794066360000,
+     "start_cents": 40000,
+     "title": "Walnut dresser with mirror"
+    },
+    {
+     "auction_id": "A6",
+     "kind": "VOID_REFUSED",
+     "lot_id": "L055",
+     "lot_number": 6,
+     "opens_at_ms": 1793988000000,
+     "reserve_cents": null,
+     "scheduled_end_ms": 1794066480000,
+     "start_cents": 20000,
+     "title": "Stoneware crock, 5 gal"
+    }
+   ],
+   "max_extension_seconds": 900,
+   "name": "Orchard Road estate (staff voids)",
+   "opens_at_ms": 1793988000000,
+   "soft_close_window_seconds": 120
   }
  ],
  "bidders": [

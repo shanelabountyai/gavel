@@ -73,17 +73,20 @@ class Gen:
         L = Lot(lot["lot_id"], a["auction_id"], lot["start_cents"], lot["reserve_cents"], lot["opens_at_ms"], lot["scheduled_end_ms"],
                 a["soft_close_window_seconds"] * 1000, a["max_extension_seconds"] * 1000, a["buyer_premium_bps"], lot.get("withdrawn_at_ms"),
                 a.get("increment_table"))
-        subs = [Submission(s["submission_id"], s["lot_id"], s["bidder_id"], s["max_cents"], s["placed_at_ms"], s["idempotency_key"])
+        subs = [Submission(s["submission_id"], s["lot_id"], s["bidder_id"], s["max_cents"], s["placed_at_ms"], s["idempotency_key"], s.get("void", False))
                 for s in self.subs if s["lot_id"] == lot["lot_id"]]
         subs.sort(key=lambda x: x.placed_at_ms)
-        state, _, _ = replay(L, subs, self.rules)
+        state, rows, outs = replay(L, subs, self.rules)
+        self.last_rows, self.last_outs = rows, outs
         return state, min_next_bid(L, state, self.rules)
 
-    def submit(self, lot: dict, bidder: str, max_cents: int, at_ms: int, key: Optional[str] = None) -> dict:
+    def submit(self, lot: dict, bidder: str, max_cents: int, at_ms: int, key: Optional[str] = None, void: bool = False) -> dict:
         self.sub_n += 1
         sid = f"S{self.sub_n:05d}"
         s = {"submission_id": sid, "lot_id": lot["lot_id"], "bidder_id": bidder, "max_cents": int(max_cents),
-             "placed_at_ms": int(at_ms), "idempotency_key": key or f"k-{sid}"}
+             "placed_at_ms": int(at_ms), "idempotency_key": key or (f"void-{sid}" if void else f"k-{sid}")}
+        if void:
+            s["void"] = True  # D-96: only void lines carry the key, so every earlier line keeps its bytes
         self.subs.append(s)
         return s
 
@@ -179,6 +182,21 @@ def build(seed: int) -> dict:
             else:
                 script(g, lot, a, tables[a["increment_table"]], ids)
     auctions += v2
+    # R-19 (D-96): one sale of staff voids appended, from a fourth generator seeded seed + 3, so A1-A5, L001-L049 and their
+    # submissions stay byte for byte the D-90 set. Standard table, flat premium, as A1-A3.
+    g.rng = random.Random(seed + 3)
+    a6 = {"auction_id": "A6", "name": "Orchard Road estate (staff voids)", "soft_close_window_seconds": 120,
+          "max_extension_seconds": 900, "buyer_premium_bps": 1500, "opens_at_ms": T0_MS - 20 * HOUR, "titles": ESTATE_TITLES[3:],
+          "lots": []}
+    for i, kind in enumerate(["VOID_LEADER", "VOID_UNDERBIDDER", "VOID_REBID", "VOID_IN_EXTENSION", "VOID_ONLY_BIDDER", "VOID_REFUSED"]):
+        lot_n += 1
+        start = g.rng.choice([5000, 10000, 20000, 40000])
+        lot = {"lot_id": f"L{lot_n:03d}", "auction_id": "A6", "lot_number": i + 1, "title": a6["titles"][i % len(a6["titles"])],
+               "kind": kind, "start_cents": start, "reserve_cents": None, "opens_at_ms": a6["opens_at_ms"],
+               "scheduled_end_ms": T0_MS + (lot_n - 1) * 2 * MIN}
+        a6["lots"].append(lot)
+        script_void(g, lot, a6, bands, ids)
+    auctions.append(a6)
     for a in auctions:
         del a["titles"]
 
@@ -338,6 +356,77 @@ def script_withdrawn(g: Gen, lot: dict, a: dict, bands: list, ids: list, rng: ra
         wd = end + 10 * SEC                               # withdrawn inside the extension, before the new close
         lot["withdrawn_at_ms"] = wd
         g.submit(lot, pool[5], m * 4, end + 20 * SEC)     # would have led and extended again; rejected WITHDRAWN instead
+
+
+def script_void(g: Gen, lot: dict, a: dict, bands: list, ids: list) -> None:
+    """R-19 (D-96): staff voids on an open lot. Each kind is checked against the oracle as it is built, so the lot does
+    what its name says rather than what a seed happened to give."""
+    rng = g.rng
+    W = a["soft_close_window_seconds"] * SEC
+    end = lot["scheduled_end_ms"]
+    kind = lot["kind"]
+    pool = rng.sample(ids, 5)
+    ts = sorted(rng.randrange(lot["opens_at_ms"] + 10 * MIN, end - W - 10 * MIN) for _ in range(8))
+
+    def over(b: str, at: int, steps: int = 1) -> None:
+        """A bid `steps` increments above the current minimum: always accepted."""
+        _, mn = g.state(lot, a)
+        g.submit(lot, b, mn + (steps - 1) * inc_for(mn, bands), at)
+
+    def leader() -> str:
+        return g.state(lot, a)[0].leader
+
+    def last(outcome: str) -> None:
+        g.state(lot, a)
+        assert g.last_outs[-1].outcome == outcome, (lot["lot_id"], kind, g.last_outs[-1].outcome)
+
+    if kind == "VOID_LEADER":
+        for i in range(4):
+            over(pool[i % 3], ts[i], rng.randrange(1, 4))
+        v = g.submit(lot, leader(), 0, ts[4], void=True)
+        last("VOIDED")
+        over(pool[3], ts[5])
+        g.submit(lot, v["bidder_id"], 0, ts[6], key=v["idempotency_key"], void=True)  # a resend of the void: REPLAY, no row
+        last("REPLAY")
+    elif kind == "VOID_UNDERBIDDER":
+        for i in range(4):
+            over(pool[i % 3], ts[i], rng.randrange(1, 4))
+        st = g.state(lot, a)[0]
+        under = next(r.bidder for r in reversed(g.last_rows) if r.accepted and r.bidder != st.leader)
+        g.submit(lot, under, 0, ts[4], void=True)
+        last("VOIDED")
+    elif kind == "VOID_REBID":
+        for i in range(3):
+            over(pool[i % 2], ts[i], rng.randrange(1, 4))
+        who = leader()
+        g.submit(lot, who, 0, ts[3], void=True)
+        last("VOIDED")
+        over(who, ts[4])  # the right amount this time
+        g.state(lot, a)
+        assert g.last_outs[-1].outcome.startswith("ACCEPTED_"), g.last_outs[-1].outcome
+    elif kind == "VOID_IN_EXTENSION":
+        over(pool[0], ts[0])
+        over(pool[1], ts[1])
+        over(pool[2], end - 1 * SEC, 3)                       # T-1 s: leads and extends
+        assert g.state(lot, a)[0].extension_count == 1
+        g.submit(lot, pool[2], 0, end + 10 * SEC, void=True)  # inside the extension: the close stays put
+        last("VOIDED")
+        assert g.state(lot, a)[0].closes_at_ms == end - 1 * SEC + W
+        over(pool[3], end + 20 * SEC)                         # accepted inside the extension the void left standing
+    elif kind == "VOID_ONLY_BIDDER":
+        over(pool[0], ts[0], 2)
+        g.submit(lot, pool[0], 0, ts[1], void=True)
+        last("VOIDED")
+        assert g.state(lot, a)[0].leader is None
+    elif kind == "VOID_REFUSED":
+        over(pool[0], ts[0])
+        over(pool[1], ts[1])
+        g.submit(lot, pool[4], 0, ts[2], void=True)           # never bid here
+        last("VOID_NO_LIVE_BIDS")
+        g.submit(lot, leader(), 0, end + 1 * MIN, void=True)  # after the close
+        last("VOID_LOT_NOT_OPEN")
+    else:
+        raise AssertionError(kind)
 
 
 def write(data: dict, out: str) -> None:

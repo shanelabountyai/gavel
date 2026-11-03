@@ -272,6 +272,47 @@ def main() -> int:
     check("GB-30d same bids, equipment table: 120,000 under 150,000 is outbid at 120,000 + 5,000; next 125,000 + 5,000", outbid(EQ), ("ACCEPTED_OUTBID", 125000, 130000))
     check("GB-30e same bids, standard table: 120,000 + 2,500; next 122,500 + 2,500", outbid(ST), ("ACCEPTED_OUTBID", 122500, 125000))
 
+    print("-- GB-31 staff void of one bidder's standing bids (R-19, D-96); values worked by hand from GB-17's table")
+    def run(lot, plan):
+        """plan: (bidder, max, t) for a bid, or (bidder, None, t) for a void. Returns (state, rows, outcomes)."""
+        subs = [Submission(f"V{i}", lot.lot_id, who, m or 0, at, f"k{i}", m is None) for i, (who, m, at) in enumerate(plan)]
+        return replay(lot, subs, R)
+    base = [("A", 15000, 100_000), ("B", 12000, 200_000), ("C", 20000, 300_000)]  # GB-01..03: C leads at 15,500
+    s, rows, outs = run(G, base + [("C", None, 400_000)])
+    v = rows[-1]
+    check("GB-31a void the leader: A (15,000) leads again over B (12,000) at 12,500; seq 4; close and accepted count unchanged",
+          (v.outcome, v.accepted, v.price_before, v.price_after, v.leader_before, v.leader_after, s.leader_max_cents, s.leader_seq, s.bid_count, s.accepted_count, s.closes_at_ms, s.extension_count),
+          ("VOIDED", False, 15500, 12500, "C", "A", 15000, 1, 4, 3, T, 0))
+    check("GB-31b min_next after the void: 12,500 + 500", min_next_bid(G, s, R), 13000)
+    s, rows, outs = run(G, base + [("C", None, 400_000), ("C", 14000, 500_000)])
+    check("GB-31c the voided bidder bids again: 14,000 under A's 15,000 is outbid at 14,500", (outs[-1].outcome, s.price_cents, s.leader), ("ACCEPTED_OUTBID", 14500, "A"))
+    s, rows, outs = run(G, base + [("C", None, 400_000), ("C", 14000, 500_000), ("A", None, 600_000)])
+    check("GB-31d void A next: C's seq 3 is dead, its seq 5 is live; B (12,000) then C (14,000) gives C at 12,500, leader seq 5",
+          (outs[-1].outcome, s.price_cents, s.leader, s.leader_max_cents, s.leader_seq, s.bid_count, s.accepted_count), ("VOIDED", 12500, "C", 14000, 5, 6, 4))
+    s, rows, outs = run(G, base + [("C", None, 400_000), ("C", 14000, 500_000), ("A", None, 600_000), ("A", None, 700_000), ("Z", None, 710_000)])
+    check("GB-31e a second void of A and a void of a bidder who never bid: refused, nothing written",
+          ([(o.outcome, o.row_written) for o in outs[-2:]], s.bid_count, s.leader), ([("VOID_NO_LIVE_BIDS", False), ("VOID_NO_LIVE_BIDS", False)], 6, "C"))
+    s, rows, outs = run(G, base + [("C", None, T)])
+    check("GB-31f a void at the close is refused: the remedy after the close is a D-44 correction",
+          (outs[-1].outcome, outs[-1].row_written, s.bid_count, s.leader), ("VOID_LOT_NOT_OPEN", False, 3, "C"))
+    s, rows, outs = run(G, [("A", 15000, 100_000), ("B", 20000, T - 30_000), ("B", None, T + 50_000)])
+    check("GB-31g B's bid at T-30 s extended the close to T+90 s; voiding B at T+50 s keeps that close: it never moves back",
+          (rows[1].extended, outs[-1].outcome, s.price_cents, s.leader, s.closes_at_ms, s.extension_count), (True, "VOIDED", 10000, "A", T + 90_000, 1))
+    s, rows, outs = run(G, [("A", 15000, 100_000), ("A", None, 200_000)])
+    check("GB-31h void the only bidder: no leader, price 0, minimum back to the start, settles UNSOLD_NO_BIDS",
+          (s.leader, s.price_cents, s.leader_seq, min_next_bid(G, s, R), settle(G, s, T).outcome), (None, 0, None, 10000, "UNSOLD_NO_BIDS"))
+    s, rows, outs = run(RES, [("A", 30000, 100_000), ("B", 26000, 200_000), ("A", None, 300_000)])
+    check("GB-31i reserve: B (26,000) left alone leads at the reserve floor, 25,000", (s.price_cents, s.leader, s.reserve_met(RES)), (25000, "B", True))
+    s, rows, outs = run(RES, [("B", 20000, 100_000), ("A", 30000, 200_000), ("A", None, 300_000)])
+    check("GB-31j reserve: B (20,000, before A) left alone is back under the reserve at the start", (s.price_cents, s.leader, s.reserve_met(RES)), (10000, "B", False))
+    s, rows, outs = run(G, [("A", 15000, 100_000), ("B", 15000, 200_000), ("C", 20000, 300_000), ("C", None, 400_000)])
+    check("GB-31k equal maxes survive a void in seq order: A keeps the lead over B at the full 15,000", (s.price_cents, s.leader, s.leader_seq), (15000, "A", 1))
+    s, rows, outs = run(G, base + [("C", None, 400_000), ("C", 14000, 500_000), ("A", None, 600_000)])
+    check("GB-31l fold over the written rows equals the replay, voids included", fold(G, rows, R), s)
+    W2 = Lot("W", "A", 10000, None, 0, T, W, CAP, 1500, 250_000)
+    s, rows, outs = run(W2, [("A", 15000, 100_000), ("A", None, 250_000)])
+    check("GB-31m a void at or after a withdrawal is refused", (outs[-1].outcome, s.leader), ("VOID_LOT_NOT_OPEN", "A"))
+
     print("OK" if FAILS == 0 else f"FAIL: {FAILS}")
     return 0 if FAILS == 0 else 1
 

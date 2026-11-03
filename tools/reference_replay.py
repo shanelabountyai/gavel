@@ -44,7 +44,7 @@ def load(fixtures: str):
     with open(os.path.join(fixtures, "submissions.jsonl"), encoding="utf-8") as f:
         for line in f:
             s = json.loads(line)
-            subs[s["lot_id"]].append(Submission(s["submission_id"], s["lot_id"], s["bidder_id"], s["max_cents"], s["placed_at_ms"], s["idempotency_key"]))
+            subs[s["lot_id"]].append(Submission(s["submission_id"], s["lot_id"], s["bidder_id"], s["max_cents"], s["placed_at_ms"], s["idempotency_key"], s.get("void", False)))
     return data, lots, subs
 
 
@@ -66,6 +66,7 @@ def main() -> int:
     data, lots, subs = load(args.fixtures)
     as_of = args.as_of if args.as_of is not None else max(l.hard_close_ms for l, _ in lots.values()) + 3600 * 1000
 
+    # D-96: rejected_count counts REJECTED_ rows; a VOIDED row is neither accepted nor rejected.
     bid_rows, lot_rows = [], []
     outcomes = Counter()
     kinds = Counter()
@@ -92,7 +93,7 @@ def main() -> int:
         lot_rows.append({
             "lot_id": lot_id, "auction_id": lot.auction_id, "kind": meta["kind"], "start_cents": lot.start_cents, "reserve_cents": n(lot.reserve_cents),
             "scheduled_end_ms": lot.scheduled_end_ms, "hard_close_ms": lot.hard_close_ms, "bid_count": state.bid_count, "accepted_count": state.accepted_count,
-            "rejected_count": state.bid_count - state.accepted_count, "replays": sum(1 for o in outs if o.outcome == "REPLAY"),
+            "rejected_count": sum(1 for r in rows if r.outcome.startswith("REJECTED_")), "replays": sum(1 for o in outs if o.outcome == "REPLAY"),
             "mismatches": sum(1 for o in outs if o.outcome == "IDEMPOTENCY_MISMATCH"), "price_cents": state.price_cents, "leader": n(state.leader),
             "leader_max_cents": state.leader_max_cents, "leader_seq": n(state.leader_seq), "reserve_met": b(state.reserve_met(lot)),
             "closes_at_ms": state.closes_at_ms, "extension_count": state.extension_count, "extension_total_ms": state.closes_at_ms - lot.scheduled_end_ms,

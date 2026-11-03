@@ -291,3 +291,31 @@
 {"bidder_id": "B004", "idempotency_key": "k-S00291", "lot_id": "L048", "max_cents": 48000, "placed_at_ms": 1794066239000, "submission_id": "S00291"}
 {"bidder_id": "B028", "idempotency_key": "k-S00292", "lot_id": "L048", "max_cents": 49000, "placed_at_ms": 1794066240000, "submission_id": "S00292"}
 {"bidder_id": "B015", "idempotency_key": "k-S00293", "lot_id": "L049", "max_cents": 20000, "placed_at_ms": 1793953800000, "submission_id": "S00293"}
+{"bidder_id": "B038", "idempotency_key": "k-S00294", "lot_id": "L050", "max_cents": 20500, "placed_at_ms": 1793988992689, "submission_id": "S00294"}
+{"bidder_id": "B019", "idempotency_key": "k-S00295", "lot_id": "L050", "max_cents": 21500, "placed_at_ms": 1793996531059, "submission_id": "S00295"}
+{"bidder_id": "B012", "idempotency_key": "k-S00296", "lot_id": "L050", "max_cents": 22500, "placed_at_ms": 1794006272454, "submission_id": "S00296"}
+{"bidder_id": "B038", "idempotency_key": "k-S00297", "lot_id": "L050", "max_cents": 23500, "placed_at_ms": 1794014558028, "submission_id": "S00297"}
+{"bidder_id": "B038", "idempotency_key": "void-S00298", "lot_id": "L050", "max_cents": 0, "placed_at_ms": 1794015289445, "submission_id": "S00298", "void": true}
+{"bidder_id": "B004", "idempotency_key": "k-S00299", "lot_id": "L050", "max_cents": 22500, "placed_at_ms": 1794019530102, "submission_id": "S00299"}
+{"bidder_id": "B038", "idempotency_key": "void-S00298", "lot_id": "L050", "max_cents": 0, "placed_at_ms": 1794020082084, "submission_id": "S00300", "void": true}
+{"bidder_id": "B013", "idempotency_key": "k-S00301", "lot_id": "L051", "max_cents": 5000, "placed_at_ms": 1793989283717, "submission_id": "S00301"}
+{"bidder_id": "B010", "idempotency_key": "k-S00302", "lot_id": "L051", "max_cents": 5100, "placed_at_ms": 1793996257267, "submission_id": "S00302"}
+{"bidder_id": "B033", "idempotency_key": "k-S00303", "lot_id": "L051", "max_cents": 5200, "placed_at_ms": 1794004023754, "submission_id": "S00303"}
+{"bidder_id": "B013", "idempotency_key": "k-S00304", "lot_id": "L051", "max_cents": 5400, "placed_at_ms": 1794007515544, "submission_id": "S00304"}
+{"bidder_id": "B033", "idempotency_key": "void-S00305", "lot_id": "L051", "max_cents": 0, "placed_at_ms": 1794035268101, "submission_id": "S00305", "void": true}
+{"bidder_id": "B007", "idempotency_key": "k-S00306", "lot_id": "L052", "max_cents": 5000, "placed_at_ms": 1793994748723, "submission_id": "S00306"}
+{"bidder_id": "B037", "idempotency_key": "k-S00307", "lot_id": "L052", "max_cents": 5200, "placed_at_ms": 1794000532421, "submission_id": "S00307"}
+{"bidder_id": "B007", "idempotency_key": "k-S00308", "lot_id": "L052", "max_cents": 5400, "placed_at_ms": 1794001345294, "submission_id": "S00308"}
+{"bidder_id": "B007", "idempotency_key": "void-S00309", "lot_id": "L052", "max_cents": 0, "placed_at_ms": 1794012448730, "submission_id": "S00309", "void": true}
+{"bidder_id": "B007", "idempotency_key": "k-S00310", "lot_id": "L052", "max_cents": 5100, "placed_at_ms": 1794044489183, "submission_id": "S00310"}
+{"bidder_id": "B004", "idempotency_key": "k-S00311", "lot_id": "L053", "max_cents": 10000, "placed_at_ms": 1793989373718, "submission_id": "S00311"}
+{"bidder_id": "B005", "idempotency_key": "k-S00312", "lot_id": "L053", "max_cents": 10500, "placed_at_ms": 1793998685868, "submission_id": "S00312"}
+{"bidder_id": "B024", "idempotency_key": "k-S00313", "lot_id": "L053", "max_cents": 12000, "placed_at_ms": 1794066239000, "submission_id": "S00313"}
+{"bidder_id": "B024", "idempotency_key": "void-S00314", "lot_id": "L053", "max_cents": 0, "placed_at_ms": 1794066250000, "submission_id": "S00314", "void": true}
+{"bidder_id": "B007", "idempotency_key": "k-S00315", "lot_id": "L053", "max_cents": 11000, "placed_at_ms": 1794066260000, "submission_id": "S00315"}
+{"bidder_id": "B031", "idempotency_key": "k-S00316", "lot_id": "L054", "max_cents": 40500, "placed_at_ms": 1793989315972, "submission_id": "S00316"}
+{"bidder_id": "B031", "idempotency_key": "void-S00317", "lot_id": "L054", "max_cents": 0, "placed_at_ms": 1793992426811, "submission_id": "S00317", "void": true}
+{"bidder_id": "B034", "idempotency_key": "k-S00318", "lot_id": "L055", "max_cents": 20000, "placed_at_ms": 1793990564429, "submission_id": "S00318"}
+{"bidder_id": "B033", "idempotency_key": "k-S00319", "lot_id": "L055", "max_cents": 20500, "placed_at_ms": 1793992793960, "submission_id": "S00319"}
+{"bidder_id": "B020", "idempotency_key": "void-S00320", "lot_id": "L055", "max_cents": 0, "placed_at_ms": 1793994618850, "submission_id": "S00320", "void": true}
+{"bidder_id": "B033", "idempotency_key": "void-S00321", "lot_id": "L055", "max_cents": 0, "placed_at_ms": 1794066540000, "submission_id": "S00321", "void": true}
