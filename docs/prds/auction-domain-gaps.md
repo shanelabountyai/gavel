@@ -227,7 +227,7 @@ Each requirement lists what it changes, using these labels:
 
 ### P2
 
-**R-19 Staff void of a standing bid (AX-19).** A `VOID` ledger row that references a seq, written under the lot's lock. The state becomes the fold of the ledger without the voided bidder's rows. *Changes:* ledger. V4's monotone price chain no longer holds and must be rewritten. V1's fold changes. D-14, D-16 and non-negotiable 3's "a correction is a superseding row" all need amending. D, G, F. **This is the largest change in the document.** It stays P2 until Shane chooses to take on the invariant rewrite.
+**R-19 Staff void of a standing bid (AX-19).** **Built 2026-11-03 (D-96):** a `VOIDED` row voids every live bid of one bidder on an open lot (Shane's call: the bidder, not one seq); the close never moves back; GB-31; void sale A6 appended to the fixtures. As specified: a `VOID` ledger row that references a seq, written under the lot's lock. The state becomes the fold of the ledger without the voided bidder's rows. *Changes:* ledger. V4's monotone price chain no longer holds and must be rewritten. V1's fold changes. D-14, D-16 and non-negotiable 3's "a correction is a superseding row" all need amending. D, G, F. **This is the largest change in the document.** It stays P2 until Shane chooses to take on the invariant rewrite.
 
 **R-20 Bidder credit limit (AX-20).** A cap on Σ the bidder's leading prices across open lots. Enforcing it exactly needs a second lock (the bidder row, with a fixed lock order of bidder then lot). **That contradicts non-negotiable 2.** A boundary check without a lock would be approximate and racy, and must be labelled that way. Propose it only as a Phase 4-style measured experiment. D.
 
@@ -251,7 +251,7 @@ Each requirement lists what it changes, using these labels:
 1. Commission is it charged on hammer only? Does any of the buyer's premium ever go to the consignor in your contracts?
 2. When reserve is not met, do you offer the high bidder the sale at their reached price or at their maximum, and must they accept? (R-14)
 3. ~~When a buyer defaults, is the second-chance offer at the underbidder's reached price or their own maximum, and how long do they have?~~ Answered by D-75: D-44's min(reached, own max); the reply window is a staff input per default (1..90 days, default 7).
-4. When you suspend a bidder mid-sale, do you void their standing maximums or let them ride and deal with it after the close? (R-05, R-19)
+4. ~~When you suspend a bidder mid-sale, do you void their standing maximums or let them ride and deal with it after the close? (R-05, R-19)~~ Built by D-96: staff may void them before the close; suspension does not do it automatically.
 5. ~~Is sales tax computed per line or per invoice, and on hammer or hammer plus premium where you sell? (R-09: **counsel**.)~~ Default taken by D-78 (reversible): once per invoice, base per sale (`taxBase`), rate per sale; counsel's answer is a settings change plus a golden.
 6. Do bidders see paddle numbers in bid history, or an alias? (R-11)
 7. Do you advertise "No reserve" on absolute lots, or say nothing? (R-13)

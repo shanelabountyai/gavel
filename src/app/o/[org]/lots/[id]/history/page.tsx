@@ -1,4 +1,9 @@
 import Link from 'next/link';
+import { liveRows, lotStatus } from '@/auction/engine/engine';
+import { can } from '@/core/authz/permissions';
+import { now } from '@/core/clock';
+import { ActionForm } from '@/core/ui/action-form';
+import { voidBidsAction } from '../actions';
 import { notFound } from 'next/navigation';
 import { formatCents } from '@/auction/engine/money';
 import { formatLeft } from '@/auction/time-left';
@@ -17,7 +22,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const iso = (d: Date) => d.toISOString();
 
 // Task 2.3: staff only (audit.read). Every Bid row in seq order, accepted or rejected, then the settlement chain.
-// Read-only: no form, no action. "Shown to the bidder" is derived from the previous row, not stored (phase-2-tasks 2.3).
+// One form (D-96): staff with results.write void a paddle's bids while the lot is open. "Shown to the bidder" is derived from the previous row, not stored (phase-2-tasks 2.3).
 export default async function LotHistory({ params }: { params: Promise<{ org: string; id: string }> }) {
   const ctx = await requireOrg((await params).org, 'audit.read');
   const { id } = await params;
@@ -38,8 +43,12 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
   const who = (x: string | null | undefined) => (x ? (pad.get(x) ?? '?') : '—');
   const chain = [loaded.settlement, ...loaded.corrections].filter((s) => s !== null);
   // R18: staff who acted are named, not printed as ids. The id stays in the title for the record.
-  const actorIds = [...chain.map((s) => ('correctedByUserId' in s ? s.correctedByUserId : null)), withdrawal?.byUserId, ...regs.filter((r) => r.status !== 'PENDING').map((r) => r.byUserId)].filter((x): x is string => !!x);
+  const actorIds = [...bids.map((b) => b.voidByUserId), ...chain.map((s) => ('correctedByUserId' in s ? s.correctedByUserId : null)), withdrawal?.byUserId, ...regs.filter((r) => r.status !== 'PENDING').map((r) => r.byUserId)].filter((x): x is string => !!x);
   const actors = new Map((await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
+  // D-96: which accepted rows a later void made dead, and whether a void may be asked for now.
+  const live = new Set(liveRows(bids).map((b) => b.seq));
+  const dead = (b: (typeof bids)[number]) => b.accepted && !live.has(b.seq);
+  const canVoid = can(ctx.role, 'results.write') && !!loaded.state && lotStatus(loaded.lot, loaded.state, now().getTime()) === 'OPEN';
   const actor = (id: string | null | undefined) => (id ? <span title={id}>{actors.get(id) ?? id}</span> : '—');
 
   return (
@@ -62,8 +71,9 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
         </thead>
         <tbody>
           {bids.map((b) => (
-            <tr key={b.id} data-seq={b.seq} className={b.closesAtAfter > b.closesAtBefore ? 'extended' : undefined}>
-              <td className="num">{b.seq}</td><td>{who(b.bidderId)}</td><td className="num">{formatCents(b.maxCents)}</td><td><Outcome k={b.outcome} /></td>
+            <tr key={b.id} data-seq={b.seq} data-dead={dead(b) || undefined} className={b.closesAtAfter > b.closesAtBefore ? 'extended' : undefined}>
+              <td className="num">{b.seq}</td><td>{who(b.bidderId)}</td><td className="num">{b.outcome === 'VOIDED' ? '—' : formatCents(b.maxCents)}</td>
+              <td><Outcome k={b.outcome} />{dead(b) && <> <span className="badge" data-tone="bad">Voided later</span></>}{b.voidReason && <div data-testid="void-reason">By {actor(b.voidByUserId)}: {b.voidReason}</div>}</td>
               <td className="num">{formatCents(b.priceBeforeCents)}</td><td className="num">{formatCents(b.priceAfterCents)}</td><td>{who(b.leaderBeforeId)}</td><td>{who(b.leaderAfterId)}</td>
               <td>{iso(b.closesAtBefore)}</td><td>{iso(b.closesAtAfter)}{b.closesAtAfter > b.closesAtBefore && <> <span className="badge" data-tone="info">Extended +{formatLeft(Math.round((b.closesAtAfter.getTime() - b.closesAtBefore.getTime()) / 1000))}</span></>}</td><td>{iso(b.placedAt)}</td>
             </tr>
@@ -71,6 +81,17 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
         </tbody>
       </table>
       </div>
+      <h2>Void a bidder&apos;s bids</h2>
+      {canVoid ? (
+        <ActionForm action={voidBidsAction.bind(null, ctx.slug)}>
+          <input type="hidden" name="lotId" value={lot.id} />
+          <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
+          <p className="muted">Removes every standing bid of one paddle on this lot, such as a documented typo or a suspended bidder&apos;s maximum. The price and leader are worked out again from everyone else&apos;s bids; the close does not move back. The bidder may bid again. Nothing is deleted: the void is a row above, with your reason.</p>
+          <label htmlFor="void-paddle">Paddle</label> <input id="void-paddle" name="paddle" required inputMode="numeric" pattern="\d{1,6}" />
+          <label htmlFor="void-reason">Reason</label> <input id="void-reason" name="reason" required maxLength={500} placeholder="e.g. bidder called: typed 5,000 meaning 500" />
+          <button type="submit">Void this paddle&apos;s bids</button>
+        </ActionForm>
+      ) : <p className="muted">{can(ctx.role, 'results.write') ? 'Only while the lot is open. After the close, a settlement correction is the remedy.' : 'Staff with results access can void a bidder\'s bids while the lot is open.'}</p>}
       <h2>Terms of sale</h2>
       {!terms ? <p className="muted">This sale has no terms of sale; no acceptance was required.</p> : (
         <>

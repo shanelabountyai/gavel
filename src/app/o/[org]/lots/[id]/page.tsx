@@ -121,8 +121,8 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
             <thead><tr><th scope="col" className="num">#</th><th scope="col">Bidder</th><th scope="col" className="num">Price after</th><th scope="col">Placed at</th></tr></thead>
             <tbody>
               {history.map((h, i) => (
-                <tr key={h.seq} data-you={h.who === 'you' || undefined}>
-                  <td className="num">{i + 1}</td><td>{h.who === 'you' ? <b>You</b> : h.who}</td>
+                <tr key={h.seq} data-you={h.who === 'you' || undefined} data-voided={h.voided || undefined}>
+                  <td className="num">{i + 1}</td><td>{h.voided ? <>Staff voided {h.who === 'you' ? <b>your</b> : `${h.who}'s`} bids</> : h.who === 'you' ? <b>You</b> : h.who}</td>
                   <td className="num">{formatCents(h.priceAfterCents)}{h.extended && <> <span className="badge" data-tone="info">Extended</span></>}</td>
                   <td><time dateTime={h.placedAt}>{at(h.placedAt)}</time></td>
                 </tr>
@@ -130,7 +130,7 @@ export default async function LotPage({ params }: { params: Promise<{ org: strin
             </tbody>
           </table>
         )}
-        <p className="muted">Accepted bids only, with the price each one set. Bidder numbers are for this lot alone. No maximum is ever shown.</p>
+        <p className="muted">Accepted bids only, with the price each one set. A bid staff voided is left out, and the void is a line with the price it left. Bidder numbers are for this lot alone. No maximum is ever shown.</p>
       </section>
     </main>
   );

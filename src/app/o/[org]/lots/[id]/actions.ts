@@ -9,6 +9,7 @@ import { bidErrorText } from '@/auction/outcome-labels';
 import { requestApproval } from '@/auction/registration';
 import { acceptTerms } from '@/auction/terms';
 import { setWatch } from '@/auction/watch';
+import { voidBidder } from '@/auction/void-bid';
 import { withdrawLot } from '@/auction/withdraw';
 import { orgAction, ref } from '@/core/authz/action';
 import { db } from '@/core/db';
@@ -45,6 +46,23 @@ export const withdrawLotAction = orgAction(
     await withdrawLot({ orgId: ctx.orgId, lotId: i.lotId, reason: i.reason, userId: ctx.userId });
     revalidatePath(`/o/${ctx.slug}`, 'layout'); // the lot page, the catalog and the history all change
     return { notice: 'Lot withdrawn.' };
+  },
+);
+
+// D-96 (AX-19): staff void every live bid of one paddle on an open lot, with the reason on the record. voidBidder judges it
+// under the lot's one lock and refuses with the sentence the form shows. The form's key is minted per render, so a double
+// submit replays instead of voiding twice.
+export const voidBidsAction = orgAction(
+  'results.write',
+  z.object({ lotId: ref('lot'), paddle: z.string(), reason: z.string().trim().min(1, 'Give a reason for the void.').max(500, 'Keep the reason under 500 characters.'), idempotencyKey: z.string().min(1).max(100) }),
+  async (ctx, i) => {
+    if (!(await db.lot.findFirst({ where: { id: i.lotId, orgId: ctx.orgId }, select: { id: true } }))) notFound(); // INV-02
+    if (!/^\d{1,6}$/.test(i.paddle.trim())) throw new Refused('Paddle must be a whole number.');
+    const bidder = await db.bidder.findUnique({ where: { orgId_paddle: { orgId: ctx.orgId, paddle: Number(i.paddle.trim()) } }, select: { id: true } });
+    if (!bidder) throw new Refused(`No bidder holds paddle ${i.paddle.trim()}.`);
+    const r = await voidBidder({ orgId: ctx.orgId, lotId: i.lotId, bidderId: bidder.id, reason: i.reason, userId: ctx.userId, idempotencyKey: i.idempotencyKey });
+    revalidatePath(`/o/${ctx.slug}`, 'layout'); // the lot page, the catalog, the history and Your bids all change
+    return { notice: r.replayed ? 'Already voided.' : `Paddle ${i.paddle.trim()}'s bids voided (seq ${r.seq}).` };
   },
 );
 
