@@ -1,13 +1,15 @@
 // public: 404s unless DEMO_MODE (INV-27)
 import { notFound } from 'next/navigation';
 import { liveDemoOrgId } from '@/auction/demo-live';
-import { demoEnabled } from '@/core/auth/demo';
+import { demoEnabled, listDemoUsers } from '@/core/auth/demo';
 import { db } from '@/core/db';
+import { keepListedOrgs } from '@/core/tenancy/listed';
+import { filterListedOrgs } from '@/app/org-hooks';
 
 export const metadata = { title: 'Demo sign-in' };
 export const dynamic = 'force-dynamic';
 
-type DemoUser = { id: string; email: string; memberships: { role: string; orgId: string; org: { name: string } }[] };
+type DemoUser = { id: string; email: string; memberships: { role: string; org: { id: string; name: string } }[] };
 const who = (email: string) => { const s = email.split('@')[0]!.replace(/^bidder-/, ''); return s[0]!.toUpperCase() + s.slice(1); };
 
 // R10 (D-81): accounts grouped by journey, in the page (src/core/auth/demo is template-owned). "Bid" is whoever holds
@@ -15,13 +17,12 @@ const who = (email: string) => { const s = email.split('@')[0]!.replace(/^bidder
 // shared by every visitor, and the page says so.
 export default async function Demo() {
   if (!demoEnabled()) notFound();
-  const [users, live] = await Promise.all([
-    db.user.findMany({ where: { isDemo: true }, select: { id: true, email: true, memberships: { select: { role: true, orgId: true, org: { select: { name: true } } } } }, orderBy: { email: 'asc' } }),
-    liveDemoOrgId(),
-  ]);
+  // Each account's orgs go through the clone's `filterListedOrgs` (v1.4.0), as on /onboarding.
+  const [listed, live] = await Promise.all([listDemoUsers(), liveDemoOrgId()]);
+  const users = await Promise.all(listed.map(async (u) => ({ ...u, memberships: await keepListedOrgs(u.id, u.memberships, filterListedOrgs) })));
   const paddles = new Set(live ? (await db.bidder.findMany({ where: { orgId: live, status: 'ACTIVE' }, select: { userId: true } })).map((b) => b.userId) : []);
   const bid = users.filter((u) => paddles.has(u.id));
-  const staff = users.filter((u) => !paddles.has(u.id) && u.memberships.some((m) => m.orgId === live && m.role !== 'member'));
+  const staff = users.filter((u) => !paddles.has(u.id) && u.memberships.some((m) => m.org.id === live && m.role !== 'member'));
   const other = users.filter((u) => !bid.includes(u) && !staff.includes(u));
   const button = (u: DemoUser, label: string) => (
     <li key={u.id}>
@@ -46,7 +47,7 @@ export default async function Demo() {
       {staff.length > 0 && (
         <section>
           <h2>Run the sale</h2>
-          <ul>{staff.map((u) => button(u, `Run the sale as ${u.memberships.find((m) => m.orgId === live)!.role}`))}</ul>
+          <ul>{staff.map((u) => button(u, `Run the sale as ${u.memberships.find((m) => m.org.id === live)!.role}`))}</ul>
         </section>
       )}
       {other.length > 0 && (
