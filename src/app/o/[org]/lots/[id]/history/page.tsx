@@ -81,6 +81,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
         </tbody>
       </table>
       </div>
+      <div data-testid="void-section">
       <h2>Void a bidder&apos;s bids</h2>
       {canVoid ? (
         <ActionForm action={voidBidsAction.bind(null, ctx.slug)}>
@@ -92,6 +93,7 @@ export default async function LotHistory({ params }: { params: Promise<{ org: st
           <button type="submit">Void this paddle&apos;s bids</button>
         </ActionForm>
       ) : <p className="muted">{can(ctx.role, 'results.write') ? 'Only while the lot is open. After the close, a settlement correction is the remedy.' : 'Staff with results access can void a bidder\'s bids while the lot is open.'}</p>}
+      </div>
       <h2>Terms of sale</h2>
       {!terms ? <p className="muted">This sale has no terms of sale; no acceptance was required.</p> : (
         <>
