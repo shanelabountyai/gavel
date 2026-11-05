@@ -47,7 +47,8 @@ test('history lists every ledger row of a SNIPE lot, first and last as in expect
   await expect(rows.locator('.badge', { hasText: 'Extended' })).toHaveCount(want.filter((w) => Number(w.closes_after_ms) > Number(w.closes_before_ms)).length);
   expect(want.filter((w) => Number(w.closes_after_ms) > Number(w.closes_before_ms)).length).toBe(3);
   await expect(page.getByRole('heading', { name: 'Settlement' })).toBeVisible();
-  await expect(page.locator('form, button, input')).toHaveCount(0); // read-only: no edit control
+  // read-only: no edit control outside the D-96 void section, whose form shows only while the lot is open on the real calendar (D-99)
+  await expect(page.locator(':is(form, button, input):not([data-testid="void-section"] *)')).toHaveCount(0);
   // R19: one click back to the sale, one to the page a bidder sees
   await page.getByRole('link', { name: 'Bidder view' }).click();
   await expect(page).toHaveURL(new RegExp(`/o/gavel-fixtures/lots/${lot.id}$`));
