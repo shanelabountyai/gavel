@@ -6,6 +6,8 @@ import { notifyClosingSoon } from '@/auction/watch';
 import { now } from '@/core/clock';
 import { db } from '@/core/db';
 import type { Prisma } from '@/generated/prisma/client';
+import { sweepSsoStates } from '@/modules/sso/hooks'; // sso
+import { cronWebhooks } from '@/modules/apikeys/webhooks'; // apikeys
 
 // Clone-owned (plan §3.2): /api/cron calls this after its own core sweeps. A clone adds its jobs here,
 // and removing the notifications module deletes the lines marked `// notifications`.
@@ -16,5 +18,7 @@ export async function cronJobs(): Promise<Record<string, unknown>> {
   jobs.close = await closeLots(now(), prismaTx(db as unknown as Prisma.TransactionClient));
   jobs.closingSoon = await notifyClosingSoon(now()); // D-92: before the drain, so this run sends them
   jobs.outbox = { ...(await drainOutbox()), swept: await sweepOutbox() }; // notifications
+  jobs.ssoStates = await sweepSsoStates(); // sso
+  jobs.webhooks = await cronWebhooks(); // apikeys
   return jobs;
 }
