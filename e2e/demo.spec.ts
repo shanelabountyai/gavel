@@ -1,14 +1,14 @@
+import { execSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
 import { demoSignIn } from './demo-signin';
 import { registerBidder } from '../src/auction/bidder';
 import { db } from '../src/core/db';
-import { seedDemo } from '../scripts/seed-demo';
 
 // INV-27, flag-on half (the flag-off half is tests/invariants/inv-27-demo.test.ts). playwright.config.ts starts the
 // server with DEMO_MODE=1; this spec seeds the same database itself. R10 (D-81): the page routes by journey.
 const T = Date.now();
 test.beforeAll(async () => {
-  await seedDemo();
+  execSync('npm run seed:demo:test'); // child process (F-08); the extra rows below are gavel's own
   const acme = await db.org.findUniqueOrThrow({ where: { slug: 'acme' } });
   // Ada holds a paddle in Acme, and Acme has the most recently opened sale with a lot still open: the live house.
   const ada = await db.user.upsert({ where: { email: 'bidder-ada@acme.demo.test' }, create: { email: 'bidder-ada@acme.demo.test', isDemo: true }, update: { isDemo: true } });
