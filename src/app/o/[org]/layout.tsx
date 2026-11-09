@@ -11,6 +11,9 @@ export default async function OrgLayout({ children, params }: { children: React.
   const links = ([
     // UX-11: no Home (it redirects), no template Projects, Delete org only under settings.
     [`${base}/catalog`, 'Catalog'], ctx.role === 'member' && [`${base}/my-bids`, 'Your bids'], ctx.role === 'member' && [`${base}/invoices`, 'Your invoices'], can(ctx.role, 'results.write') && [`${base}/auctions`, 'Auctions'], can(ctx.role, 'results.write') && [`${base}/bidders`, 'Bidders'], can(ctx.role, 'results.write') && [`${base}/consignors`, 'Consignors'], [`${base}/settings/members`, 'Members'],
+    can(ctx.role, 'audit.read') && [`${base}/settings/audit`, 'Audit log'], can(ctx.role, 'audit.read') && [`${base}/settings/security`, 'Security'],
+    ctx.role === 'owner' && [`${base}/settings/sso`, 'SSO'], // sso
+    can(ctx.role, 'apikeys.manage') && [`${base}/settings/apikeys`, 'API keys'], // apikeys
     ['/onboarding', 'Your orgs'], ['/account/security', 'Account'],
   ] as const).filter((l): l is [string, string] => !!l).map(([href, label]) => <li key={href}><Link href={href}>{label}</Link></li>);
   return (
