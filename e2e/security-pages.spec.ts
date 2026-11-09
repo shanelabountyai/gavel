@@ -1,10 +1,11 @@
+import { execSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
-import { seedDemo } from '../scripts/seed-demo';
 import { demoSignIn } from './demo-signin';
 
 // M11 gate (addendum §4, §5): the audit log, org security, account sessions and export pages render for each demo org.
 // The export itself is refused here (a demo account is shared); INV-34 builds and verifies one against its manifest.
-test.beforeAll(async () => { await seedDemo(); });
+// Seeded as a child process: a clone's seed may import `next/navigation`, which Playwright's loader cannot resolve (F-08).
+test.beforeAll(() => { execSync('npm run seed:demo:test'); });
 
 for (const [slug, name] of [['acme', 'Acme Studio'], ['globex', 'Globex Labs']] as const) {
   test(`settings pages render for the ${name} demo owner`, async ({ page }) => {
@@ -12,7 +13,8 @@ for (const [slug, name] of [['acme', 'Acme Studio'], ['globex', 'Globex Labs']] 
     await demoSignIn(page, `owner@${slug}.demo.test`);
     await page.goto(`/o/${slug}/settings/members`);
     await expect(page.getByRole('navigation').getByText(name)).toBeVisible();
-    const nav = page.getByRole('navigation');
+    // The nav holding the settings links, however many nav rows a clone's layout adds (F-08).
+    const nav = page.getByRole('navigation').filter({ has: page.getByRole('link', { name: 'Audit log' }) });
 
     await nav.getByRole('link', { name: 'Audit log' }).click();
     await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible();
