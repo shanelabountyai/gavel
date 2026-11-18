@@ -29,3 +29,7 @@ export async function seedApp(org: { orgId: string; userId: string }, key: 'a' |
   const consignorLink = await db.consignorBidderLink.create({ data: { id: `00000000-0000-4000-8000-${key === 'a' ? '000000009071' : '000000009072'}`, orgId: org.orgId, consignorId: consignor.id, bidderId: bidder.id, reason: 'harness', byUserId: org.userId, createdAt: new Date('2031-01-03T00:00:00Z') } });
   return { auction: auction.id, lot: lot.id, bidder: bidder.id, consignor: consignor.id, consignorLink: consignorLink.id, offer: offer.id, settlement: settlement.id };
 }
+
+// CLONE-OWNED. The clone's models with no orgId column, i.e. outside tenancy and RLS on purpose (INV-42, v1.7.0). Name
+// each one with a comment saying why; a model without orgId that is not here (or in core's list) fails INV-42.
+export const GLOBAL_MODELS: readonly string[] = [];
