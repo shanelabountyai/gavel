@@ -5,6 +5,7 @@ import { orgAction, ref } from '@/core/authz/action';
 import type { OrgCtx } from '@/core/authz/guards';
 import { createInvite, revokeInvite } from '@/core/tenancy/invites';
 import { changeRole, removeMember } from '@/core/tenancy/orgs';
+import { onMembershipEnded, onRoleChanged } from '@/app/org-hooks';
 import { Role } from '@/generated/prisma/enums';
 
 // Thin calls into core/tenancy (D-12), where the role rules (D-11) and the last-owner rule live.
@@ -22,16 +23,16 @@ export const cancelInvite = orgAction('members.manage', z.object({ id: ref('invi
 });
 
 export const setRole = orgAction('members.manage', z.object({ userId: ref('member'), role }), async (ctx, i) => {
-  await changeRole(ctx, i.userId, i.role);
+  await changeRole(ctx, i.userId, i.role, onRoleChanged);
   back(ctx);
 });
 
 export const removeFromOrg = orgAction('members.manage', z.object({ userId: ref('member') }), async (ctx, { userId }) => {
-  await removeMember(ctx, userId);
+  await removeMember(ctx, userId, onMembershipEnded);
   back(ctx);
 });
 
 export const leaveOrg = orgAction(null, z.object({}), async (ctx) => {
-  await removeMember(ctx, ctx.userId);
+  await removeMember(ctx, ctx.userId, onMembershipEnded);
   redirect('/onboarding');
 });

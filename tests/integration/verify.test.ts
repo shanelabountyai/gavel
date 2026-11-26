@@ -4,6 +4,7 @@
 import { Client as PgClient } from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { closeLots } from '@/auction/close';
+import { RULES_HASHES_D23 } from '@/auction/engine/rules';
 import { loadRules } from '@/auction/load-rules';
 import { prismaTx } from '@/auction/place-bid';
 import { verifyAll } from '@/auction/verify-sql';
@@ -33,9 +34,9 @@ describe('auction:eval database half, auction:close, auction:verify', () => {
 
   it('the database replay reproduces expected_bids.csv and expected_lots.csv, and verify is OK after it', async () => {
     const { ok, report } = await runDb();
-    expect(report).toContain('OK: expected_bids.csv (220 rows) and expected_lots.csv (36 rows)');
+    expect(report).toContain('OK: expected_bids.csv (321 rows) and expected_lots.csv (55 rows)');
     expect(ok).toBe(true);
-    expect(await verifyAll(q, rules)).toEqual({ lots: 36, settled: 36, failure: null });
+    expect(await verifyAll(q, rules)).toEqual({ lots: 55, settled: 55, failure: null });
   }, 60_000);
 
   it('auction:close is idempotent: a second run settles nothing and writes no row', async () => {
@@ -132,12 +133,12 @@ describe('auction:eval database half, auction:close, auction:verify', () => {
     expect(failure!.detail).toMatch(/^seq 3 /);
   }, 60_000);
 
-  it('V9: a settlement carrying a rules hash other than D-23 fails naming the lot', async () => {
+  it('V9: a settlement carrying a rules hash D-23 does not list fails naming the lot', async () => {
     await runDb();
     const lot = await lotNumbered(1);
     await pastTrigger(`UPDATE "Settlement" SET "rulesHash" = $2 WHERE "lotId" = $1::uuid AND "supersedesId" IS NULL`, [lot.id, '0'.repeat(64)]);
     const { failure } = await verifyAll(q, rules);
     expect(failure).toMatchObject({ lotId: lot.id, lotNumber: 1, check: 'V9' });
-    expect(failure!.detail).toBe(`rulesHash ${'0'.repeat(64)}, D-23 says ${hash}`);
+    expect(failure!.detail).toBe(`rulesHash ${'0'.repeat(64)}, D-23 lists ${RULES_HASHES_D23.join(', ')}`); // any of the four is accepted (D-23)
   }, 60_000);
 });

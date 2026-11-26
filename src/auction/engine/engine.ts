@@ -1,10 +1,13 @@
 // The pure bid engine (CLAUDE.md non-negotiable 1): lot, state, bid and nowMs in; outcome and new state out.
 // Written from docs/domain-brief.md §5–§6 (D-8..D-12, D-21); tools/auctionlib.py is the oracle it must agree
 // with, not its source. Integers only: cents and epoch ms. No clock, no I/O, no float, no `/` (rules:lint).
-import { assertBps, assertCents, roundHalfUp } from './money';
-import type { BidOutcome, NotWrittenOutcome, Rules, SettlementOutcome } from './rules';
+import { MoneyError, assertBps, assertCents, roundHalfUp } from './money';
+import type { BidOutcome, NotWrittenOutcome, PremiumBand, Rules, SettlementOutcome, VoidRefusal } from './rules';
 
-/** Catalog data plus the auction's settings, flattened: nothing here changes once the lot has a bid. */
+/** Catalog data plus the auction's settings, flattened: nothing here changes once the lot has a bid, except that
+ * `withdrawnAtMs` is set once if staff withdraw the lot (D-73). It is the lot's one input beside the ledger: the lot is
+ * CLOSED from that instant, every later attempt is REJECTED_LOT_WITHDRAWN, and it settles UNSOLD_WITHDRAWN. The bid path
+ * reads it under the same row lock as the state, after the lock is granted. */
 export type Lot = {
   readonly startCents: number;
   readonly reserveCents: number | null;
@@ -13,7 +16,15 @@ export type Lot = {
   readonly softCloseWindowMs: number;
   readonly maxExtensionMs: number;
   readonly buyerPremiumBps: number;
+  readonly withdrawnAtMs: number | null;
+  /** R-18 (D-90): the sale's increment table by name; absent is the rules' default (`standard`, v1's bands). */
+  readonly incrementTable?: string;
+  /** R-18 (D-90): the sale's premium schedule; absent or null is flat at `buyerPremiumBps`, the one-band schedule.
+   * When set, its first band's rate is `buyerPremiumBps` (a CHECK on the row). */
+  readonly premiumBands?: readonly PremiumBand[] | null;
 };
+
+const withdrawn = (lot: Lot, nowMs: number): boolean => lot.withdrawnAtMs !== null && nowMs >= lot.withdrawnAtMs;
 
 /** The projection one LotState row holds (D-16): a fold over the ledger, never stored truth. */
 export type LotState = {
@@ -43,7 +54,8 @@ export type BidResult = {
 
 export const hardCloseMs = (lot: Lot): number => lot.scheduledEndMs + lot.maxExtensionMs;
 
-export const openState = (lot: Lot): LotState => ({
+/** Only the scheduled end is read; a lot being created has no withdrawal yet, so the field may be left off. */
+export const openState = (lot: Omit<Lot, 'withdrawnAtMs'> & { readonly withdrawnAtMs?: number | null }): LotState => ({
   priceCents: 0,
   leader: null,
   leaderMaxCents: 0,
@@ -54,17 +66,20 @@ export const openState = (lot: Lot): LotState => ({
   extensionCount: 0,
 });
 
-/** The increment of the band containing `cents` (D-8: the band of the amount being stepped from). */
-export function incrementFor(cents: number, rules: Rules): number {
+/** The increment of the band containing `cents` (D-8: the band of the amount being stepped from), in the named table
+ * (D-90), or the rules' default table when none is named. An unknown name is refused, never defaulted. */
+export function incrementFor(cents: number, rules: Rules, table?: string): number {
   if (assertCents(cents) < 0) throw new RangeError('incrementFor: negative cents');
-  const band = rules.bands.find((b) => cents >= b.loCents && (b.hiCents === null || cents < b.hiCents));
+  const bands = table === undefined ? rules.bands : rules.tables[table];
+  if (!bands) throw new RangeError(`incrementFor: no increment table ${table}`);
+  const band = bands.find((b) => cents >= b.loCents && (b.hiCents === null || cents < b.hiCents));
   if (!band) throw new RangeError('unreachable: bands cover [0, inf)');
   return band.incrementCents;
 }
 
 /** What a non-leader must bid at least: the start price before any bid, else price + inc(price). */
 export const minNextBid = (lot: Lot, state: LotState, rules: Rules): number =>
-  state.leader === null ? lot.startCents : state.priceCents + incrementFor(state.priceCents, rules);
+  state.leader === null ? lot.startCents : state.priceCents + incrementFor(state.priceCents, rules, lot.incrementTable);
 
 /** D-11: once the leading max reaches the reserve the price is at least the reserve. False with no leader. */
 export const reserveMet = (lot: Lot, state: LotState): boolean =>
@@ -94,7 +109,8 @@ export function applyBid(lot: Lot, state: LotState, bidderId: string, maxCents: 
   });
   const rejected = (outcome: BidOutcome) => result(outcome, { ...state, bidCount: seq }, false);
 
-  // §6: open on [opensAt, closesAt); both refusals are rows.
+  // §6: open on [opensAt, closesAt); all three refusals are rows. Withdrawn first: it holds while SCHEDULED too (GB-24h).
+  if (withdrawn(lot, nowMs)) return rejected('REJECTED_LOT_WITHDRAWN');
   if (nowMs < lot.opensAtMs) return rejected('REJECTED_LOT_NOT_OPEN');
   if (nowMs >= state.closesAtMs) return rejected('REJECTED_LOT_CLOSED');
 
@@ -117,12 +133,12 @@ export function applyBid(lot: Lot, state: LotState, bidderId: string, maxCents: 
     s = { ...state, ...accepted, priceCents: lot.startCents, leader: bidderId, leaderMaxCents: maxCents, leaderSeq: seq };
   } else if (maxCents > state.leaderMaxCents) {
     outcome = 'ACCEPTED_LEAD';
-    const priceCents = Math.min(maxCents, state.leaderMaxCents + incrementFor(state.leaderMaxCents, rules));
+    const priceCents = Math.min(maxCents, state.leaderMaxCents + incrementFor(state.leaderMaxCents, rules, lot.incrementTable));
     s = { ...state, ...accepted, priceCents, leader: bidderId, leaderMaxCents: maxCents, leaderSeq: seq };
   } else {
     // Equal max included: the earlier seq keeps the lead at the full max (D-9).
     outcome = 'ACCEPTED_OUTBID';
-    s = { ...state, ...accepted, priceCents: Math.min(state.leaderMaxCents, maxCents + incrementFor(maxCents, rules)) };
+    s = { ...state, ...accepted, priceCents: Math.min(state.leaderMaxCents, maxCents + incrementFor(maxCents, rules, lot.incrementTable)) };
   }
   s = withReserveFloor(lot, s);
 
@@ -135,13 +151,15 @@ export function applyBid(lot: Lot, state: LotState, bidderId: string, maxCents: 
 
 // ---- Replay, fold, status, settlement (task 1.6; brief §6–§7, D-17, D-21, D-22) ----
 
-/** One attempt as the client sent it. `placedAtMs` is the instant the server read under the lock (D-15). */
+/** One attempt as the client sent it. `placedAtMs` is the instant the server read under the lock (D-15). `void` (D-96):
+ * a staff void of `bidderId`'s live bids, with `maxCents` 0, not a bid. */
 export type Submission = {
   readonly submissionId: string;
   readonly bidderId: string;
   readonly maxCents: number;
   readonly placedAtMs: number;
   readonly idempotencyKey: string;
+  readonly void?: boolean;
 };
 
 /** One Bid row (D-14): the attempt, its seq, and the state before and after it. */
@@ -161,7 +179,55 @@ export type ReplayOutcome = {
 };
 
 export const lotStatus = (lot: Lot, state: LotState, nowMs: number): 'SCHEDULED' | 'OPEN' | 'CLOSED' =>
-  nowMs < lot.opensAtMs ? 'SCHEDULED' : nowMs < state.closesAtMs ? 'OPEN' : 'CLOSED';
+  withdrawn(lot, nowMs) ? 'CLOSED' : nowMs < lot.opensAtMs ? 'SCHEDULED' : nowMs < state.closesAtMs ? 'OPEN' : 'CLOSED';
+
+// ---- Staff void (R-19, D-96) ----
+
+type RowKey = { readonly seq: number; readonly bidderId: string; readonly outcome: string };
+
+/** D-96 (c): the accepted rows that still count, in seq order. A row is dead when a VOIDED row for the same bidder has a
+ * higher seq; a voided bidder's rows after their void are live. Every reader that means "this bid counts" reads these. */
+export function liveRows<R extends RowKey>(rows: readonly R[]): R[] {
+  const lastVoid = new Map<string, number>();
+  for (const r of rows) if (r.outcome === 'VOIDED') lastVoid.set(r.bidderId, Math.max(lastVoid.get(r.bidderId) ?? 0, r.seq));
+  return rows.filter((r) => r.outcome.startsWith('ACCEPTED_') && r.seq > (lastVoid.get(r.bidderId) ?? 0)).sort((a, b) => a.seq - b.seq);
+}
+
+/** Price, leader, leader max and leader seq from re-applying `live` (accepted rows, in seq order) at their own seq and
+ * instant, from the open state with the close held at `closesAtMs`. Only those four fields are meaningful. */
+function rebuild(lot: Lot, live: readonly FoldRow[], closesAtMs: number, rules: Rules): LotState {
+  let s: LotState = { ...openState(lot), closesAtMs };
+  for (const r of live) s = applyBid(lot, { ...s, bidCount: r.seq - 1 }, r.bidderId, r.maxCents, r.placedAtMs, rules).state;
+  return s;
+}
+
+/**
+ * D-96 (b), (d): void every live accepted row of `bidderId`. Only while OPEN and only with a live row, else a refusal that
+ * writes nothing. Price, leader, leader max and leader seq become the re-application of the other live rows; `bidCount`
+ * + 1; the accepted count, the close and its extension count never move back. Pure, like applyBid: the caller holds the
+ * lot's lock and read `nowMs` under it.
+ */
+export function applyVoid(lot: Lot, state: LotState, rows: readonly FoldRow[], bidderId: string, nowMs: number, rules: Rules): BidResult | { readonly refused: VoidRefusal } {
+  assertCents(nowMs);
+  if (lotStatus(lot, state, nowMs) !== 'OPEN') return { refused: 'VOID_LOT_NOT_OPEN' };
+  const live = liveRows(rows);
+  if (!live.some((r) => r.bidderId === bidderId)) return { refused: 'VOID_NO_LIVE_BIDS' };
+  const rb = rebuild(lot, live.filter((r) => r.bidderId !== bidderId), state.closesAtMs, rules);
+  const s: LotState = { ...state, priceCents: rb.priceCents, leader: rb.leader, leaderMaxCents: rb.leaderMaxCents, leaderSeq: rb.leaderSeq, bidCount: state.bidCount + 1 };
+  return {
+    outcome: 'VOIDED',
+    accepted: false,
+    state: s,
+    priceBefore: state.priceCents,
+    priceAfter: s.priceCents,
+    leaderBefore: state.leader,
+    leaderAfter: s.leader,
+    closesBeforeMs: state.closesAtMs,
+    closesAfterMs: s.closesAtMs,
+    extended: false,
+    minNextBefore: minNextBid(lot, state, rules),
+  };
+}
 
 /**
  * Submissions in arrival order through the D-17 idempotency check, then applyBid. A prior row with the same
@@ -189,7 +255,11 @@ export function replay(lot: Lot, submissions: readonly Submission[], rules: Rule
       });
       continue;
     }
-    const r = applyBid(lot, state, sub.bidderId, sub.maxCents, sub.placedAtMs, rules);
+    const r = sub.void ? applyVoid(lot, state, rows, sub.bidderId, sub.placedAtMs, rules) : applyBid(lot, state, sub.bidderId, sub.maxCents, sub.placedAtMs, rules);
+    if ('refused' in r) {
+      outcomes.push({ submissionId: sub.submissionId, outcome: r.refused, seq: null, row: null, priceAfter: state.priceCents, leaderAfter: state.leader, closesAfterMs: state.closesAtMs });
+      continue;
+    }
     const row: LedgerRow = {
       ...sub,
       seq: r.state.bidCount,
@@ -214,13 +284,25 @@ export function replay(lot: Lot, submissions: readonly Submission[], rules: Rule
 /** Rebuild the projection from the ledger alone (V1). Refuses a seq gap or a row whose outcome re-applying it disagrees with. */
 export function fold(lot: Lot, rows: readonly FoldRow[], rules: Rules): LotState {
   let state = openState(lot);
+  const done: FoldRow[] = [];
   for (const row of [...rows].sort((a, b) => a.seq - b.seq)) {
     if (row.seq !== state.bidCount + 1) throw new RangeError(`seq gap at ${row.seq}`);
-    const r = applyBid(lot, state, row.bidderId, row.maxCents, row.placedAtMs, rules);
-    if (r.outcome !== row.outcome) throw new RangeError(`ledger row ${row.seq} says ${row.outcome}, fold says ${r.outcome}`);
+    // D-96 (e): a VOIDED row re-derives the state from the live rows before it, and is refused where a void would be.
+    const r = row.outcome === 'VOIDED' ? applyVoid(lot, state, done, row.bidderId, row.placedAtMs, rules) : applyBid(lot, state, row.bidderId, row.maxCents, row.placedAtMs, rules);
+    const got = 'refused' in r ? r.refused : r.outcome;
+    if ('refused' in r || got !== row.outcome) throw new RangeError(`ledger row ${row.seq} says ${row.outcome}, fold says ${got}`);
     state = r.state;
+    done.push(row);
   }
   return state;
+}
+
+/** R-11 (D-83, GB-28): per-lot public aliases, "Bidder N" with N by first accepted appearance in seq order. A bidder whose
+ * rows were all refused gets none: refused rows are never shown, and a numbering gap would reveal one. Viewer-independent. */
+export function bidderAliases(rows: readonly { readonly seq: number; readonly bidderId: string; readonly accepted: boolean }[]): ReadonlyMap<string, number> {
+  const aliases = new Map<string, number>();
+  for (const r of [...rows].sort((a, b) => a.seq - b.seq)) if (r.accepted && !aliases.has(r.bidderId)) aliases.set(r.bidderId, aliases.size + 1);
+  return aliases;
 }
 
 export type Settlement = {
@@ -233,18 +315,35 @@ export type Settlement = {
   readonly closedAtMs: number;
 };
 
-const sold = (winner: string, winningSeq: number, hammerCents: number, premiumBps: number, closedAtMs: number): Settlement => {
-  const premiumCents = roundHalfUp(BigInt(assertCents(hammerCents)) * BigInt(assertBps(premiumBps)), 10000n);
+/**
+ * The buyer's premium, the first rounding site (D-22, D-74, GB-16; D-90, GB-29): each band's rate on the slice of the
+ * hammer inside it, summed exactly, rounded half up once. No bands is flat at `premiumBps`, which is the one-band case.
+ */
+export function premiumFor(hammerCents: number, premiumBps: number, bands?: readonly PremiumBand[] | null): number {
+  const hammer = BigInt(assertCents(hammerCents));
+  let numerator = 0n;
+  for (const b of bands ?? [{ loCents: 0, hiCents: null, bps: premiumBps }]) {
+    const lo = BigInt(assertCents(b.loCents));
+    const top = b.hiCents === null || hammer < BigInt(b.hiCents) ? hammer : BigInt(b.hiCents);
+    if (top > lo) numerator += (top - lo) * BigInt(assertBps(b.bps));
+  }
+  return roundHalfUp(numerator, 10000n);
+}
+
+const sold = (winner: string, winningSeq: number, hammerCents: number, premiumBps: number, closedAtMs: number, bands?: readonly PremiumBand[] | null): Settlement => {
+  const premiumCents = premiumFor(hammerCents, assertBps(premiumBps), bands);
   return { outcome: 'SOLD', winner, winningSeq, hammerCents, premiumCents, totalCents: hammerCents + premiumCents, closedAtMs };
 };
 
-/** D-22: null until CLOSED; then unsold (zero amounts, no winner) or SOLD with the one half-up rounding. */
+/** D-22: null until CLOSED; then unsold (zero amounts, no winner) or SOLD with the one half-up rounding.
+ * D-73: a withdrawn lot is UNSOLD_WITHDRAWN whatever the ledger says, closed at the withdrawal, not at closesAt. */
 export function settle(lot: Lot, state: LotState, nowMs: number): Settlement | null {
   if (lotStatus(lot, state, nowMs) !== 'CLOSED') return null;
-  const unsold = (outcome: SettlementOutcome): Settlement => ({ outcome, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: state.closesAtMs });
+  const unsold = (outcome: SettlementOutcome, closedAtMs = state.closesAtMs): Settlement => ({ outcome, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs });
+  if (lot.withdrawnAtMs !== null) return unsold('UNSOLD_WITHDRAWN', lot.withdrawnAtMs);
   if (state.leader === null) return unsold('UNSOLD_NO_BIDS');
   if (!reserveMet(lot, state)) return unsold('UNSOLD_RESERVE_NOT_MET');
-  return sold(state.leader, state.leaderSeq!, state.priceCents, lot.buyerPremiumBps, state.closesAtMs);
+  return sold(state.leader, state.leaderSeq!, state.priceCents, lot.buyerPremiumBps, state.closesAtMs, lot.premiumBands);
 }
 
 // ---- Corrections (task 2.2, D-42 Q2, D-44): a superseding settlement, recomputable from the ledger and its target ----
@@ -254,10 +353,13 @@ export const UNSOLD_BY_CORRECTION = 'UNSOLD_BY_CORRECTION';
 export type CorrectedSettlement = Omit<Settlement, 'outcome'> & {
   readonly outcome: SettlementOutcome | typeof UNSOLD_BY_CORRECTION;
   readonly premiumBps: number; // stored on every row, the first one too, so each row is recomputable from itself
+  readonly premiumBands: readonly PremiumBand[] | null; // D-90: likewise; null is flat at premiumBps
 };
 /** What a correction may set, and nothing else (D-42 Q2): the winner (null = unsold) and the premium rate. */
-export type CorrectionTarget = { readonly winner: string | null; readonly premiumBps: number };
-export type CorrectionRefusal = 'NOT_AN_ACCEPTED_BIDDER' | 'RESERVE_NOT_MET';
+/** `consignorApprovalRef` (AX-14, D-87): the consignor accepted the high bid below the reserve; only then is the reserve not applied. */
+/** `premiumBands` (D-90): the schedule the premium is taken at; absent or null is flat at `premiumBps`. */
+export type CorrectionTarget = { readonly winner: string | null; readonly premiumBps: number; readonly premiumBands?: readonly PremiumBand[] | null; readonly consignorApprovalRef?: string | null };
+export type CorrectionRefusal = 'NOT_AN_ACCEPTED_BIDDER' | 'RESERVE_NOT_MET' | 'LOT_WITHDRAWN' | 'APPROVAL_NOT_APPLICABLE';
 
 /**
  * The settlement a correction to `target` writes. The fold's own leader gets settle()'s hammer back; any other
@@ -268,18 +370,30 @@ export function resettle(lot: Lot, rows: readonly FoldRow[], rules: Rules, targe
   const folded = fold(lot, rows, rules);
   const original = settle(lot, folded, folded.closesAtMs)!; // at its own closesAt a lot is CLOSED
   assertBps(target.premiumBps);
+  const premiumBands = target.premiumBands ?? null;
+  const rate = { premiumBps: target.premiumBps, premiumBands };
+  const sale = (winner: string, seq: number, hammerCents: number) => ({ ...sold(winner, seq, hammerCents, target.premiumBps, original.closedAtMs, premiumBands), ...rate });
+  if (lot.withdrawnAtMs !== null && target.winner !== null) return { refused: 'LOT_WITHDRAWN' }; // D-73: a withdrawn lot is never sold, by correction either
+  if (target.consignorApprovalRef) {
+    // D-87: the high bidder only, on a lot that closed below its reserve, at the price the ledger reached.
+    if (target.winner === null || target.winner !== folded.leader || original.outcome !== 'UNSOLD_RESERVE_NOT_MET') return { refused: 'APPROVAL_NOT_APPLICABLE' };
+    return sale(target.winner, folded.leaderSeq!, folded.priceCents);
+  }
   if (target.winner === null) {
-    return { outcome: UNSOLD_BY_CORRECTION, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: original.closedAtMs, premiumBps: target.premiumBps };
+    return { outcome: UNSOLD_BY_CORRECTION, winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: original.closedAtMs, ...rate };
   }
   if (target.winner === folded.leader) {
     if (original.outcome !== 'SOLD') return { refused: 'RESERVE_NOT_MET' };
-    return { ...sold(target.winner, original.winningSeq!, original.hammerCents, target.premiumBps, original.closedAtMs), premiumBps: target.premiumBps };
+    return sale(target.winner, original.winningSeq!, original.hammerCents);
   }
-  const own = rows.filter((r) => r.bidderId === target.winner && !r.outcome.startsWith('REJECTED_')).sort((a, b) => b.seq - a.seq)[0];
+  // D-96 (g): live rows only. The price "reached" is re-derived from the live rows up to the bidder's own, so a voided
+  // bidder's bids never raise it; with no void in the ledger this is the fold's price at that row, as before.
+  const live = liveRows(rows);
+  const own = live.filter((r) => r.bidderId === target.winner).at(-1);
   if (!own) return { refused: 'NOT_AN_ACCEPTED_BIDDER' };
-  const hammerCents = Math.min(fold(lot, rows.filter((r) => r.seq <= own.seq), rules).priceCents, own.maxCents);
+  const hammerCents = Math.min(rebuild(lot, live.filter((r) => r.seq <= own.seq), folded.closesAtMs, rules).priceCents, own.maxCents);
   if (lot.reserveCents !== null && hammerCents < lot.reserveCents) return { refused: 'RESERVE_NOT_MET' };
-  return { ...sold(target.winner, own.seq, hammerCents, target.premiumBps, original.closedAtMs), premiumBps: target.premiumBps };
+  return sale(target.winner, own.seq, hammerCents);
 }
 
 // ---- Invoices (task 2.1, D-42 Q1): derived on read from each lot's current settlement, never stored ----
@@ -293,17 +407,32 @@ export type SettledLot = Pick<CorrectedSettlement, 'outcome' | 'winner' | 'hamme
 
 export type InvoiceLine = Pick<SettledLot, 'lotId' | 'lotNumber' | 'hammerCents' | 'premiumCents' | 'totalCents'>;
 
+export type TaxBase = 'HAMMER' | 'HAMMER_PLUS_PREMIUM';
+export type TaxConfig = { readonly taxBps: number; readonly taxBase: TaxBase };
+/** D-78 (R-09): each sale's tax configuration and the exempt bidders' certificate references. Configuration, not advice. */
+export type TaxInput = { readonly bySale: ReadonlyMap<string, TaxConfig>; readonly exempt: ReadonlyMap<string, string> };
+const NO_TAX: TaxConfig = { taxBps: 0, taxBase: 'HAMMER' };
+
 export type Invoice = {
   readonly auctionId: string;
   readonly bidderId: string;
   readonly lots: readonly InvoiceLine[];
   readonly hammerCents: number;
   readonly premiumCents: number;
+  /** The sale's rate and base; 0 bps when the sale taxes nothing. */
+  readonly taxBps: number;
+  readonly taxBase: TaxBase;
+  /** The third rounding site (D-78, GB-27): roundHalfUp(base × bps, 10000) once over the whole invoice; 0 when exempt. */
+  readonly taxCents: number;
+  /** The exemption certificate on file for the bidder, printed on the invoice; null when taxable. */
+  readonly exemptRef: string | null;
+  /** hammer + premium + tax: what the buyer owes. */
   readonly totalCents: number;
 };
 
-/** One invoice per winning bidder per auction: SOLD lots only, lines in lot-number order, sums in integer cents. */
-export function invoice(settled: readonly SettledLot[]): Invoice[] {
+/** One invoice per winning bidder per auction: SOLD lots only, lines in lot-number order, sums in integer cents, then
+ * the sale's tax once over the invoice's base (D-78). No `tax` means no tax, so totals are hammer + premium. */
+export function invoice(settled: readonly SettledLot[], tax?: TaxInput): Invoice[] {
   const by = new Map<string, { auctionId: string; bidderId: string; lots: InvoiceLine[] }>();
   for (const s of settled) {
     if (s.outcome !== 'SOLD' || s.winner === null) continue;
@@ -316,6 +445,94 @@ export function invoice(settled: readonly SettledLot[]): Invoice[] {
     .sort((a, b) => (a.auctionId < b.auctionId ? -1 : a.auctionId > b.auctionId ? 1 : a.bidderId < b.bidderId ? -1 : a.bidderId > b.bidderId ? 1 : 0))
     .map(({ auctionId, bidderId, lots }) => {
       const sorted = [...lots].sort((a, b) => a.lotNumber - b.lotNumber);
-      return { auctionId, bidderId, lots: sorted, hammerCents: sum(sorted, 'hammerCents'), premiumCents: sum(sorted, 'premiumCents'), totalCents: sum(sorted, 'totalCents') };
+      const hammerCents = sum(sorted, 'hammerCents');
+      const premiumCents = sum(sorted, 'premiumCents');
+      const { taxBps, taxBase } = tax?.bySale.get(auctionId) ?? NO_TAX;
+      const exemptRef = tax?.exempt.get(bidderId) ?? null;
+      const base = taxBase === 'HAMMER' ? hammerCents : hammerCents + premiumCents;
+      if (assertBps(taxBps) < 0 || taxBps > 10000) throw new MoneyError('rate_out_of_range'); // as consignorStatement (D-74)
+      const taxCents = exemptRef !== null ? 0 : roundHalfUp(BigInt(base) * BigInt(taxBps), 10000n); // GB-27: once per invoice
+      return { auctionId, bidderId, lots: sorted, hammerCents, premiumCents, taxBps, taxBase, taxCents, exemptRef, totalCents: hammerCents + premiumCents + taxCents };
     });
+}
+
+// ---- Consignor statement (R-07 / AX-07, D-74): derived on read from a consignor's current settlements, never stored ----
+
+/** The current contract between a consignor and a sale: flat commission, a fee per sold lot, a fee per lot unsold at the block. */
+export type Contract = { readonly commissionBps: number; readonly lotFeeCents: number; readonly unsoldFeeCents: number };
+export type ConsignedLot = Pick<SettledLot, 'lotId' | 'lotNumber' | 'outcome' | 'hammerCents'>;
+export type StatementLine = ConsignedLot & { readonly commissionCents: number; readonly feeCents: number; readonly netCents: number };
+export type ConsignorStatement = {
+  readonly lines: readonly StatementLine[];
+  readonly hammerCents: number;
+  readonly commissionCents: number;
+  readonly feeCents: number;
+  readonly netCents: number;
+};
+
+/** An unsold lot owes the unsold fee only when it went to the block and failed; withdrawn or corrected away owes nothing. */
+const UNSOLD_FEE_OUTCOMES: ReadonlySet<string> = new Set(['UNSOLD_NO_BIDS', 'UNSOLD_RESERVE_NOT_MET']);
+
+/**
+ * Per SOLD lot: hammer, commission = roundHalfUp(hammer × bps, 10000) (the second rounding site, D-74: one rounding per
+ * derived amount, at a named site with its own golden, GB-25), the lot fee, net = hammer − commission − fee. Per unsold lot:
+ * the unsold fee, net = −fee. The buyer's premium is never in the consignor's numbers. Lines in lot-number order; sums in
+ * integer cents, so Σnet + Σcommission + Σfees = Σhammer exactly. A net can be negative (a fee above a small hammer).
+ */
+export function consignorStatement(lots: readonly ConsignedLot[], contract: Contract): ConsignorStatement {
+  if (assertBps(contract.commissionBps) < 0 || contract.commissionBps > 10000) throw new MoneyError('rate_out_of_range');
+  if (assertCents(contract.lotFeeCents) < 0 || assertCents(contract.unsoldFeeCents) < 0) throw new MoneyError('negative_amount');
+  const lines = [...lots].sort((a, b) => a.lotNumber - b.lotNumber).map((l): StatementLine => {
+    if (l.outcome === 'SOLD') {
+      const commissionCents = roundHalfUp(BigInt(assertCents(l.hammerCents)) * BigInt(contract.commissionBps), 10000n);
+      return { ...l, commissionCents, feeCents: contract.lotFeeCents, netCents: l.hammerCents - commissionCents - contract.lotFeeCents };
+    }
+    const feeCents = UNSOLD_FEE_OUTCOMES.has(l.outcome) ? contract.unsoldFeeCents : 0;
+    return { ...l, hammerCents: 0, commissionCents: 0, feeCents, netCents: 0 - feeCents }; // 0 - 0 is +0; -0 would fail a deep equal
+  });
+  const sum = (k: 'hammerCents' | 'commissionCents' | 'feeCents' | 'netCents') => lines.reduce((t, l) => t + l[k], 0);
+  return { lines, hammerCents: sum('hammerCents'), commissionCents: sum('commissionCents'), feeCents: sum('feeCents'), netCents: sum('netCents') };
+}
+
+// ---- Payment status and the second-chance offer (R-08 / AX-08, D-75): derived from marks and the ledger, never stored ----
+
+export type PaymentStatus = 'PAID' | 'PARTIAL' | 'UNPAID' | 'OVERDUE' | 'DEFAULTED' | 'CREDIT';
+export type InvoiceBalance = { readonly status: PaymentStatus; readonly paidCents: number; readonly balanceCents: number };
+
+/**
+ * Σ marks against the current invoice total (GB-26). DEFAULTED outranks everything; paid above the total is CREDIT (a
+ * correction lowered the total after a payment); equal is PAID; some is PARTIAL whatever the date; none is OVERDUE
+ * strictly after the due date, else UNPAID. A sale with no due date never goes overdue. Sums only, no rounding site.
+ */
+export function invoiceBalance(totalCents: number, paidCents: number, nowMs: number, dueAtMs: number | null, defaulted = false): InvoiceBalance {
+  if (assertCents(totalCents) < 0 || assertCents(paidCents) < 0) throw new MoneyError('negative_amount');
+  const balanceCents = totalCents - paidCents;
+  const status: PaymentStatus = defaulted ? 'DEFAULTED'
+    : paidCents > totalCents ? 'CREDIT'
+    : paidCents === totalCents ? 'PAID'
+    : paidCents > 0 ? 'PARTIAL'
+    : dueAtMs !== null && nowMs > dueAtMs ? 'OVERDUE'
+    : 'UNPAID';
+  return { status, paidCents, balanceCents };
+}
+
+export type SecondChance = { readonly bidderId: string; readonly settlement: CorrectedSettlement };
+
+/**
+ * The underbidder a defaulted lot is offered to: of the bidders with an accepted row other than the defaulter (and any
+ * already excluded, e.g. one who declined), the one `resettle` would sell to at the highest price, D-44's
+ * min(price their last accepted row reached, their own max); a tie goes to the earlier last row. Null when nobody is
+ * left or every candidate is under the reserve. The ledger is closed, so the answer is the same on every read.
+ */
+export function secondChance(lot: Lot, rows: readonly FoldRow[], rules: Rules, defaulter: string, premiumBps: number, exclude: readonly string[] = [], premiumBands: readonly PremiumBand[] | null = null): SecondChance | null {
+  const out = new Set([defaulter, ...exclude]);
+  const lastSeq = new Map<string, number>();
+  for (const r of liveRows(rows)) if (!out.has(r.bidderId)) lastSeq.set(r.bidderId, r.seq); // D-96 (g): live rows only
+  let best: (SecondChance & { seq: number }) | null = null;
+  for (const [bidderId, seq] of lastSeq) {
+    const s = resettle(lot, rows, rules, { winner: bidderId, premiumBps, premiumBands });
+    if ('refused' in s) continue;
+    if (!best || s.hammerCents > best.settlement.hammerCents || (s.hammerCents === best.settlement.hammerCents && seq < best.seq)) best = { bidderId, settlement: s, seq };
+  }
+  return best && { bidderId: best.bidderId, settlement: best.settlement };
 }

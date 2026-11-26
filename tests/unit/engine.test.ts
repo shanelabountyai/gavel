@@ -1,15 +1,16 @@
 // Task 1.5: the brief §9 goldens that need only applyBid (GB-00..GB-14, GB-17, GB-19, GB-22, GB-23), with
 // the exact values tools/golden_answers.py prints. Lot G: start 10,000, no reserve, opens 0, T = 3,600,000,
 // W = 120 s, cap 600 s, premium 1500 bps. Lot R: as G with reserve 25,000.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { MoneyError } from '@/auction/engine/money';
-import { type Lot, type LotState, applyBid, incrementFor, minNextBid, openState, reserveMet } from '@/auction/engine/engine';
+import { type FoldRow, type Lot, type LotState, applyBid, bidderAliases, fold, incrementFor, lotStatus, minNextBid, openState, reserveMet, resettle, settle } from '@/auction/engine/engine';
 import { loadRules } from '@/auction/load-rules';
 
 const { rules } = loadRules();
 const T = 3_600_000;
 const W = 120_000;
-const G: Lot = { startCents: 10_000, reserveCents: null, opensAtMs: 0, scheduledEndMs: T, softCloseWindowMs: W, maxExtensionMs: 600_000, buyerPremiumBps: 1500 };
+const G: Lot = { startCents: 10_000, reserveCents: null, opensAtMs: 0, scheduledEndMs: T, softCloseWindowMs: W, maxExtensionMs: 600_000, buyerPremiumBps: 1500, withdrawnAtMs: null };
 const R: Lot = { ...G, reserveCents: 25_000 };
 const bid = (lot: Lot, s: LotState, who: string, m: number, t: number) => applyBid(lot, s, who, m, t, rules);
 
@@ -133,6 +134,38 @@ describe('GB-19, GB-23', () => {
   });
 });
 
+describe('GB-24 a withdrawn lot (R-04, D-73)', () => {
+  const WD = 1_000_000;
+  const Wd: Lot = { ...G, withdrawnAtMs: WD };
+  it('GB-24a..e before the instant the lot is open; from it every attempt is REJECTED_LOT_WITHDRAWN and a row, the status CLOSED, the settlement UNSOLD_WITHDRAWN at the withdrawal', () => {
+    const s = bid(Wd, openState(Wd), 'A', 15_000, 100_000).state;
+    expect([lotStatus(Wd, s, WD - 1), settle(Wd, s, WD - 1)]).toEqual(['OPEN', null]);
+    const r = bid(Wd, s, 'B', 50_000, WD);
+    expect(r).toMatchObject({ outcome: 'REJECTED_LOT_WITHDRAWN', accepted: false, extended: false, priceAfter: 10_000, leaderAfter: 'A' });
+    expect(r.state).toMatchObject({ bidCount: 2, acceptedCount: 1, closesAtMs: T });
+    const r2 = bid(Wd, r.state, 'B', 50_000, T - 1000);
+    expect([r2.outcome, r2.state.bidCount]).toEqual(['REJECTED_LOT_WITHDRAWN', 3]);
+    expect([lotStatus(Wd, r2.state, WD), r2.state.closesAtMs]).toEqual(['CLOSED', T]);
+    expect(settle(Wd, r2.state, WD)).toEqual({ outcome: 'UNSOLD_WITHDRAWN', winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0, closedAtMs: WD });
+  });
+  it('GB-24f/h no bids is UNSOLD_WITHDRAWN, not NO_BIDS; withdrawn while SCHEDULED is WITHDRAWN before NOT_OPEN and CLOSED, never SCHEDULED, from then', () => {
+    expect(settle(Wd, openState(Wd), T)?.outcome).toBe('UNSOLD_WITHDRAWN');
+    const sched: Lot = { ...Wd, opensAtMs: 2_000_000 };
+    expect(bid(sched, openState(sched), 'A', 15_000, WD).outcome).toBe('REJECTED_LOT_WITHDRAWN');
+    expect([lotStatus(sched, openState(sched), WD), lotStatus(sched, openState(sched), WD - 1)]).toEqual(['CLOSED', 'SCHEDULED']);
+  });
+  it("GB-24g fold re-derives the WITHDRAWN row from the lot's withdrawnAt, refuses it without one; resettle never sells a withdrawn lot", () => {
+    const rows: FoldRow[] = [
+      { seq: 1, bidderId: 'A', maxCents: 15_000, placedAtMs: 100_000, outcome: 'ACCEPTED_LEAD' },
+      { seq: 2, bidderId: 'B', maxCents: 50_000, placedAtMs: WD, outcome: 'REJECTED_LOT_WITHDRAWN' },
+    ];
+    expect(fold(Wd, rows, rules)).toMatchObject({ bidCount: 2, acceptedCount: 1, leader: 'A', priceCents: 10_000 });
+    expect(() => fold(G, rows, rules)).toThrow(/row 2 says REJECTED_LOT_WITHDRAWN, fold says ACCEPTED_LEAD/);
+    expect(resettle(Wd, rows, rules, { winner: 'A', premiumBps: 1500 })).toEqual({ refused: 'LOT_WITHDRAWN' });
+    expect(resettle(Wd, rows, rules, { winner: null, premiumBps: 1500 })).toMatchObject({ outcome: 'UNSOLD_BY_CORRECTION', closedAtMs: WD });
+  });
+});
+
 describe('boundary: integers only', () => {
   it('a non-integer max or ms throws before anything else; a non-positive max is a RangeError', () => {
     const s = openState(G);
@@ -149,5 +182,21 @@ describe('boundary: integers only', () => {
     const r2 = bid(G, frozen, 'A', 15_000, 100_000);
     expect(r1).toEqual(r2);
     expect(frozen).toEqual(s);
+  });
+});
+
+describe('GB-28 public bid history aliases (R-11, D-83)', () => {
+  it('GB-28a L001: five bidders numbered by first accepted row, whatever the input order', () => {
+    const rows = readFileSync('fixtures/expected_bids.csv', 'utf8').trim().split('\n').slice(1).map((l) => l.split(','))
+      .filter((c) => c[1] === 'L001').map((c) => ({ seq: Number(c[2]), bidderId: c[3]!, accepted: c[9] === 'true' }));
+    expect(rows).toHaveLength(12);
+    const exp = new Map([['B034', 1], ['B027', 2], ['B003', 3], ['B015', 4], ['B019', 5]]);
+    expect(bidderAliases(rows)).toEqual(exp);
+    expect(bidderAliases([...rows].reverse())).toEqual(exp);
+  });
+  it('GB-28b a bidder refused before anyone accepted them takes no number; GB-28c none without an accepted row', () => {
+    const r = (seq: number, bidderId: string, accepted: boolean) => ({ seq, bidderId, accepted });
+    expect(bidderAliases([r(1, 'A', true), r(2, 'X', false), r(3, 'B', true), r(4, 'X', false)])).toEqual(new Map([['A', 1], ['B', 2]]));
+    expect(bidderAliases([r(1, 'X', false)])).toEqual(new Map());
   });
 });

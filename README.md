@@ -10,20 +10,22 @@ Learning project, synthetic data only. Every auction house, estate, lot, bidder 
 
 ## Status
 
-**Kickoff kit only (2026-10-19).** No TypeScript exists yet and the saas-foundation clone has not been made. What is here: the PRD, decisions, domain brief, phase-1 tasks, portfolio overlap, the rules file, the Python oracle in `tools/`, and the frozen fixtures. Start with `KICKOFF.md`; session state is in `NEXT.md`.
+**Phases 1–4 complete (2026-10-23); closure refreshed 2026-10-30 after the review backlogs.** Engine, ledger, row lock, contention proof and load script (Phase 1); invoices, corrections and the dispute view (Phase 2); catalog, bidder lot page with polling, bid form, outbox notices and the HTTP bid route (Phase 3); lock-strategy and clock measurements (Phase 4, table below). Then three reviews (`docs/prds/`): the UX review worked in full (D-66..D-69, D-76..D-82: result banners, own maximum, one-tap minimum, live region, Your bids, demo routing by journey, keyboard confirm), the design pass (D-65, `docs/design-brief.md`), and the auction-domain review's P0s and P1s through AX-15 except AX-14 (D-70..D-75, D-78, D-83, D-84, D-86: suspend and reinstate, buyer invoices with due date and pickup, terms of sale accepted before bidding, withdraw a lot, consignors and statements, payment marks with default and second-chance offer, sales tax, public bid history with per-lot aliases, "No reserve", the house time zone and staggered closes, the sale recap with the ledger CSV). Watchlist with closing-soon notices (D-92, AX-23). Consignor-linked bidding report (D-93, AX-22). Staff void of a bidder's standing bids before the close (D-96, AX-19). Open: AX-20 (`docs/prds/auction-domain-gaps.md`). Demo script: `docs/DEMO.md`. Exec brief: [Gavel in Brief](https://claude.ai/artifact/Qgu3afTJ2dAR8Y2EsM69Dt) (private until shared; screenshots from `e2e/brief-shots.spec.ts`). Session state is in `NEXT.md`.
+
+**Live demo (D-64):** <https://gavel.labintelligence.co>, behind a shared password (ask the owner). It runs on Vercel with a Neon Postgres 17 database holding the 36 fixture lots, the demo accounts and a *Live demo sale* whose lots close over 30 days (`npm run seed:live`). Closed lots settle on the daily cron. No throughput figure in this repo was measured there: every number names the Mac it ran on.
 
 ## Layout
 
 | Path | What |
 |---|---|
 | `prd-gavel.md` | What and why. `docs/decisions.md` outranks it |
-| `docs/decisions.md` | D-1..D-25 resolved, O-1..O-12 open with defaults in force, review log |
-| `docs/domain-brief.md` | Vocabulary, lot kinds, bid rules, soft close, settlement, invariants V1–V9, the contention proof, goldens GB-00..GB-23, kickoff measurements, fixture hashes |
+| `docs/decisions.md` | D-1..D-84 resolved (D-26 on are build and review decisions), O-1..O-12 open with defaults in force, review log |
+| `docs/domain-brief.md` | Vocabulary, lot kinds, bid rules, soft close, settlement, invariants V1–V9, the contention proof, goldens GB-00..GB-28, kickoff measurements, fixture hashes |
 | `docs/phase-1-tasks.md` | Tasks 1.1–1.12 with acceptance criteria and the exit bar |
 | `docs/portfolio-overlap.md` | What is ported from sibling repos (real paths) and what is new |
-| `rules/auction.v1.json` | Increment bands, soft-close and premium defaults, the closed outcome sets |
+| `rules/auction.v2.json` | Named increment tables (standard, equipment, estate), soft-close and premium-band defaults, the closed outcome sets (D-90; `auction.v1.json` is kept for the hashes on older settlements) |
 | `tools/` | Python 3 (stdlib) test oracles: rules made executable, fixture generator, reference replay, golden answers, freeze check |
-| `fixtures/` | 3 synthetic sales, 36 lots, 40 bidders, 220 submissions, the expected outcome per submission and per lot, `MANIFEST.json` |
+| `fixtures/` | 3 synthetic sales, 39 lots, 40 bidders, 233 submissions, the expected outcome per submission and per lot, `MANIFEST.json` |
 
 ## Oracle commands (Python 3, no dependencies)
 
@@ -33,4 +35,18 @@ python3 tools/verify_fixtures.py                # regenerates to a temp dir, com
 python3 tools/reference_replay.py               # prints the brief section 10 table
 ```
 
-Kickoff numbers (oracle on the frozen fixtures; designed scenarios, not a measurement): 220 submissions, 214 ledger rows, 150 lead-taking bids, 19 outbids, 3 own-max raises, 27 under the minimum, 9 after close, 3 before open, 3 replays, 3 idempotency mismatches; 31 lots sold, 3 with no bids, 2 with the reserve not met; 45 soft-close extensions over 7 lots, 3 lots at the hard cap. Full table in `fixtures/samples/reference_replay.output.txt`. The throughput number is measured, never typed (D-19, D-40): `npm run load:bids` appends each run to `docs/LOAD.md` with the hardware it ran on. First run on the Mac, verbatim: `2026-10-20T01:50:26.585Z 1ad8c4f: 200 writers, 40 connections, 4 lots, 10 s + soft close: 68360 ledger rows in 15.9 s = 4293 bids/s; placeBid p50 5.1 / p95 28.9 / p99 68.7 ms; end to end p50 41.7 / p95 77.1 / p99 113.2 ms; max lock wait 204.4 ms; 0 timeouts; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`. Latency is around `placeBid` in the same process as the server code with a pooled connection in hand; there is no HTTP number until Phase 3.
+Fixture numbers (oracle on the frozen fixtures, the kickoff set plus the three withdrawn lots of D-73; designed scenarios, not a measurement): 233 submissions, 226 ledger rows, 158 lead-taking bids, 19 outbids, 3 own-max raises, 27 under the minimum, 9 after close, 3 before open, 4 after a withdrawal, 4 replays, 3 idempotency mismatches; 31 lots sold, 3 with no bids, 2 with the reserve not met, 3 withdrawn; 46 soft-close extensions over 8 lots, 3 lots at the hard cap. Full table in `fixtures/samples/reference_replay.output.txt`. The throughput number is measured, never typed (D-19, D-40): `npm run load:bids` appends each run to `docs/LOAD.md` with the hardware it ran on. First run on the Mac, verbatim: `2026-10-20T01:50:26.585Z 1ad8c4f: 200 writers, 40 connections, 4 lots, 10 s + soft close: 68360 ledger rows in 15.9 s = 4293 bids/s; placeBid p50 5.1 / p95 28.9 / p99 68.7 ms; end to end p50 41.7 / p95 77.1 / p99 113.2 ms; max lock wait 204.4 ms; 0 timeouts; Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`. Latency is around `placeBid` in the same process as the server code with a pooled connection in hand. The HTTP number (task 3.7, `npm run load:bids -- --http http://localhost:6100` against the production build, D-54), verbatim: `2026-10-21T15:20:18.335Z 8d713eb: HTTP, 200 writers, server Prisma pool connection_limit=10, 4 lots, 10 s + soft close: 16164 ledger rows in 15.9 s = 1016 bids/s; HTTP round trip p50 168.0 / p95 354.5 / p99 477.0 ms; max lock wait 43.8 ms; 0 timeouts (503); Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew)`. A fifth of the in-process throughput at 26× the p50: the server's Prisma pool is capped at 10 connections, so the queue is on the pool, not the row (max lock wait 44 ms).
+
+### Lock strategies side by side (task 4.3, D-60)
+
+Apple M4, 10 cores, 24 GB; Node v26.3.1; PostgreSQL 17.11 (Homebrew). `npm run load:bids -- --lock <strategy>`: 200 writers, 40 connections, 4 lots, 10 s + soft close, in process (no HTTP). Three runs per strategy, all on commit `05f024f`, interleaved, each started at a 1-minute load average below 3 with no other test sweep running (D-59). Each cell is the median of the three runs, with the range in brackets; medians are taken per column, so one row of the table need not be one run. Latency is around `placeBid` with a connection in hand.
+
+| Strategy | bids/s | placeBid p50 ms | p95 ms | p99 ms | max lock wait ms | judgements per ledger row | timeouts | `auction:verify` |
+|---|---|---|---|---|---|---|---|---|
+| `row` — `FOR UPDATE` on `LotState` (the product, D-13) | 5038 (4482–5094) | 5.1 (5.0–7.1) | 22.1 (21.6–22.9) | 35.2 (34.5–39.9) | 71.6 (64.2–129.6) | 1.000 | 0 | OK ×3 |
+| `advisory` — `pg_advisory_xact_lock` on the lot | 4723 (4690–4747) | 8.4 (8.4–8.5) | 10.3 (10.1–10.3) | 13.2 (13.1–13.6) | 26.0 (12.3–36.0) | 1.000 | 0 | OK ×3 |
+| `version` — shorter lock, plus retries (guarded `UPDATE`; still waits on the winner's row lock) | 3881 (3855–3925) | 10.1 (10.1–10.1) | 12.9 (12.6–13.3) | 17.3 (16.7–18.9) | 39.3 (18.4–180.4) | 2.447 (2.444–2.449) | 0 | OK ×3 |
+| `serializable` — SERIALIZABLE, retry on 40001 and the seq 23505 | 1345 (1105–1401) | 16.5 (15.5–19.0) | 73.6 (71.7–97.3) | 90.2 (89.1–107.9) | 10.6 (2.4–10.9) | 7.492 (7.087–7.721) | 2376 (1761–2449) | OK ×3 |
+
+The twelve `docs/LOAD.md` lines, by timestamp (2026-10-22, `05f024f`): row 15:55:20, 16:00:35, 16:06:37; advisory 15:55:51, 16:02:37, 16:07:30; version 15:56:52, 16:03:20, 16:08:04; serializable 15:57:33, 16:05:24, 16:08:48. A timeout here is a bid that used its 20 judgements and came back `BID_TIMED_OUT`, to be resent with the same key (D-58 b).
+

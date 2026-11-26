@@ -71,18 +71,22 @@ class Gen:
     def state(self, lot: dict, a: dict):
         """Replay this lot's submissions so far (in time order) and return (state, min_next)."""
         L = Lot(lot["lot_id"], a["auction_id"], lot["start_cents"], lot["reserve_cents"], lot["opens_at_ms"], lot["scheduled_end_ms"],
-                a["soft_close_window_seconds"] * 1000, a["max_extension_seconds"] * 1000, a["buyer_premium_bps"])
-        subs = [Submission(s["submission_id"], s["lot_id"], s["bidder_id"], s["max_cents"], s["placed_at_ms"], s["idempotency_key"])
+                a["soft_close_window_seconds"] * 1000, a["max_extension_seconds"] * 1000, a["buyer_premium_bps"], lot.get("withdrawn_at_ms"),
+                a.get("increment_table"))
+        subs = [Submission(s["submission_id"], s["lot_id"], s["bidder_id"], s["max_cents"], s["placed_at_ms"], s["idempotency_key"], s.get("void", False))
                 for s in self.subs if s["lot_id"] == lot["lot_id"]]
         subs.sort(key=lambda x: x.placed_at_ms)
-        state, _, _ = replay(L, subs, self.rules)
+        state, rows, outs = replay(L, subs, self.rules)
+        self.last_rows, self.last_outs = rows, outs
         return state, min_next_bid(L, state, self.rules)
 
-    def submit(self, lot: dict, bidder: str, max_cents: int, at_ms: int, key: Optional[str] = None) -> dict:
+    def submit(self, lot: dict, bidder: str, max_cents: int, at_ms: int, key: Optional[str] = None, void: bool = False) -> dict:
         self.sub_n += 1
         sid = f"S{self.sub_n:05d}"
         s = {"submission_id": sid, "lot_id": lot["lot_id"], "bidder_id": bidder, "max_cents": int(max_cents),
-             "placed_at_ms": int(at_ms), "idempotency_key": key or f"k-{sid}"}
+             "placed_at_ms": int(at_ms), "idempotency_key": key or (f"void-{sid}" if void else f"k-{sid}")}
+        if void:
+            s["void"] = True  # D-96: only void lines carry the key, so every earlier line keeps its bytes
         self.subs.append(s)
         return s
 
@@ -97,9 +101,10 @@ def inc_for(price: int, bands: list) -> int:
 def build(seed: int) -> dict:
     g = Gen(seed)
     rng = g.rng
-    with open(os.path.join(ROOT, "rules", "auction.v1.json"), encoding="utf-8") as f:
+    with open(os.path.join(ROOT, "rules", "auction.v2.json"), encoding="utf-8") as f:
         rules = json.load(f)
-    bands = [(b["lo_cents"], b["hi_cents"], b["increment_cents"]) for b in rules["increments"]["bands"]]
+    tables = {name: [(b["lo_cents"], b["hi_cents"], b["increment_cents"]) for b in t] for name, t in rules["increments"]["tables"].items()}
+    bands = tables["standard"]
 
     bidders = g.bidders(40)
     ids = [b["bidder_id"] for b in bidders]
@@ -134,6 +139,64 @@ def build(seed: int) -> dict:
                    "opens_at_ms": a["opens_at_ms"], "scheduled_end_ms": sched_end}
             a["lots"].append(lot)
             script(g, lot, a, bands, ids)
+    # R-04 (D-73): one WITHDRAWN lot per sale, numbered after the others and drawn from a second generator seeded
+    # seed + 1, so L001-L036 and their submissions are byte for byte the kickoff set. `withdrawn_at_ms` is set on
+    # these lots only; every other lot has no such key.
+    rng2 = random.Random(seed + 1)
+    for a in auctions:
+        lot_n += 1
+        start = rng2.choice([2500, 5000, 10000, 20000, 50000]) if a["auction_id"] != "A2" else rng2.choice([50000, 100000, 250000])
+        lot = {"lot_id": f"L{lot_n:03d}", "auction_id": a["auction_id"], "lot_number": len(a["lots"]) + 1,
+               "title": a["titles"][len(a["lots"]) % len(a["titles"])], "kind": "WITHDRAWN", "start_cents": start, "reserve_cents": None,
+               "opens_at_ms": a["opens_at_ms"], "scheduled_end_ms": T0_MS + (lot_n - 1) * 2 * MIN}
+        a["lots"].append(lot)
+        script_withdrawn(g, lot, a, bands, ids, rng2)
+    # R-18 (D-90): two v2 sales appended, drawn from a third generator seeded seed + 2, so A1-A3, L001-L039 and their
+    # submissions stay byte for byte the D-73 set. Only these two carry `increment_table` and `premium_bands`; a sale
+    # without the keys is the standard table at a flat buyer_premium_bps. buyer_premium_bps is the first band's rate.
+    g.rng = random.Random(seed + 2)
+    v2 = [
+        {"auction_id": "A4", "name": "Ridgeway equipment yard", "soft_close_window_seconds": 120, "max_extension_seconds": 900,
+         "buyer_premium_bps": 1500, "increment_table": "equipment", "opens_at_ms": T0_MS - 36 * HOUR, "titles": EQUIP_TITLES[::-1],
+         "premium_bands": [{"lo_cents": 0, "hi_cents": 500000, "bps": 1500}, {"lo_cents": 500000, "hi_cents": None, "bps": 1000}],
+         "plan": [("PROXY_WAR", 250000), ("SNIPE", 100000), ("RESERVE_MET", 100000), ("PREMIUM_EDGE", 500000), ("PREMIUM_ABOVE", 500005)]},
+        {"auction_id": "A5", "name": "Linden Lane estate", "soft_close_window_seconds": 90, "max_extension_seconds": 600,
+         "buyer_premium_bps": 2000, "increment_table": "estate", "opens_at_ms": T0_MS - 30 * HOUR, "titles": ESTATE_TITLES,
+         "premium_bands": [{"lo_cents": 0, "hi_cents": 10000, "bps": 2000}, {"lo_cents": 10000, "hi_cents": 50000, "bps": 1500},
+                           {"lo_cents": 50000, "hi_cents": None, "bps": 1000}],
+         "plan": [("PROXY_WAR", 5000), ("TIE", 2500), ("BELOW_MIN", 1500), ("CHAIN_TO_CAP", 2000), ("PREMIUM_EDGE", 10000)]},
+    ]
+    for a in v2:
+        a["lots"] = []
+        for i, (kind, start) in enumerate(a.pop("plan")):
+            lot_n += 1
+            reserve = start * 3 if kind == "RESERVE_MET" else None
+            lot = {"lot_id": f"L{lot_n:03d}", "auction_id": a["auction_id"], "lot_number": i + 1,
+                   "title": a["titles"][i % len(a["titles"])], "kind": kind, "start_cents": start, "reserve_cents": reserve,
+                   "opens_at_ms": a["opens_at_ms"], "scheduled_end_ms": T0_MS + (lot_n - 1) * 2 * MIN}
+            a["lots"].append(lot)
+            if kind in ("PREMIUM_EDGE", "PREMIUM_ABOVE"):
+                # One bidder, well above the start: the hammer is the start price exactly, which sits on (or just
+                # over) a premium band boundary, so the settlement row is GB-29b / GB-29d computed through the ledger.
+                g.submit(lot, g.rng.choice(ids), start * 2, lot["opens_at_ms"] + 30 * MIN)
+            else:
+                script(g, lot, a, tables[a["increment_table"]], ids)
+    auctions += v2
+    # R-19 (D-96): one sale of staff voids appended, from a fourth generator seeded seed + 3, so A1-A5, L001-L049 and their
+    # submissions stay byte for byte the D-90 set. Standard table, flat premium, as A1-A3.
+    g.rng = random.Random(seed + 3)
+    a6 = {"auction_id": "A6", "name": "Orchard Road estate (staff voids)", "soft_close_window_seconds": 120,
+          "max_extension_seconds": 900, "buyer_premium_bps": 1500, "opens_at_ms": T0_MS - 20 * HOUR, "titles": ESTATE_TITLES[3:],
+          "lots": []}
+    for i, kind in enumerate(["VOID_LEADER", "VOID_UNDERBIDDER", "VOID_REBID", "VOID_IN_EXTENSION", "VOID_ONLY_BIDDER", "VOID_REFUSED"]):
+        lot_n += 1
+        start = g.rng.choice([5000, 10000, 20000, 40000])
+        lot = {"lot_id": f"L{lot_n:03d}", "auction_id": "A6", "lot_number": i + 1, "title": a6["titles"][i % len(a6["titles"])],
+               "kind": kind, "start_cents": start, "reserve_cents": None, "opens_at_ms": a6["opens_at_ms"],
+               "scheduled_end_ms": T0_MS + (lot_n - 1) * 2 * MIN}
+        a6["lots"].append(lot)
+        script_void(g, lot, a6, bands, ids)
+    auctions.append(a6)
     for a in auctions:
         del a["titles"]
 
@@ -256,6 +319,116 @@ def script(g: Gen, lot: dict, a: dict, bands: list, ids: list) -> None:
         raise AssertionError(kind)
 
 
+def script_withdrawn(g: Gen, lot: dict, a: dict, bands: list, ids: list, rng: random.Random) -> None:
+    """R-04: the house withdraws the lot before it closes. A1: after three bids (the leader is told); A2: with no
+    bids; A3: inside a soft-close extension. From the withdrawal on, every attempt is REJECTED_LOT_WITHDRAWN and a row;
+    a resend of an earlier key is still a REPLAY. The lot settles UNSOLD_WITHDRAWN, closed at the withdrawal."""
+    W = a["soft_close_window_seconds"] * SEC
+    end = lot["scheduled_end_ms"]
+    start = lot["start_cents"]
+    pool = rng.sample(ids, 6)
+    quiet_from = lot["opens_at_ms"] + 10 * MIN
+    quiet_to = end - W - 10 * MIN
+    m = start
+
+    def ladder(n: int, lo: int, hi: int, bidders: list) -> None:
+        nonlocal m
+        ts = sorted(rng.randrange(lo, hi) for _ in range(n))
+        for i, t in enumerate(ts):
+            m = m + rng.randrange(1, 6) * inc_for(m, bands) * rng.choice([1, 1, 2, 3])
+            g.submit(lot, bidders[i % len(bidders)], m, t)
+
+    if a["auction_id"] == "A1":
+        ladder(3, quiet_from, quiet_to, pool[:2])
+        first = g.subs[-3]
+        wd = quiet_to + 5 * MIN
+        lot["withdrawn_at_ms"] = wd
+        g.submit(lot, pool[2], m * 2, wd)                 # at the instant (half-open): rejected, a row
+        g.submit(lot, pool[3], m * 3, wd + 1 * MIN)       # after: rejected, a row
+        g.submit(lot, first["bidder_id"], first["max_cents"], wd + 2 * MIN, key=first["idempotency_key"])  # a resend of a pre-withdrawal key: REPLAY, no row
+    elif a["auction_id"] == "A2":
+        wd = quiet_from + 1 * MIN
+        lot["withdrawn_at_ms"] = wd
+        g.submit(lot, pool[0], start * 2, wd + 30 * SEC)  # the only attempt, after the withdrawal: a row, never a leader
+    else:
+        ladder(4, quiet_from, quiet_to, pool[:2])
+        g.submit(lot, pool[4], m * 2, end - 1 * SEC)      # T-1 s by a new bidder: extends
+        wd = end + 10 * SEC                               # withdrawn inside the extension, before the new close
+        lot["withdrawn_at_ms"] = wd
+        g.submit(lot, pool[5], m * 4, end + 20 * SEC)     # would have led and extended again; rejected WITHDRAWN instead
+
+
+def script_void(g: Gen, lot: dict, a: dict, bands: list, ids: list) -> None:
+    """R-19 (D-96): staff voids on an open lot. Each kind is checked against the oracle as it is built, so the lot does
+    what its name says rather than what a seed happened to give."""
+    rng = g.rng
+    W = a["soft_close_window_seconds"] * SEC
+    end = lot["scheduled_end_ms"]
+    kind = lot["kind"]
+    pool = rng.sample(ids, 5)
+    ts = sorted(rng.randrange(lot["opens_at_ms"] + 10 * MIN, end - W - 10 * MIN) for _ in range(8))
+
+    def over(b: str, at: int, steps: int = 1) -> None:
+        """A bid `steps` increments above the current minimum: always accepted."""
+        _, mn = g.state(lot, a)
+        g.submit(lot, b, mn + (steps - 1) * inc_for(mn, bands), at)
+
+    def leader() -> str:
+        return g.state(lot, a)[0].leader
+
+    def last(outcome: str) -> None:
+        g.state(lot, a)
+        assert g.last_outs[-1].outcome == outcome, (lot["lot_id"], kind, g.last_outs[-1].outcome)
+
+    if kind == "VOID_LEADER":
+        for i in range(4):
+            over(pool[i % 3], ts[i], rng.randrange(1, 4))
+        v = g.submit(lot, leader(), 0, ts[4], void=True)
+        last("VOIDED")
+        over(pool[3], ts[5])
+        g.submit(lot, v["bidder_id"], 0, ts[6], key=v["idempotency_key"], void=True)  # a resend of the void: REPLAY, no row
+        last("REPLAY")
+    elif kind == "VOID_UNDERBIDDER":
+        for i in range(4):
+            over(pool[i % 3], ts[i], rng.randrange(1, 4))
+        st = g.state(lot, a)[0]
+        under = next(r.bidder for r in reversed(g.last_rows) if r.accepted and r.bidder != st.leader)
+        g.submit(lot, under, 0, ts[4], void=True)
+        last("VOIDED")
+    elif kind == "VOID_REBID":
+        for i in range(3):
+            over(pool[i % 2], ts[i], rng.randrange(1, 4))
+        who = leader()
+        g.submit(lot, who, 0, ts[3], void=True)
+        last("VOIDED")
+        over(who, ts[4])  # the right amount this time
+        g.state(lot, a)
+        assert g.last_outs[-1].outcome.startswith("ACCEPTED_"), g.last_outs[-1].outcome
+    elif kind == "VOID_IN_EXTENSION":
+        over(pool[0], ts[0])
+        over(pool[1], ts[1])
+        over(pool[2], end - 1 * SEC, 3)                       # T-1 s: leads and extends
+        assert g.state(lot, a)[0].extension_count == 1
+        g.submit(lot, pool[2], 0, end + 10 * SEC, void=True)  # inside the extension: the close stays put
+        last("VOIDED")
+        assert g.state(lot, a)[0].closes_at_ms == end - 1 * SEC + W
+        over(pool[3], end + 20 * SEC)                         # accepted inside the extension the void left standing
+    elif kind == "VOID_ONLY_BIDDER":
+        over(pool[0], ts[0], 2)
+        g.submit(lot, pool[0], 0, ts[1], void=True)
+        last("VOIDED")
+        assert g.state(lot, a)[0].leader is None
+    elif kind == "VOID_REFUSED":
+        over(pool[0], ts[0])
+        over(pool[1], ts[1])
+        g.submit(lot, pool[4], 0, ts[2], void=True)           # never bid here
+        last("VOID_NO_LIVE_BIDS")
+        g.submit(lot, leader(), 0, end + 1 * MIN, void=True)  # after the close
+        last("VOID_LOT_NOT_OPEN")
+    else:
+        raise AssertionError(kind)
+
+
 def write(data: dict, out: str) -> None:
     os.makedirs(out, exist_ok=True)
     subs = data.pop("submissions")
@@ -265,7 +438,7 @@ def write(data: dict, out: str) -> None:
     with open(os.path.join(out, "submissions.jsonl"), "w", encoding="utf-8") as f:
         for s in subs:
             f.write(json.dumps(s, sort_keys=True) + "\n")
-    manifest = {"seed": data["seed"], "generator": "tools/build_fixtures.py", "rules_sha256": sha(os.path.join(ROOT, "rules", "auction.v1.json")),
+    manifest = {"seed": data["seed"], "generator": "tools/build_fixtures.py", "rules_sha256": sha(os.path.join(ROOT, "rules", "auction.v2.json")),
                 "counts": {"auctions": len(data["auctions"]), "lots": sum(len(a["lots"]) for a in data["auctions"]),
                            "bidders": len(data["bidders"]), "submissions": len(subs)},
                 "sha256": {n: sha(os.path.join(out, n)) for n in ("auctions.json", "submissions.jsonl")}}

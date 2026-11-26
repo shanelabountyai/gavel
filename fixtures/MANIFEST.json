@@ -1,15 +1,15 @@
 {
  "counts": {
-  "auctions": 3,
+  "auctions": 6,
   "bidders": 40,
-  "lots": 36,
-  "submissions": 220
+  "lots": 55,
+  "submissions": 321
  },
  "generator": "tools/build_fixtures.py",
- "rules_sha256": "b4cce697db2d9cd82a1b7aab9622f07b61e899f6f812ce0024829ecc111961f8",
+ "rules_sha256": "6a2cb3504ae03b22acae948cf69b920f0ce2d2f85308c078c1d1e22c37b9eede",
  "seed": 20261019,
  "sha256": {
-  "auctions.json": "b36013f16790ba3656c2f8787bdadd9892c285160d2235b3ccd551ac076526c9",
-  "submissions.jsonl": "7a30176db7b671bdd295c7e791b77ce27e6b09528df9d64c29975991c2669cd7"
+  "auctions.json": "79b909ebc0be00d65c8af5e1dc0ec6f9bcf2351e2bed6375f40780ed4fa57efb",
+  "submissions.jsonl": "215ad1f8251d9a140ab4de95b126cbe95672d788709491b30987e31c307fdd57"
  }
 }

@@ -6,7 +6,7 @@
 // the frozen CSVs; nothing here regenerates or edits them (CLAUDE.md rule 10).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { type FoldRow, type Lot, fold, resettle, settle } from '@/auction/engine/engine';
+import { type FoldRow, type Lot, fold, liveRows, resettle, settle } from '@/auction/engine/engine';
 import type { BidOutcome } from '@/auction/engine/rules';
 import { loadRules } from '@/auction/load-rules';
 
@@ -26,7 +26,9 @@ type AuctionsJson = {
     soft_close_window_seconds: number;
     max_extension_seconds: number;
     buyer_premium_bps: number;
-    lots: { lot_id: string; start_cents: number; reserve_cents: number | null; opens_at_ms: number; scheduled_end_ms: number }[];
+    increment_table?: string; // D-90: the v2 sales only; absent is standard
+    premium_bands?: { lo_cents: number; hi_cents: number | null; bps: number }[]; // D-90: absent is flat
+    lots: { lot_id: string; start_cents: number; reserve_cents: number | null; opens_at_ms: number; scheduled_end_ms: number; withdrawn_at_ms?: number }[];
   }[];
 };
 const data: AuctionsJson = JSON.parse(readFileSync('fixtures/auctions.json', 'utf8'));
@@ -35,6 +37,9 @@ const lotDefs = new Map<string, Lot>(
     a.lots.map((l) => [l.lot_id, {
       startCents: l.start_cents, reserveCents: l.reserve_cents, opensAtMs: l.opens_at_ms, scheduledEndMs: l.scheduled_end_ms,
       softCloseWindowMs: a.soft_close_window_seconds * 1000, maxExtensionMs: a.max_extension_seconds * 1000, buyerPremiumBps: a.buyer_premium_bps,
+      withdrawnAtMs: l.withdrawn_at_ms ?? null, // D-73
+      ...(a.increment_table ? { incrementTable: a.increment_table } : {}),
+      ...(a.premium_bands ? { premiumBands: a.premium_bands.map((b) => ({ loCents: b.lo_cents, hiCents: b.hi_cents, bps: b.bps })) } : {}),
     }] as const),
   ),
 );
@@ -49,8 +54,8 @@ for (const r of csv('fixtures/expected_bids.csv')) {
 }
 
 describe('fold and settle over the oracle ledger (V1, V8 on fixtures/expected_bids.csv)', () => {
-  it('the fixtures are what this file assumes: 36 lots, every lot defined, every ledger row on a known lot', () => {
-    expect(expectedLots).toHaveLength(36);
+  it('the fixtures are what this file assumes: 55 lots, every lot defined, every ledger row on a known lot', () => {
+    expect(expectedLots).toHaveLength(55);
     for (const e of expectedLots) expect(lotDefs.has(e.lot_id!)).toBe(true);
     for (const id of ledger.keys()) expect(lotDefs.has(id)).toBe(true);
   });
@@ -70,12 +75,15 @@ describe('fold and settle over the oracle ledger (V1, V8 on fixtures/expected_bi
       });
       expect(s.closesAtMs - lot.scheduledEndMs).toBe(Number(e.extension_total_ms));
 
-      expect(settle(lot, s, s.closesAtMs - 1)).toBeNull(); // still OPEN one ms before its close (D-21)
-      const st = settle(lot, s, s.closesAtMs)!;
+      // A withdrawn lot is CLOSED from its withdrawal and settles UNSOLD_WITHDRAWN at that instant (D-73); every other
+      // lot at its own close. The instant comes from auctions.json, the outcome from expected_lots.csv.
+      const closedAt = lot.withdrawnAtMs ?? s.closesAtMs;
+      expect(settle(lot, s, closedAt - 1)).toBeNull(); // still OPEN one ms before (D-21)
+      const st = settle(lot, s, closedAt)!;
       expect({ outcome: st.outcome, winner: st.winner, winningSeq: st.winningSeq, hammerCents: st.hammerCents, premiumCents: st.premiumCents, totalCents: st.totalCents, closedAtMs: st.closedAtMs })
         .toEqual({
           outcome: e.outcome, winner: nullable(e.winner), winningSeq: intOrNull(e.winning_seq), hammerCents: Number(e.hammer_cents),
-          premiumCents: Number(e.premium_cents), totalCents: Number(e.total_cents), closedAtMs: Number(e.closes_at_ms),
+          premiumCents: Number(e.premium_cents), totalCents: Number(e.total_cents), closedAtMs: lot.withdrawnAtMs ?? Number(e.closes_at_ms),
         });
     });
   }
@@ -101,19 +109,22 @@ describe('resettle over the oracle ledger (D-44)', () => {
     it(`${e.lot_id} (${e.kind}): to the leader at the auction's rate is the original; to any other accepted bidder never exceeds it`, () => {
       const lot = lotDefs.get(e.lot_id!)!;
       const rows = ledger.get(e.lot_id!)!;
-      const same = resettle(lot, rows, rules, { winner: e.winner!, premiumBps: lot.buyerPremiumBps });
+      const rate = { premiumBps: lot.buyerPremiumBps, premiumBands: lot.premiumBands ?? null }; // D-90: a v2 sale's schedule
+      const same = resettle(lot, rows, rules, { winner: e.winner!, ...rate });
       expect(same).toMatchObject({
         outcome: 'SOLD', winner: e.winner, winningSeq: Number(e.winning_seq), hammerCents: Number(e.hammer_cents),
         premiumCents: Number(e.premium_cents), totalCents: Number(e.total_cents), premiumBps: lot.buyerPremiumBps,
       });
 
-      const withdrawn = resettle(lot, rows, rules, { winner: null, premiumBps: lot.buyerPremiumBps });
+      const withdrawn = resettle(lot, rows, rules, { winner: null, ...rate });
       expect(withdrawn).toMatchObject({ outcome: 'UNSOLD_BY_CORRECTION', winner: null, winningSeq: null, hammerCents: 0, premiumCents: 0, totalCents: 0 });
 
-      const others = new Set(rows.filter((r) => r.outcome.startsWith('ACCEPTED_') && r.bidderId !== e.winner).map((r) => r.bidderId));
+      // D-96 (g): only a bidder with a live accepted row (none voided after it) is a correction target.
+      const live = liveRows(rows);
+      const others = new Set(live.filter((r) => r.bidderId !== e.winner).map((r) => r.bidderId));
       for (const b of others) {
-        const r = resettle(lot, rows, rules, { winner: b, premiumBps: lot.buyerPremiumBps });
-        const last = rows.filter((x) => x.bidderId === b && x.outcome.startsWith('ACCEPTED_')).sort((x, y) => y.seq - x.seq)[0]!;
+        const r = resettle(lot, rows, rules, { winner: b, ...rate });
+        const last = live.filter((x) => x.bidderId === b).at(-1)!;
         if ('refused' in r) {
           // Only the reserve can refuse an accepted bidder, and only when their own max is under it.
           expect(r.refused, b).toBe('RESERVE_NOT_MET');
@@ -131,11 +142,11 @@ describe('resettle over the oracle ledger (D-44)', () => {
     });
   }
 
-  it('a bidder whose every row was rejected is NOT_AN_ACCEPTED_BIDDER on every SOLD lot that has one', () => {
+  it('a bidder with no live accepted row (every row rejected, or voided, D-96 g) is NOT_AN_ACCEPTED_BIDDER on every SOLD lot that has one', () => {
     let seen = 0;
     for (const e of sold) {
       const rows = ledger.get(e.lot_id!)!;
-      const accepted = new Set(rows.filter((r) => r.outcome.startsWith('ACCEPTED_')).map((r) => r.bidderId));
+      const accepted = new Set(liveRows(rows).map((r) => r.bidderId));
       for (const b of new Set(rows.map((r) => r.bidderId))) {
         if (accepted.has(b)) continue;
         seen++;

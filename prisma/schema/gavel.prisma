@@ -6,41 +6,173 @@
 
 /// A sale. Its three rule settings are copied from rules/auction.v1.json defaults at creation (D-7).
 model Auction {
-  id                     String   @id @default(uuid()) @db.Uuid
-  orgId                  String   @db.Uuid
-  org                    Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  id                     String                @id @default(uuid()) @db.Uuid
+  orgId                  String                @db.Uuid
+  org                    Org                   @relation(fields: [orgId], references: [id], onDelete: Cascade)
   name                   String
   softCloseWindowSeconds Int
   maxExtensionSeconds    Int
   buyerPremiumBps        Int
-  opensAt                DateTime @db.Timestamptz(6)
-  createdAt              DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt              DateTime @updatedAt @db.Timestamptz(6)
+  opensAt                DateTime              @db.Timestamptz(6)
+  // D-71 (AX-06): shown on the buyer's invoice and the won notice; trigger: unchanged once the sale has a bid
+  paymentDueAt           DateTime?             @db.Timestamptz(6)
+  pickupText             String                @default("")
+  pickupWindowText       String                @default("")
+  // D-78 (AX-09): sales tax as configuration, fixed with the terms above once the sale has a bid. 0 = no tax line.
+  taxBps                 Int                   @default(0) // CHECK 0..10000
+  taxBase                String                @default("HAMMER") // HAMMER | HAMMER_PLUS_PREMIUM (CHECK)
+  // D-84 (AX-12): IANA zone for printing times and reading typed ones; storage stays UTC. CHECK not blank.
+  timeZone               String                @default("UTC")
+  // D-84 (AX-10): a new lot with no close of its own closes at firstCloseAt + (number - 1) * staggerSeconds. CHECK >= 0.
+  firstCloseAt           DateTime?             @db.Timestamptz(6)
+  staggerSeconds         Int                   @default(0)
+  // D-88 (AX-16): bidders need staff approval for this sale; fixed with the terms above once the sale has a bid
+  requiresApproval       Boolean               @default(false)
+  // D-90 (AX-18): a named table of rules/auction.v2.json (CHECK) and a tiered premium, [{loCents, hiCents, bps}] with
+  // at least two bands whose first rate is buyerPremiumBps; null is flat. All three fixed once the sale has a bid.
+  incrementTable         String                @default("standard")
+  premiumBands           Json?
+  createdAt              DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime              @updatedAt @db.Timestamptz(6)
   lots                   Lot[]
+  terms                  AuctionTerms[]
+  termsAcceptances       TermsAcceptance[]
+  contracts              ConsignmentContract[]
+  paymentMarks           PaymentMark[]
+  buyerDefaults          BuyerDefault[]
+  registrations          AuctionRegistration[]
 
+  @@index([orgId])
+}
+
+/// D-88 (AX-16): a bidder's registration for one sale that requires approval, insert-only by trigger. Version 1 is the
+/// bidder's request (PENDING); staff append APPROVED or DECLINED; the highest version is the status. placeBid's boundary
+/// reads it only when `Auction.requiresApproval`. Any card or deposit check happens outside the system: `note` says so.
+model AuctionRegistration {
+  id         String   @id @default(uuid()) @db.Uuid
+  orgId      String   @db.Uuid
+  auctionId  String   @db.Uuid
+  auction    Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderId   String   @db.Uuid
+  bidder     Bidder   @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  version    Int // latest + 1 per (sale, bidder); the unique index is the guard. CHECK: version 1 is PENDING, and only it
+  status     String // PENDING | APPROVED | DECLINED (CHECK)
+  note       String   @default("") // staff note; a DECLINED row's reason (CHECK not blank)
+  byUserId   String   @db.Uuid // the bidder's user on the request, staff after; no FK, as AuditEvent's actor
+  recordedAt DateTime @db.Timestamptz(6) // now() from @/core/clock
+
+  @@unique([auctionId, bidderId, version])
+  @@index([orgId])
+}
+
+/// D-72 (AX-03): the terms of sale, one row per version, insert-only by trigger. `sha256` is of `text`; it is what a
+/// TermsAcceptance names and what placeBid's boundary compares. A BEFORE INSERT trigger refuses a new version once any
+/// lot of the sale has a Bid row (R-03, as D-21 and D-71). A sale with no rows asks nothing of its bidders.
+model AuctionTerms {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  auctionId   String   @db.Uuid
+  auction     Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  version     Int // CHECK >= 1; max + 1 in the sale, the unique index is the guard
+  text        String // CHECK not blank
+  sha256      String // CHECK 64 hex chars
+  byUserId    String   @db.Uuid
+  publishedAt DateTime @db.Timestamptz(6) // now() from @/core/clock
+
+  @@unique([auctionId, version])
+  @@index([orgId])
+}
+
+/// D-72 (AX-03): a bidder accepted one version of a sale's terms, named by hash. Insert-only by trigger; a second
+/// acceptance of the same version is the same row (unique). Never written by the bid path.
+model TermsAcceptance {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  auctionId   String   @db.Uuid
+  auction     Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderId    String   @db.Uuid
+  bidder      Bidder   @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  termsSha256 String
+  acceptedAt  DateTime @db.Timestamptz(6) // now() from @/core/clock
+
+  @@unique([auctionId, bidderId, termsSha256])
   @@index([orgId])
 }
 
 /// Catalog data. Nothing here changes once the lot has a bid; closing time lives on LotState.
 model Lot {
-  id           String       @id @default(uuid()) @db.Uuid
-  orgId        String       @db.Uuid
-  auctionId    String       @db.Uuid
-  auction      Auction      @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  id           String         @id @default(uuid()) @db.Uuid
+  orgId        String         @db.Uuid
+  auctionId    String         @db.Uuid
+  auction      Auction        @relation(fields: [auctionId], references: [id], onDelete: Cascade)
   number       Int
   title        String
-  description  String       @default("")
+  description  String         @default("")
   imageUrl     String?
-  consignor    String       @default("") // a text field; no consignor model (PRD non-goals)
+  consignor    String         @default("") // free text, kept for rows older than D-74; new lots use consignorId
+  consignorId  String?        @db.Uuid // D-74 (AX-07): the consignor the statement is drawn for
+  consignorRef Consignor?     @relation(fields: [consignorId], references: [id], onDelete: Restrict)
+  relistOfLotId String?       @unique @db.Uuid // D-89 (AX-17): the unsold lot this one relists; set at creation, never changed (trigger)
+  relistOf     Lot?           @relation("Relist", fields: [relistOfLotId], references: [id], onDelete: Restrict)
+  relistedAs   Lot?           @relation("Relist")
   startCents   Int // CHECK > 0
   reserveCents Int? // CHECK null or >= startCents
-  scheduledEnd DateTime     @db.Timestamptz(6) // trigger: > auction.opensAt
-  createdAt    DateTime     @default(now()) @db.Timestamptz(6)
+  estimateLowCents  Int? // D-91 (AX-21): CHECK both null or 0 < low <= high; shown only, no rule reads them
+  estimateHighCents Int?
+  conditionText String        @default("")
+  category     String         @default("")
+  asIs         Boolean        @default(true) // sold as is
+  scheduledEnd DateTime       @db.Timestamptz(6) // trigger: > auction.opensAt
+  createdAt    DateTime       @default(now()) @db.Timestamptz(6)
   state        LotState?
+  withdrawal   LotWithdrawal?
   bids         Bid[]
   settlements  Settlement[]
+  offers       SecondChanceOffer[]
+  watches      Watch[]
 
   @@unique([auctionId, number])
+  @@index([orgId])
+  @@index([consignorId])
+}
+
+/// D-74 (AX-07): a consignor of the house. Reference data (name, code); the money terms are on the contract.
+model Consignor {
+  id        String                @id @default(uuid()) @db.Uuid
+  orgId     String                @db.Uuid
+  org       Org                   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name      String
+  code      String // CHECK not blank; unique per house
+  createdAt DateTime              @default(now()) @db.Timestamptz(6)
+  lots      Lot[]
+  contracts ConsignmentContract[]
+  links     ConsignorBidderLink[]
+
+  @@unique([orgId, code])
+  @@index([orgId])
+}
+
+/// D-74 (AX-07): the terms between one consignor and one sale, insert-only by trigger; a change is a superseding row
+/// (`supersedesId` unique, so a chain cannot fork). The current contract is the row no other row supersedes. Flat
+/// commission in bps (CHECK 0..10000), a fee per sold lot and a fee per lot unsold at the block (CHECK >= 0).
+model ConsignmentContract {
+  id             String               @id @default(uuid()) @db.Uuid
+  orgId          String               @db.Uuid
+  consignorId    String               @db.Uuid
+  consignor      Consignor            @relation(fields: [consignorId], references: [id], onDelete: Cascade)
+  auctionId      String               @db.Uuid
+  auction        Auction              @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  supersedesId   String?              @unique @db.Uuid
+  supersedes     ConsignmentContract? @relation("ContractChain", fields: [supersedesId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersededBy   ConsignmentContract? @relation("ContractChain")
+  commissionBps  Int
+  lotFeeCents    Int
+  unsoldFeeCents Int
+  byUserId       String               @db.Uuid // no FK, as AuditEvent.actorUserId
+  createdAt      DateTime             @db.Timestamptz(6) // from @/core/clock, never a default
+
+  @@index([consignorId, auctionId])
+  @@index([auctionId])
   @@index([orgId])
 }
 
@@ -60,6 +192,23 @@ model LotState {
   extensionCount Int
 }
 
+/// D-73 (AX-04): staff withdrew the lot. One row per lot, insert-only by trigger. The engine reads `withdrawnAt` as the
+/// lot's one input beside the ledger: CLOSED from that instant, every later attempt REJECTED_LOT_WITHDRAWN (a Bid row),
+/// settlement UNSOLD_WITHDRAWN closed at `withdrawnAt`. Written under FOR UPDATE on the lot's LotState row with the clock
+/// read after the lock; LotState itself is not written. A BEFORE INSERT trigger refuses a lot already closed or settled.
+/// `byUserId` carries no FK, as AuditEvent's actor.
+model LotWithdrawal {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  lotId       String   @unique @db.Uuid
+  lot         Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  reason      String // CHECK not blank
+  byUserId    String   @db.Uuid
+  withdrawnAt DateTime @db.Timestamptz(6) // now() from @/core/clock, read after the LotState row is locked
+
+  @@index([orgId])
+}
+
 enum BidderStatus {
   ACTIVE
   SUSPENDED
@@ -67,18 +216,93 @@ enum BidderStatus {
 
 /// A user registered with one house (org): a paddle number. The boundary admits ACTIVE only (brief §4 row 1).
 model Bidder {
-  id        String       @id @default(uuid()) @db.Uuid
-  orgId     String       @db.Uuid
-  org       Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  userId    String       @db.Uuid
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  paddle    Int
-  status    BidderStatus @default(ACTIVE)
-  createdAt DateTime     @default(now()) @db.Timestamptz(6)
-  bids      Bid[]
+  id            String               @id @default(uuid()) @db.Uuid
+  orgId         String               @db.Uuid
+  org           Org                  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId        String               @db.Uuid
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paddle        Int
+  status        BidderStatus         @default(ACTIVE)
+  taxExemptRef  String? // D-78: resale/exemption certificate reference on file; null = taxable (CHECK not blank)
+  createdAt     DateTime             @default(now()) @db.Timestamptz(6)
+  bids          Bid[]
+  statusChanges BidderStatusChange[]
+  termsAccepted TermsAcceptance[]
+  paymentMarks  PaymentMark[]
+  defaults      BuyerDefault[]
+  offers        SecondChanceOffer[]
+  registrations AuctionRegistration[]
+  watches       Watch[]
+  consignorLinks ConsignorBidderLink[]
 
   @@unique([orgId, userId])
   @@unique([orgId, paddle])
+}
+
+/// D-92 (AX-23): a bidder watches a lot. `notifiedClosesAt` is the close the closing-soon notice went out for, so the
+/// cron writes one notice per (lot, bidder, closesAt); a soft-close extension is a new close. Same house by trigger.
+model Watch {
+  id               String    @id @default(uuid()) @db.Uuid
+  orgId            String    @db.Uuid
+  bidderId         String    @db.Uuid
+  bidder           Bidder    @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+  lotId            String    @db.Uuid
+  lot              Lot       @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  notifiedClosesAt DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([bidderId, lotId])
+  @@index([lotId])
+  @@index([orgId])
+}
+
+/// D-93 (AX-22): staff record that a bidder is linked to a consignor; the consignors page reports that bidder's
+/// accepted bids on the consignor's lots. Insert-only and same house by trigger; `reason` CHECK not blank.
+model ConsignorBidderLink {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @db.Uuid
+  consignorId String    @db.Uuid
+  consignor   Consignor @relation(fields: [consignorId], references: [id], onDelete: Restrict)
+  bidderId    String    @db.Uuid
+  bidder      Bidder    @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  reason      String
+  byUserId    String    @db.Uuid // no FK, as AuditEvent's actor
+  createdAt   DateTime  @db.Timestamptz(6) // now() from @/core/clock
+  retraction  ConsignorBidderLinkRetraction?
+
+  @@index([consignorId, bidderId]) // D-95: one *live* link per pair, by trigger; retracted ones stay as history
+  @@index([orgId])
+  @@index([bidderId])
+}
+
+/// D-94: a link entered by mistake, retracted with a reason. Insert-only, one per link, same house by trigger. The
+/// report leaves retracted links out; nothing is deleted.
+model ConsignorBidderLinkRetraction {
+  id        String              @id @default(uuid()) @db.Uuid
+  orgId     String              @db.Uuid
+  linkId    String              @unique @db.Uuid
+  link      ConsignorBidderLink @relation(fields: [linkId], references: [id], onDelete: Restrict)
+  reason    String // CHECK not blank
+  byUserId  String              @db.Uuid // no FK, as AuditEvent's actor
+  createdAt DateTime            @db.Timestamptz(6) // now() from @/core/clock
+
+  @@index([orgId])
+}
+
+/// D-70 (AX-05): suspend / reinstate history, insert-only by trigger. `Bidder.status` is its projection:
+/// the latest row's `status`, or ACTIVE with no rows. `byUserId` carries no FK, as AuditEvent's actor.
+model BidderStatusChange {
+  id        String       @id @default(uuid()) @db.Uuid
+  orgId     String       @db.Uuid
+  bidderId  String       @db.Uuid
+  bidder    Bidder       @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  status    BidderStatus // the status from this row on
+  reason    String // CHECK not blank
+  byUserId  String       @db.Uuid
+  changedAt DateTime     @db.Timestamptz(6) // now() from @/core/clock, read after the Bidder row is locked
+
+  @@index([bidderId, changedAt])
+  @@index([orgId])
 }
 
 /// D-14: one row per well-formed attempt, accepted or rejected, with the state before and after it.
@@ -103,6 +327,8 @@ model Bid {
   closesAtBefore   DateTime @db.Timestamptz(6)
   closesAtAfter    DateTime @db.Timestamptz(6) // CHECK >= closesAtBefore
   extended         Boolean
+  voidReason       String? // D-96: set iff outcome = 'VOIDED' (CHECK Bid_void_fields), not blank
+  voidByUserId     String?  @db.Uuid // D-96: the staff member who voided; no FK, as AuditEvent's actor
 
   @@unique([lotId, seq])
   @@unique([lotId, bidderId, idempotencyKey]) // D-17
@@ -121,7 +347,9 @@ model Settlement {
   supersedesId      String?  @unique @db.Uuid // null on the first row; unique, so a chain cannot fork
   reason            String? // required on a correction (CHECK)
   correctedByUserId String?  @db.Uuid // no FK, as AuditEvent.actorUserId; required on a correction (CHECK)
+  consignorApprovalRef String? // D-87 (AX-14): set only on a correction selling to the high bidder below the reserve (CHECK; V8 recomputes it)
   premiumBps        Int // the rate premiumCents was taken at; the auction's on the first row
+  premiumBands      Json? // D-90: the schedule premiumCents was taken at; null is flat at premiumBps (CHECK); the auction's on the first row
   lot               Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
   outcome           String // SOLD | UNSOLD_NO_BIDS | UNSOLD_RESERVE_NOT_MET, or UNSOLD_BY_CORRECTION on a correction (CHECK)
   winnerBidderId    String?  @db.Uuid
@@ -135,4 +363,79 @@ model Settlement {
 
   @@index([orgId])
   @@index([lotId])
+}
+
+/// D-75 (AX-08, R-08): a payment staff recorded against a buyer's invoice (one sale, one bidder). Insert-only by trigger;
+/// a wrong mark is a dispute, not an edit. Payments themselves are a non-goal: this is a mark, never a charge. The invoice
+/// status (PAID / PARTIAL / UNPAID / OVERDUE / CREDIT / DEFAULTED) is derived by `invoiceBalance`, never stored.
+model PaymentMark {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  auctionId   String   @db.Uuid
+  auction     Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderId    String   @db.Uuid
+  bidder      Bidder   @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  amountCents Int // CHECK > 0
+  method      String // CHECK not blank; free text: cash, check, wire, card terminal
+  byUserId    String   @db.Uuid // no FK, as AuditEvent's actor
+  markedAt    DateTime @db.Timestamptz(6) // now() from @/core/clock
+
+  @@index([auctionId, bidderId])
+  @@index([orgId])
+}
+
+/// D-75: a buyer declared in default on one sale's invoice, after the due date, by staff with a reason. Insert-only, one
+/// per (sale, bidder). Declaring it suspends the bidder (D-70) and writes one SecondChanceOffer per won lot that has an
+/// underbidder. There is no un-default: a wrong one is reinstated on the bidders page and the dispute is in the audit log.
+model BuyerDefault {
+  id         String              @id @default(uuid()) @db.Uuid
+  orgId      String              @db.Uuid
+  auctionId  String              @db.Uuid
+  auction    Auction             @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderId   String              @db.Uuid
+  bidder     Bidder              @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  reason     String // CHECK not blank
+  byUserId   String              @db.Uuid
+  declaredAt DateTime            @db.Timestamptz(6)
+  offers     SecondChanceOffer[]
+
+  @@unique([auctionId, bidderId])
+  @@index([orgId])
+}
+
+/// D-75: the lot offered to the underbidder after a default, at D-44's price (`secondChance`), to be answered by `expiresAt`.
+/// Insert-only. Open until an OfferResponse row names it; expired is derived from the clock, never written.
+model SecondChanceOffer {
+  id         String         @id @default(uuid()) @db.Uuid
+  orgId      String         @db.Uuid
+  defaultId  String         @db.Uuid
+  default    BuyerDefault   @relation(fields: [defaultId], references: [id], onDelete: Restrict)
+  lotId      String         @db.Uuid
+  lot        Lot            @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  bidderId   String         @db.Uuid // the underbidder
+  bidder     Bidder         @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  priceCents Int // CHECK > 0: the hammer the acceptance will settle at
+  premiumBps Int // the rate the acceptance keeps
+  expiresAt  DateTime       @db.Timestamptz(6)
+  createdAt  DateTime       @db.Timestamptz(6) // now() from @/core/clock
+  response   OfferResponse?
+
+  @@unique([defaultId, lotId])
+  @@index([lotId])
+  @@index([bidderId])
+  @@index([orgId])
+}
+
+/// D-75: the one answer to an offer, recorded by staff; `offerId` unique, so a second answer is refused by the database.
+/// ACCEPTED is written in the same transaction as the D-44 settlement correction it causes. Insert-only.
+model OfferResponse {
+  id          String            @id @default(uuid()) @db.Uuid
+  orgId       String            @db.Uuid
+  offerId     String            @unique @db.Uuid
+  offer       SecondChanceOffer @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  response    String // CHECK ACCEPTED | DECLINED
+  byUserId    String            @db.Uuid
+  respondedAt DateTime          @db.Timestamptz(6)
+
+  @@index([orgId])
 }

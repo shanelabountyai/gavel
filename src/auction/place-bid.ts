@@ -8,9 +8,12 @@ import { now as clockNow } from '@/core/clock';
 import { db } from '@/core/db';
 import type { Prisma } from '@/generated/prisma/client';
 import { applyBid, minNextBid, type Lot, type LotState } from '@/auction/engine/engine';
-import type { BidOutcome, Rules } from '@/auction/engine/rules';
+import type { BidOutcome, PremiumBand, Rules } from '@/auction/engine/rules';
 import { BidError, LOCK_NOT_AVAILABLE, UNIQUE_VIOLATION, constraintName, sqlState } from '@/auction/errors';
 import { loadRules } from '@/auction/load-rules';
+import { enqueueNotice } from '@/auction/notices';
+import { registrationStatus } from '@/auction/registration';
+import { unacceptedTermsSha } from '@/auction/terms';
 
 export const INT4_MAX = 2147483647; // D-36: cents are int4; a lot that needs more is a BigInt migration
 export const LOCK_TIMEOUT_MS = 5000; // D-13, O-8
@@ -59,7 +62,9 @@ export const pgRunner =
     }
   };
 
-export type Deps = { run?: Runner; now?: () => Date; rules?: Rules };
+/** The transaction body. `judge` below is the product's; task 4.2's lock variants pass their own (D-58). */
+export type Judge = (tx: Tx, b: BidInput, lot: Lot, rules: Rules, now: () => Date) => Promise<BidResponse>;
+export type Deps = { run?: Runner; now?: () => Date; rules?: Rules; judge?: Judge };
 let cachedRules: Rules | undefined;
 
 export async function placeBid(input: BidInput, deps: Deps = {}): Promise<BidResponse> {
@@ -73,22 +78,21 @@ export async function placeBid(input: BidInput, deps: Deps = {}): Promise<BidRes
   if (!lotRow) throw new BidError('LOT_NOT_FOUND', 'no such lot in this house');
   const bidder = UUID.test(bidderId) ? await db.bidder.findFirst({ where: { id: bidderId, orgId, status: 'ACTIVE' }, select: { id: true } }) : null;
   if (!bidder) throw new BidError('BIDDER_NOT_ACTIVE', 'the bidder is not registered and active with this house');
+  // D-72: one indexed query; a sale with no terms rows asks nothing, so the fixtures, the barrier test and load:bids are unchanged
+  if (await unacceptedTermsSha(lotRow.auctionId, bidderId)) throw new BidError('TERMS_NOT_ACCEPTED', "the sale's current terms of sale have not been accepted by this bidder");
+  // D-88: read only when the sale requires approval (the flag came with the lot row), so every other sale pays nothing
+  if (lotRow.auction.requiresApproval && (await registrationStatus(lotRow.auctionId, bidderId)) !== 'APPROVED') {
+    throw new BidError('NOT_APPROVED_FOR_SALE', 'the sale requires approval and this bidder is not approved for it');
+  }
 
-  const lot: Lot = {
-    startCents: lotRow.startCents,
-    reserveCents: lotRow.reserveCents,
-    opensAtMs: lotRow.auction.opensAt.getTime(),
-    scheduledEndMs: lotRow.scheduledEnd.getTime(),
-    softCloseWindowMs: lotRow.auction.softCloseWindowSeconds * 1000,
-    maxExtensionMs: lotRow.auction.maxExtensionSeconds * 1000,
-    buyerPremiumBps: lotRow.auction.buyerPremiumBps,
-  };
+  const lot = toLot(lotRow);
   const rules = deps.rules ?? (cachedRules ??= loadRules().rules);
   const run = deps.run ?? prismaRunner;
   const now = deps.now ?? clockNow;
 
   try {
-    return await run((tx) => judge(tx, input, lot, rules, now));
+    const body = deps.judge ?? judge;
+    return await run((tx) => body(tx, input, lot, rules, now));
   } catch (error) {
     const state = sqlState(error);
     if (state === LOCK_NOT_AVAILABLE) {
@@ -105,7 +109,22 @@ export async function placeBid(input: BidInput, deps: Deps = {}): Promise<BidRes
   }
 }
 
-type StateRow = {
+/** The pure engine's view of a catalog row (the auction's settings flattened in, D-34). `withdrawal` is the LotWithdrawal
+ * row when the caller joined it (D-73); the bid path ignores whatever the boundary read and re-reads it under the lock. */
+export const toLot = (r: { startCents: number; reserveCents: number | null; scheduledEnd: Date; auction: { opensAt: Date; softCloseWindowSeconds: number; maxExtensionSeconds: number; buyerPremiumBps: number; incrementTable: string; premiumBands: unknown }; withdrawal?: { withdrawnAt: Date } | null }): Lot => ({
+  startCents: r.startCents,
+  reserveCents: r.reserveCents,
+  opensAtMs: r.auction.opensAt.getTime(),
+  scheduledEndMs: r.scheduledEnd.getTime(),
+  softCloseWindowMs: r.auction.softCloseWindowSeconds * 1000,
+  maxExtensionMs: r.auction.maxExtensionSeconds * 1000,
+  buyerPremiumBps: r.auction.buyerPremiumBps,
+  withdrawnAtMs: r.withdrawal?.withdrawnAt.getTime() ?? null,
+  incrementTable: r.auction.incrementTable, // D-90
+  premiumBands: r.auction.premiumBands as PremiumBand[] | null, // shape held by the Auction_premiumBands_shape CHECK
+});
+
+export type StateRow = {
   priceCents: number;
   leaderBidderId: string | null;
   leaderMaxCents: number;
@@ -115,9 +134,9 @@ type StateRow = {
   closesAt: Date;
   extensionCount: number;
 };
-type PriorRow = { seq: number; maxCents: number; outcome: BidOutcome; accepted: boolean };
+export type PriorRow = { seq: number; maxCents: number; outcome: BidOutcome; accepted: boolean };
 
-const toState = (r: StateRow): LotState => ({
+export const toState = (r: StateRow): LotState => ({
   priceCents: r.priceCents,
   leader: r.leaderBidderId,
   leaderMaxCents: r.leaderMaxCents,
@@ -128,7 +147,7 @@ const toState = (r: StateRow): LotState => ({
   extensionCount: r.extensionCount,
 });
 
-const response = (outcome: BidOutcome, accepted: boolean, seq: number, replayed: boolean, s: LotState, lot: Lot, rules: Rules, bidderId: string): BidResponse => ({
+export const response = (outcome: BidOutcome, accepted: boolean, seq: number, replayed: boolean, s: LotState, lot: Lot, rules: Rules, bidderId: string): BidResponse => ({
   outcome,
   accepted,
   seq,
@@ -140,43 +159,88 @@ const response = (outcome: BidOutcome, accepted: boolean, seq: number, replayed:
 });
 
 /** D-17: same amount → its outcome and seq, replayed; a different amount → IDEMPOTENCY_MISMATCH, no row. */
-function priorResponse(prior: PriorRow, maxCents: number, s: LotState, lot: Lot, rules: Rules, bidderId: string): BidResponse {
+export function priorResponse(prior: PriorRow, maxCents: number, s: LotState, lot: Lot, rules: Rules, bidderId: string): BidResponse {
   if (prior.maxCents !== maxCents) throw new BidError('IDEMPOTENCY_MISMATCH', `key already used for ${prior.maxCents} cents`);
   return response(prior.outcome, prior.accepted, prior.seq, true, s, lot, rules, bidderId);
 }
 
 /** The transaction body (brief §4 rows 2–7). The caller owns BEGIN/COMMIT and maps the database refusals. */
-async function judge(tx: Tx, b: BidInput, lot: Lot, rules: Rules, now: () => Date): Promise<BidResponse> {
+export async function judge(tx: Tx, b: BidInput, lot: Lot, rules: Rules, now: () => Date): Promise<BidResponse> {
   await tx.query(`SET LOCAL lock_timeout = '${LOCK_TIMEOUT_MS}ms'`);
+  const row = await readState(tx, b.lotId, true);
+  return judgeRead(tx, b, lot, rules, now, row);
+}
+
+/** The LotState row; `forUpdate` is the product's lock (D-13). A variant that serializes another way reads it plain. */
+export async function readState(tx: Tx, lotId: string, forUpdate: boolean): Promise<StateRow> {
   const [row] = await tx.query<StateRow>(
     `SELECT "priceCents", "leaderBidderId", "leaderMaxCents", "leaderSeq", "bidCount", "acceptedCount", "closesAt", "extensionCount"
-       FROM "LotState" WHERE "lotId" = $1::uuid FOR UPDATE`,
-    [b.lotId],
+       FROM "LotState" WHERE "lotId" = $1::uuid${forUpdate ? ' FOR UPDATE' : ''}`,
+    [lotId],
   );
-  if (!row) throw new Error(`lot ${b.lotId} has no LotState row (V1)`);
-  const placedAt = now(); // D-15: once, after FOR UPDATE returned
-  const state = toState(row);
+  if (!row) throw new Error(`lot ${lotId} has no LotState row (V1)`);
+  return row;
+}
 
+/** Everything after the state is read and serialized: withdrawal, clock, idempotency, engine, ledger row, projection, notice. */
+export async function judgeRead(tx: Tx, b: BidInput, boundaryLot: Lot, rules: Rules, now: () => Date, row: StateRow): Promise<BidResponse> {
+  // D-73: a fresh statement after the lock, so a withdrawal that committed while this bid waited is seen. The row the
+  // boundary read is not enough: at READ COMMITTED a blocked FOR UPDATE keeps its statement's snapshot, and the
+  // withdrawer never writes LotState, so nothing in that statement would have re-read it.
+  const lot: Lot = { ...boundaryLot, withdrawnAtMs: await readWithdrawnAt(tx, b.lotId) };
+  const placedAt = now(); // D-15: once, after FOR UPDATE returned (and after the withdrawal read, so withdrawnAt <= placedAt when it is seen)
+  const state = toState(row);
+  const prior = await findPrior(tx, b);
+  if (prior) return priorResponse(prior, b.maxCents, state, lot, rules, b.bidderId);
+  const r = applyBid(lot, state, b.bidderId, b.maxCents, placedAt.getTime(), rules);
+  await insertBid(tx, b, placedAt, r);
+  await updateState(tx, b.lotId, r.state);
+  await notifyOutbid(tx, b, r);
+  return response(r.outcome, r.accepted, r.state.bidCount, false, r.state, lot, rules, b.bidderId);
+}
+
+/** The lot's withdrawal instant in epoch ms, or null (D-73). One indexed read; the cost sits on every bid (docs/LOAD.md). */
+export async function readWithdrawnAt(tx: Tx, lotId: string): Promise<number | null> {
+  const [w] = await tx.query<{ withdrawnAt: Date }>(`SELECT "withdrawnAt" FROM "LotWithdrawal" WHERE "lotId" = $1::uuid`, [lotId]);
+  return w ? w.withdrawnAt.getTime() : null;
+}
+
+export async function findPrior(tx: Tx, b: BidInput): Promise<PriorRow | undefined> {
   const [prior] = await tx.query<PriorRow>(
     `SELECT "seq", "maxCents", "outcome", "accepted" FROM "Bid" WHERE "lotId" = $1::uuid AND "bidderId" = $2::uuid AND "idempotencyKey" = $3`,
     [b.lotId, b.bidderId, b.idempotencyKey],
   );
-  if (prior) return priorResponse(prior, b.maxCents, state, lot, rules, b.bidderId);
+  return prior;
+}
 
-  const r = applyBid(lot, state, b.bidderId, b.maxCents, placedAt.getTime(), rules);
-  const seq = r.state.bidCount; // bidCount + 1 under the lock (D-14)
+type Applied = ReturnType<typeof applyBid>;
+
+/** The ledger row; its seq is the new bidCount, i.e. bidCount + 1 under whatever serialized the read (D-14). */
+export async function insertBid(tx: Tx, b: BidInput, placedAt: Date, r: Applied): Promise<void> {
   await tx.query(
     `INSERT INTO "Bid" ("id", "orgId", "lotId", "seq", "bidderId", "maxCents", "placedAt", "idempotencyKey", "outcome", "accepted",
        "priceBeforeCents", "priceAfterCents", "leaderBeforeId", "leaderAfterId", "closesAtBefore", "closesAtAfter", "extended")
      VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, $4::uuid, $5, $6::timestamptz, $7, $8, $9, $10, $11, $12::uuid, $13::uuid, $14::timestamptz, $15::timestamptz, $16)`,
-    [b.orgId, b.lotId, seq, b.bidderId, b.maxCents, placedAt.toISOString(), b.idempotencyKey, r.outcome, r.accepted,
+    [b.orgId, b.lotId, r.state.bidCount, b.bidderId, b.maxCents, placedAt.toISOString(), b.idempotencyKey, r.outcome, r.accepted,
       r.priceBefore, r.priceAfter, r.leaderBefore, r.leaderAfter, new Date(r.closesBeforeMs).toISOString(), new Date(r.closesAfterMs).toISOString(), r.extended],
   );
-  const s = r.state;
-  await tx.query(
+}
+
+/** The projection. `expectedBidCount` (task 4.2's `version` variant only) guards it; false means another writer got there first. */
+export async function updateState(tx: Tx, lotId: string, s: LotState, expectedBidCount?: number): Promise<boolean> {
+  const guard = expectedBidCount === undefined ? '' : ' AND "bidCount" = $10 RETURNING "lotId"';
+  const rows = await tx.query(
     `UPDATE "LotState" SET "priceCents" = $2, "leaderBidderId" = $3::uuid, "leaderMaxCents" = $4, "leaderSeq" = $5, "bidCount" = $6,
-       "acceptedCount" = $7, "closesAt" = $8::timestamptz, "extensionCount" = $9 WHERE "lotId" = $1::uuid`,
-    [b.lotId, s.priceCents, s.leader, s.leaderMaxCents, s.leaderSeq, s.bidCount, s.acceptedCount, new Date(s.closesAtMs).toISOString(), s.extensionCount],
+       "acceptedCount" = $7, "closesAt" = $8::timestamptz, "extensionCount" = $9 WHERE "lotId" = $1::uuid${guard}`,
+    [lotId, s.priceCents, s.leader, s.leaderMaxCents, s.leaderSeq, s.bidCount, s.acceptedCount, new Date(s.closesAtMs).toISOString(), s.extensionCount,
+      ...(expectedBidCount === undefined ? [] : [expectedBidCount])],
   );
-  return response(r.outcome, r.accepted, seq, false, s, lot, rules, b.bidderId);
+  return expectedBidCount === undefined || rows.length === 1;
+}
+
+/** Task 3.6 (D-53): the previous leader, if this row displaced them, gets an outbid notice in the same transaction. */
+export async function notifyOutbid(tx: Tx, b: BidInput, r: Applied): Promise<void> {
+  if (r.leaderBefore !== null && r.leaderAfter !== r.leaderBefore) {
+    await enqueueNotice(tx, b.orgId, b.lotId, r.leaderBefore, { template: 'outbid', priceCents: r.state.priceCents, closesAt: new Date(r.state.closesAtMs) });
+  }
 }

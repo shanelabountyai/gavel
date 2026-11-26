@@ -77,7 +77,10 @@ describe('formatCents (display)', () => {
     [0, '$0.00'],
     [5, '$0.05'],
     [1500, '$15.00'],
-    [123456, '$1234.56'],
+    [123456, '$1,234.56'],
+    [123456789, '$1,234,567.89'],
+    [100000, '$1,000.00'],
+    [99999, '$999.99'],
     [-1205, '-$12.05'],
   ])('%i is %s', (c, s) => expect(formatCents(c)).toBe(s));
   it('refuses a fraction', () => expect(() => formatCents(1.5)).toThrow(MoneyError));

@@ -3,7 +3,7 @@
 // left behind because Gavel's cents columns are integers and its CSVs print raw cents.
 // Cents and basis points are integer `number`s; nothing else under src/auction/engine divides or rounds.
 
-export type MoneyErrorCode = 'non_integer_amount' | 'non_integer_rate' | 'invalid_rounding_input';
+export type MoneyErrorCode = 'non_integer_amount' | 'non_integer_rate' | 'rate_out_of_range' | 'negative_amount' | 'invalid_rounding_input';
 
 export class MoneyError extends Error {
   constructor(readonly code: MoneyErrorCode) {
@@ -34,8 +34,11 @@ export function roundHalfUp(numerator: bigint, denominator: bigint): number {
   return assertInteger(cents, 'invalid_rounding_input');
 }
 
-/** Display only: whole cents as dollars by string, never through a float ("-$12.05"). */
+/** Display only: whole cents as dollars by string, never through a float ("-$1,234.05"). */
 export function formatCents(value: number): string {
   const digits = String(Math.abs(assertCents(value))).padStart(3, '0');
-  return `${value < 0 ? '-' : ''}$${digits.slice(0, -2)}.${digits.slice(-2)}`;
+  const whole = digits.slice(0, -2);
+  let dollars = '';
+  for (let i = 0; i < whole.length; i++) dollars += (i > 0 && (whole.length - i) % 3 === 0 ? ',' : '') + whole[i];
+  return `${value < 0 ? '-' : ''}$${dollars}.${digits.slice(-2)}`;
 }

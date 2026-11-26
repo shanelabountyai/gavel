@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { Client as PgClient } from 'pg';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { setBidderStatus } from '@/auction/bidder';
 import { openState } from '@/auction/engine/engine';
 import { BidError } from '@/auction/errors';
 import { placeBid, type BidResponse } from '@/auction/place-bid';
@@ -123,7 +124,7 @@ describe('placeBid: boundary refusals write nothing and take no lock', () => {
     const h = await house();
     const lot = await h.lot('L008');
     const bidderId = await h.bidder('B028');
-    await db.bidder.update({ where: { id: bidderId }, data: { status: 'SUSPENDED' } });
+    await setBidderStatus({ orgId: h.org.id, userId: crypto.randomUUID() }, bidderId, 'SUSPENDED', 'non-payment'); // D-70: the real write path
     await expect(placeBid({ orgId: h.org.id, lotId: lot.id, bidderId, maxCents: 25000, idempotencyKey: 'k' })).rejects.toMatchObject({ code: 'BIDDER_NOT_ACTIVE' });
     const other = await makeOrg('other');
     await expect(placeBid({ orgId: other.id, lotId: lot.id, bidderId, maxCents: 25000, idempotencyKey: 'k' })).rejects.toMatchObject({ code: 'LOT_NOT_FOUND' });

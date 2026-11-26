@@ -7,6 +7,7 @@
     "predev": "npm run preflight",
     "dev": "next dev -p 6100",
     "build": "next build",
+    "vercel-build": "node scripts/vercel-build.mjs",
     "start": "next start -p 6100",
     "postinstall": "prisma generate",
     "lint": "eslint .",
@@ -25,7 +26,10 @@
     "db:status:test": "dotenv -e .env.test -e .env.local -- prisma migrate status",
     "seed:demo": "dotenv -e .env.local -- tsx scripts/seed-demo.ts",
     "seed:demo:test": "dotenv -e .env.test -e .env.local -- tsx scripts/seed-demo.ts",
+    "seed:live": "dotenv -e .env.local -- tsx scripts/seed-live.ts",
+    "seed:live:test": "dotenv -e .env.test -e .env.local -- tsx scripts/seed-live.ts",
     "db:setup": "tsx scripts/db-setup.ts",
+    "rls:policies": "tsx scripts/rls-policies.ts",
     "new-project": "tsx scripts/new-project.ts",
     "foundation:drift": "tsx scripts/foundation-drift.ts",
     "foundation:status": "tsx scripts/foundation-status.ts",
@@ -38,14 +42,15 @@
     "rules:lint": "tsx scripts/rules-lint.ts"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.10.0",
-    "next": "^16.3.6",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "next": "^16.4.5",
+    "openid-client": "6.8.8",
     "otpauth": "^9.5.2",
     "pg": "^8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -56,10 +61,10 @@
     "dotenv": "^17",
     "dotenv-cli": "^11.0.0",
     "eslint": "^9",
-    "eslint-config-next": "^16.3.6",
-    "prisma": "^7.10.0",
+    "eslint-config-next": "^16.4.5",
+    "prisma": "^7.10.1",
     "tsx": "^4.23.13",
     "typescript": "^5.6",
-    "vitest": "^2.1"
+    "vitest": "^5.1.0"
   }
 }

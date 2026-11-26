@@ -40,6 +40,8 @@ export type BidErrorCode =
   | 'INVALID_AMOUNT'
   | 'LOT_NOT_FOUND'
   | 'BIDDER_NOT_ACTIVE'
+  | 'TERMS_NOT_ACCEPTED' // D-72: the sale's current terms have no acceptance row for this bidder
+  | 'NOT_APPROVED_FOR_SALE' // D-88: the sale requires approval and the bidder's latest registration is not APPROVED
   | 'BID_TIMED_OUT' // lock_timeout (D-13): retryable with the same key
   | 'IDEMPOTENCY_MISMATCH'; // same key, different amount (D-17): no row
 
@@ -60,7 +62,9 @@ export type CorrectionErrorCode =
   | 'INVALID_INPUT' // boundary: nothing written
   | 'SETTLEMENT_NOT_FOUND' // no such settlement on this lot in this house
   | 'NOT_AN_ACCEPTED_BIDDER' // D-42 Q2: the new winner has no accepted row in the lot's ledger
+  | 'APPROVAL_NOT_APPLICABLE' // D-87: a consignor approval applies only to the high bidder on a lot closed below its reserve
   | 'RESERVE_NOT_MET' // the new winner's price is below the reserve
+  | 'LOT_WITHDRAWN' // D-73: the lot was withdrawn; it is never sold, by correction either
   | 'NO_CHANGE' // the correction would write the row it supersedes again
   | 'STALE_SETTLEMENT' // the predecessor is already superseded: the unique on supersedesId refused it (D-44)
   | 'CORRECTION_TIMED_OUT'; // lock_timeout on the lot's LotState row: retryable

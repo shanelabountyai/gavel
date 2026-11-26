@@ -17,7 +17,7 @@ import sys
 from collections import Counter, defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from auctionlib import Lot, Rules, Submission, fold, replay, settle  # noqa: E402
+from auctionlib import Lot, Rules, Submission, fold, premium_bands_from, replay, settle  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -37,12 +37,14 @@ def load(fixtures: str):
     for a in data["auctions"]:
         for l in a["lots"]:
             lots[l["lot_id"]] = (Lot(l["lot_id"], a["auction_id"], l["start_cents"], l["reserve_cents"], l["opens_at_ms"], l["scheduled_end_ms"],
-                                     a["soft_close_window_seconds"] * 1000, a["max_extension_seconds"] * 1000, a["buyer_premium_bps"]), l)
+                                     a["soft_close_window_seconds"] * 1000, a["max_extension_seconds"] * 1000, a["buyer_premium_bps"],
+                                     l.get("withdrawn_at_ms"), a.get("increment_table"),
+                                     None if "premium_bands" not in a else premium_bands_from(a["premium_bands"])), l)
     subs = defaultdict(list)
     with open(os.path.join(fixtures, "submissions.jsonl"), encoding="utf-8") as f:
         for line in f:
             s = json.loads(line)
-            subs[s["lot_id"]].append(Submission(s["submission_id"], s["lot_id"], s["bidder_id"], s["max_cents"], s["placed_at_ms"], s["idempotency_key"]))
+            subs[s["lot_id"]].append(Submission(s["submission_id"], s["lot_id"], s["bidder_id"], s["max_cents"], s["placed_at_ms"], s["idempotency_key"], s.get("void", False)))
     return data, lots, subs
 
 
@@ -64,6 +66,7 @@ def main() -> int:
     data, lots, subs = load(args.fixtures)
     as_of = args.as_of if args.as_of is not None else max(l.hard_close_ms for l, _ in lots.values()) + 3600 * 1000
 
+    # D-96: rejected_count counts REJECTED_ rows; a VOIDED row is neither accepted nor rejected.
     bid_rows, lot_rows = [], []
     outcomes = Counter()
     kinds = Counter()
@@ -90,7 +93,7 @@ def main() -> int:
         lot_rows.append({
             "lot_id": lot_id, "auction_id": lot.auction_id, "kind": meta["kind"], "start_cents": lot.start_cents, "reserve_cents": n(lot.reserve_cents),
             "scheduled_end_ms": lot.scheduled_end_ms, "hard_close_ms": lot.hard_close_ms, "bid_count": state.bid_count, "accepted_count": state.accepted_count,
-            "rejected_count": state.bid_count - state.accepted_count, "replays": sum(1 for o in outs if o.outcome == "REPLAY"),
+            "rejected_count": sum(1 for r in rows if r.outcome.startswith("REJECTED_")), "replays": sum(1 for o in outs if o.outcome == "REPLAY"),
             "mismatches": sum(1 for o in outs if o.outcome == "IDEMPOTENCY_MISMATCH"), "price_cents": state.price_cents, "leader": n(state.leader),
             "leader_max_cents": state.leader_max_cents, "leader_seq": n(state.leader_seq), "reserve_met": b(state.reserve_met(lot)),
             "closes_at_ms": state.closes_at_ms, "extension_count": state.extension_count, "extension_total_ms": state.closes_at_ms - lot.scheduled_end_ms,
@@ -103,7 +106,8 @@ def main() -> int:
     print("outcomes: " + ", ".join(f"{k} {v}" for k, v in sorted(outcomes.items())))
     sold = [r for r in lot_rows if r["outcome"] == "SOLD"]
     print(f"settlement: SOLD {len(sold)}  UNSOLD_NO_BIDS {sum(1 for r in lot_rows if r['outcome'] == 'UNSOLD_NO_BIDS')}  "
-          f"UNSOLD_RESERVE_NOT_MET {sum(1 for r in lot_rows if r['outcome'] == 'UNSOLD_RESERVE_NOT_MET')}")
+          f"UNSOLD_RESERVE_NOT_MET {sum(1 for r in lot_rows if r['outcome'] == 'UNSOLD_RESERVE_NOT_MET')}  "
+          f"UNSOLD_WITHDRAWN {sum(1 for r in lot_rows if r['outcome'] == 'UNSOLD_WITHDRAWN')}")
     print(f"hammer total {sum(r['hammer_cents'] for r in sold)} cents  premium total {sum(r['premium_cents'] for r in sold)} cents  "
           f"grand total {sum(r['total_cents'] for r in sold)} cents")
     ext = [r for r in lot_rows if r["extension_count"] > 0]

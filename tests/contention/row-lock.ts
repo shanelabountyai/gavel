@@ -35,12 +35,15 @@ export const barrier = () => {
   return { reached, release };
 };
 
+/** `whileHeld` (D-73) runs in the holder's transaction once every waiter is queued and before it commits: what the
+ * waiters then see is what it wrote, under the one lock they were queued on. */
 export async function behindRowLock<T>(
   table: string,
   id: string,
   waiters: number,
   run: () => Promise<T>,
   key = 'id',
+  whileHeld?: (holder: PgClient) => Promise<unknown>,
 ): Promise<T> {
   const holder = new PgClient({ connectionString: process.env.DATABASE_URL, application_name: RAW_APP });
   await holder.connect();
@@ -57,6 +60,7 @@ export async function behindRowLock<T>(
       );
       if (Number(rows[0]?.n ?? 0) >= waiters) break;
     }
+    if (whileHeld) await whileHeld(holder);
     await holder.query('COMMIT');
     return await pending;
   } finally {

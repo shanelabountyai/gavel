@@ -2,18 +2,18 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { MODULES } from './foundation-modules';
+import { MODULES, presentModules } from './foundation-modules';
 
 // Plan §3.2: a clone never edits these. `npm run foundation:drift` diffs them against the release named in
 // FOUNDATION_VERSION and fails on any difference the rules below do not excuse.
 export const OWNED = [
   'src/core', 'src/modules', 'src/proxy.ts', 'prisma/schema', 'prisma/migrations', 'tests/invariants', 'scripts/foundation-*.ts', 'FOUNDATION_VERSION',
   'src/app/(public)/login', 'src/app/(public)/demo', 'src/app/onboarding', 'src/app/account', 'src/app/s/[token]',
-  'src/app/o/[org]/settings/members', 'src/app/o/[org]/settings/security', 'src/app/o/[org]/settings/billing', 'src/app/o/[org]/settings/danger',
+  'src/app/o/[org]/settings/members', 'src/app/o/[org]/settings/security', 'src/app/o/[org]/settings/audit', 'src/app/o/[org]/settings/billing', 'src/app/o/[org]/settings/danger', 'src/app/o/[org]/settings/sso',
   'src/app/api/health', 'src/app/api/cron', 'src/app/api/webhooks/stripe',
 ];
 // A clone owns its own tables: `prisma/schema/<app>.prisma` and its migrations are additions, not drift.
-const CLONE_OWNED = /^prisma\/schema\/(?!core\.prisma$|billing\.prisma$|notifications\.prisma$)/;
+const CLONE_OWNED = /^prisma\/schema\/(?!core\.prisma$|billing\.prisma$|notifications\.prisma$|sso\.prisma$)/;
 
 export type Change = { status: 'A' | 'M' | 'D'; path: string; lines: string[] }; // lines: the +/- lines of a changed file
 
@@ -71,7 +71,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log('foundation:drift: this is the template itself; nothing to compare against.');
     process.exit(0);
   }
-  const absent = new Set(Object.keys(MODULES).filter((m) => !existsSync(MODULES[m]![0]!)));
+  const present = presentModules();
+  const absent = new Set(Object.keys(MODULES).filter((m) => !present.includes(m)));
   const patches = existsSync('FOUNDATION_PATCHES.md') ? readFileSync('FOUNDATION_PATCHES.md', 'utf8') : '';
   const changes = collect(base);
   const bad = drift(changes, absent, (c) => patchedHash(patches, c.path) === hashOf(c));

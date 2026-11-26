@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { onMembershipEnded, onRoleChanged } from '@/app/org-hooks';
 import { currentSession } from '@/core/auth/session';
-import { db } from '@/core/db';
+import { dbSystem as db } from '@/core/db/system'; // fixtures run as the owner role (RLS enforce leg)
 import { deleteAccount } from '@/core/tenancy/delete';
 import { changeRole, removeMember } from '@/core/tenancy/orgs';
 import { resetAuthTables, signInAs } from '../helpers/auth';
@@ -15,8 +16,8 @@ describe('INV-21 an org never reaches zero owners', () => {
     const org = await makeOrg();
     const owner = await addMember(org.id, 'owner', 'owner@example.test');
     const ctx = await actAs(owner.id, org.slug);
-    await expect(changeRole(ctx, owner.id, 'admin')).rejects.toThrow(LAST);
-    await expect(removeMember(ctx, owner.id)).rejects.toThrow(LAST);
+    await expect(changeRole(ctx, owner.id, 'admin', onRoleChanged)).rejects.toThrow(LAST);
+    await expect(removeMember(ctx, owner.id, onMembershipEnded)).rejects.toThrow(LAST);
     expect(await roleOf(org.id, owner.id)).toBe('owner');
   });
 
@@ -24,7 +25,7 @@ describe('INV-21 an org never reaches zero owners', () => {
     const org = await makeOrg();
     const owner = await addMember(org.id, 'owner', 'owner@example.test');
     await signInAs(owner.id, { mfa: true });
-    await expect(deleteAccount((await currentSession())!, 'owner@example.test')).rejects.toThrow(LAST);
+    await expect(deleteAccount((await currentSession())!, 'owner@example.test', onMembershipEnded)).rejects.toThrow(LAST);
     expect(await db.user.count({ where: { id: owner.id } })).toBe(1);
   });
 
@@ -32,10 +33,10 @@ describe('INV-21 an org never reaches zero owners', () => {
     const org = await makeOrg();
     const a = await addMember(org.id, 'owner', 'a@example.test');
     const b = await addMember(org.id, 'owner', 'b@example.test');
-    await changeRole(await actAs(a.id, org.slug), a.id, 'admin');
+    await changeRole(await actAs(a.id, org.slug), a.id, 'admin', onRoleChanged);
     expect(await roleOf(org.id, a.id)).toBe('admin');
     await signInAs(b.id, { mfa: true });
-    await expect(deleteAccount((await currentSession())!, 'b@example.test')).rejects.toThrow(LAST); // b is now the only owner
+    await expect(deleteAccount((await currentSession())!, 'b@example.test', onMembershipEnded)).rejects.toThrow(LAST); // b is now the only owner
   });
 
   it('two owners demoting each other at once: exactly one wins', async () => {
@@ -43,7 +44,7 @@ describe('INV-21 an org never reaches zero owners', () => {
     const a = await addMember(org.id, 'owner', 'a@example.test');
     const b = await addMember(org.id, 'owner', 'b@example.test');
     const [ctxA, ctxB] = [await actAs(a.id, org.slug), await actAs(b.id, org.slug)];
-    const results = await Promise.allSettled([changeRole(ctxA, b.id, 'member'), changeRole(ctxB, a.id, 'member')]);
+    const results = await Promise.allSettled([changeRole(ctxA, b.id, 'member', onRoleChanged), changeRole(ctxB, a.id, 'member', onRoleChanged)]);
     expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
     expect(await db.membership.count({ where: { orgId: org.id, role: 'owner' } })).toBe(1);
   });

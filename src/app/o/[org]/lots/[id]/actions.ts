@@ -1,0 +1,99 @@
+'use server';
+import { revalidatePath } from 'next/cache';
+import { notFound } from 'next/navigation';
+import { z } from 'zod';
+import { ownMaxCents } from '@/auction/lot-view';
+import { placeBid } from '@/auction/place-bid';
+import { BidError } from '@/auction/errors';
+import { bidErrorText } from '@/auction/outcome-labels';
+import { requestApproval } from '@/auction/registration';
+import { acceptTerms } from '@/auction/terms';
+import { setWatch } from '@/auction/watch';
+import { voidBidder } from '@/auction/void-bid';
+import { withdrawLot } from '@/auction/withdraw';
+import { orgAction, ref } from '@/core/authz/action';
+import { db } from '@/core/db';
+import { Refused } from '@/core/errors';
+
+// Task 3.5. The key is the client's, one per submission, resent on a retry (D-17). Any member may ask; placeBid refuses
+// a member with no active Bidder row. The response is the bidder-safe BidResponse, minus the Date.
+export const placeBidAction = orgAction(
+  null,
+  z.object({ lotId: ref('lot'), maxCents: z.number().int(), idempotencyKey: z.string().min(1).max(100) }),
+  async (ctx, input) => {
+    if (!(await db.lot.findFirst({ where: { id: input.lotId, orgId: ctx.orgId }, select: { id: true } }))) notFound(); // INV-02
+    const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true } });
+    if (!bidder) return { error: bidErrorText('BIDDER_NOT_ACTIVE'), code: 'BIDDER_NOT_ACTIVE', retryable: false };
+    try {
+      const r = await placeBid({ orgId: ctx.orgId, lotId: input.lotId, bidderId: bidder.id, maxCents: input.maxCents, idempotencyKey: input.idempotencyKey });
+      // UX R7 (D-68): a refused raise quotes the caller's own maximum, read only on that outcome to keep it off the hot path
+      const yourMaxCents = r.outcome === 'REJECTED_NOT_ABOVE_OWN_MAX' ? await ownMaxCents(input.lotId, bidder.id) : null;
+      return { ok: true as const, outcome: r.outcome, accepted: r.accepted, priceCents: r.priceCents, minNextCents: r.minNextCents, youLead: r.youLead, yourMaxCents };
+    } catch (e) {
+      if (e instanceof BidError) return { error: bidErrorText(e.code), code: e.code, retryable: e.code === 'BID_TIMED_OUT' }; // UX-05: never e.message
+      throw e;
+    }
+  },
+);
+
+// D-73 (AX-04): staff withdraw the lot, with the reason on the record. withdrawLot judges it under the lot's one lock and
+// refuses with the sentence the form shows; the trigger under the insert is the guard.
+export const withdrawLotAction = orgAction(
+  'results.write',
+  z.object({ lotId: ref('lot'), reason: z.string().trim().min(1, 'Give a reason for the withdrawal.').max(500, 'Keep the reason under 500 characters.') }),
+  async (ctx, i) => {
+    if (!(await db.lot.findFirst({ where: { id: i.lotId, orgId: ctx.orgId }, select: { id: true } }))) notFound(); // INV-02
+    await withdrawLot({ orgId: ctx.orgId, lotId: i.lotId, reason: i.reason, userId: ctx.userId });
+    revalidatePath(`/o/${ctx.slug}`, 'layout'); // the lot page, the catalog and the history all change
+    return { notice: 'Lot withdrawn.' };
+  },
+);
+
+// D-96 (AX-19): staff void every live bid of one paddle on an open lot, with the reason on the record. voidBidder judges it
+// under the lot's one lock and refuses with the sentence the form shows. The form's key is minted per render, so a double
+// submit replays instead of voiding twice.
+export const voidBidsAction = orgAction(
+  'results.write',
+  z.object({ lotId: ref('lot'), paddle: z.string(), reason: z.string().trim().min(1, 'Give a reason for the void.').max(500, 'Keep the reason under 500 characters.'), idempotencyKey: z.string().min(1).max(100) }),
+  async (ctx, i) => {
+    if (!(await db.lot.findFirst({ where: { id: i.lotId, orgId: ctx.orgId }, select: { id: true } }))) notFound(); // INV-02
+    if (!/^\d{1,6}$/.test(i.paddle.trim())) throw new Refused('Paddle must be a whole number.');
+    const bidder = await db.bidder.findUnique({ where: { orgId_paddle: { orgId: ctx.orgId, paddle: Number(i.paddle.trim()) } }, select: { id: true } });
+    if (!bidder) throw new Refused(`No bidder holds paddle ${i.paddle.trim()}.`);
+    const r = await voidBidder({ orgId: ctx.orgId, lotId: i.lotId, bidderId: bidder.id, reason: i.reason, userId: ctx.userId, idempotencyKey: i.idempotencyKey });
+    revalidatePath(`/o/${ctx.slug}`, 'layout'); // the lot page, the catalog, the history and Your bids all change
+    return { notice: r.replayed ? 'Already voided.' : `Paddle ${i.paddle.trim()}'s bids voided (seq ${r.seq}).` };
+  },
+);
+
+// D-72 (AX-03): a bidder accepts the sale's current terms from the lot page. Idempotent; never part of the bid path.
+export const acceptTermsAction = orgAction(null, z.object({ lotId: ref('lot') }), async (ctx, i) => {
+  const lot = await db.lot.findFirst({ where: { id: i.lotId, orgId: ctx.orgId }, select: { auctionId: true } });
+  if (!lot) notFound(); // INV-02
+  const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true } });
+  if (!bidder) throw new Refused('Register to bid first.');
+  const a = await acceptTerms(ctx.orgId, bidder.id, lot.auctionId);
+  revalidatePath(`/o/${ctx.slug}`, 'layout'); // every lot of the sale swaps the terms panel for the bid form
+  return { accepted: a.termsSha256 };
+});
+
+// D-88 (AX-16): a bidder asks to bid in a sale that requires approval, from any of its lot pages. Idempotent.
+export const requestApprovalAction = orgAction(null, z.object({ lotId: ref('lot') }), async (ctx, i) => {
+  const lot = await db.lot.findFirst({ where: { id: i.lotId, orgId: ctx.orgId }, select: { auctionId: true } });
+  if (!lot) notFound(); // INV-02
+  const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true } });
+  if (!bidder) throw new Refused('Register to bid first.');
+  await requestApproval(ctx, bidder.id, lot.auctionId);
+  revalidatePath(`/o/${ctx.slug}`, 'layout'); // every lot of the sale shows the request as awaiting approval
+  return { requested: true };
+});
+
+// D-92 (AX-23): a bidder watches or stops watching a lot. Idempotent; the closing-soon notice is the cron's.
+export const watchLotAction = orgAction(null, z.object({ lotId: ref('lot'), on: z.enum(['1', '0']) }), async (ctx, i) => {
+  if (!(await db.lot.findFirst({ where: { id: i.lotId, orgId: ctx.orgId }, select: { id: true } }))) notFound(); // INV-02
+  const bidder = await db.bidder.findUnique({ where: { orgId_userId: { orgId: ctx.orgId, userId: ctx.userId } }, select: { id: true } });
+  if (!bidder) throw new Refused('Register to bid first.');
+  await setWatch(ctx.orgId, bidder.id, i.lotId, i.on === '1');
+  revalidatePath(`/o/${ctx.slug}`, 'layout'); // the lot page and Your bids
+  return { watching: i.on === '1' };
+});
