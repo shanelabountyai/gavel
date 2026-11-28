@@ -1,5 +1,12 @@
 # NEXT
 
+## 2026-11-26: PR #2 (`overnight/2026-10-20-hardening`) brought up to main
+
+Tests and one guard; no feature, rule or fixture change. Gate on the merged tree: see the indented line. The 2026-10-20 line is history (36 lots then; main has since moved past task 2.3, D-45).
+
+**2026-10-20 (overnight hardening, cloud container, branch `overnight/2026-10-20-hardening`, PR #2):** no feature work, no rule or fixture change. Added tests only, plus one guard: `tests/unit/fold-oracle-ledger.test.ts` (71: fold/settle/resettle over `expected_bids.csv` against `expected_lots.csv`), V4/V5/V6/V9 red cases in `tests/integration/verify.test.ts`, a cross-house bidder case in `place-bid.test.ts`; `runDb` refuses to TRUNCATE a database whose name does not end in `_test`. Gate in the container (PostgreSQL **16**, not 17; Node 22): lint 0 errors (the one template warning), `tsc` clean, `build` OK, `fixtures:check` OK, `rules:lint` OK, `auction:eval` OK, `auction:verify` OK (36 lots), vitest 420/420 (45 files). Playwright not run (Chromium download blocked).
+  - **2026-11-26, merge of `origin/main` into the branch (cloud container, PostgreSQL 16, Node 22):** the one conflict was the TRUNCATE in `runDb`; main's longer table list kept, the `_test` guard re-applied above it. Tests adapted to main's API only: `fold-oracle-ledger` builds lots with `withdrawnAtMs` (D-73) and the v2 terms (D-90), settles a withdrawn lot at its withdrawal, resettles at the sale's premium bands, and treats only live rows as correction targets (D-96 g); it now pins 55 lots (105 cases) from the regenerated fixtures. The V9 red case expects main's "D-23 lists" message. No fixture, expected value or rule touched. Gate: `tsc` clean, lint 0 errors (1 template warning), `build` OK, vitest 875 passed / 40 skipped (84 files; the skips are the RLS-mode gates), `auction:eval` OK both halves (321 bid rows, 55 lots), `auction:verify` OK (55 lots), `rules:lint` OK, `fixtures:check` OK.
+
 ## 2026-11-09: upgraded to foundation v1.6.2 (branch `foundation-v1.6.2`)
 
 No migration (D-102 stub-table pair untouched). CI enforce leg takes the template's DB-name lines (F-14); `e2e/demo.spec.ts` and `security-pages.spec.ts` seed via `npm run seed:demo:test` (F-08) and keep gavel's own journey/nav flow plus the settings-nav filter; module-guard test relaxed for removed billing (F-17). Gate: typecheck, lint, 651 unit pass / 40 skipped, drift clean, build:test ok, audit 0.
